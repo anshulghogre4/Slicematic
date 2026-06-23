@@ -1,0 +1,5 @@
+.mcp.json
+.claude/
+.env
+.env.local
+.env.production
