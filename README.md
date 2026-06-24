@@ -17,60 +17,11 @@ SliceMatic is a cart-based pizza ordering application built for a single-outlet 
 
 ## Stage 2 Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        Gradio Web UI                            │
-│  (gr.Blocks — tabs, dropdowns, radio, dataframe, HTML cards)   │
-└────────────────────────────┬────────────────────────────────────┘
-                             │ event callbacks
-┌────────────────────────────▼────────────────────────────────────┐
-│                     Application Layer (app.py)                   │
-│                                                                 │
-│  ┌──────────────┐  ┌──────────────┐  ┌───────────────────────┐ │
-│  │  Validation  │  │  Cart Engine │  │  Billing Engine        │ │
-│  │  • name      │  │  • add line  │  │  • unit_price =       │ │
-│  │  • phone     │  │  • clear     │  │    base+pizza+toppings │ │
-│  │  • quantity  │  │  • summary   │  │  • subtotal = unit×qty │ │
-│  │  • payment   │  │  • max 10/ln │  │  • discount 10% ≥5qty │ │
-│  └──────────────┘  └──────────────┘  │  • GST 18% post-disc  │ │
-│                                       │  • Decimal ROUND_HALF  │ │
-│                                       └───────────────────────┘ │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Menu Loader — parses ID;Name;Price from .txt at runtime │   │
-│  │  (defensive: rejects malformed, duplicate IDs, bad price)│   │
-│  └──────────────────────────────────────────────────────────┘   │
-│  ┌──────────────────────────────────────────────────────────┐   │
-│  │  Order Logger — pipe-separated flat log → orders_log.txt │   │
-│  │  FORMAT: ORDER|ts|name|phone|lines...|totals|payment     │   │
-│  └──────────────────────────────────────────────────────────┘   │
-└─────────────────────────────────────────────────────────────────┘
-                             │
-              ┌──────────────┼──────────────┐
-              ▼              ▼              ▼
-    Types_of_Base.txt  Types_of_Pizza.txt  Types_of_Toppings.txt
-      (5 bases)          (8 pizzas)         (16 toppings)
-```
+![Architecture Diagram](documents/architecture_stage2.png)
 
 ### Data Flow
 
-```
-User selects base → pizza → toppings → quantity
-        │
-        ▼
-CartLine created (unit_price computed, line_total = unit × qty)
-        │
-        ▼
-Cart accumulates lines (multi-pizza order support)
-        │
-        ▼
-Checkout: validate name + phone + payment mode
-        │
-        ▼
-Bill computed: subtotal → discount → GST → final_total
-        │
-        ▼
-Order persisted to orders_log.txt (append, pipe-delimited)
-```
+![Data Flow Diagram](documents/dataflow_stage2.png)
 
 ### Key Design Decisions
 
