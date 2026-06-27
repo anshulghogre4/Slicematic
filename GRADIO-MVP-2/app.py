@@ -174,24 +174,42 @@ def render_cart_html(cart):
     for i, item in enumerate(cart):
         b = bases[item["base_idx"]]
         p = pizzas[item["pizza_idx"]]
-        t_names = ", ".join([toppings[t][1] for t in item["topping_idx"]])
-        unit = b[2] + p[2] + sum([toppings[t][2] for t in item["topping_idx"]])
+        topping_list = [toppings[t] for t in item["topping_idx"]]
+        unit = b[2] + p[2] + sum(t[2] for t in topping_list)
         qty = item["quantity"]
         sub = unit * qty
         total += sub
         total_qty += qty
-        
+
+        topping_lines = "".join(
+            f'<div style="display:flex;justify-content:space-between;">'
+            f'<span style="color:#64748b;">&nbsp;&nbsp;+ {html_escape(t[1])}</span>'
+            f'<span style="color:#64748b;">&#8377;{t[2]:.2f}</span></div>'
+            for t in topping_list
+        )
+        if not topping_lines:
+            topping_lines = '<div style="color:#94a3b8;font-style:italic;">&nbsp;&nbsp;No toppings</div>'
+
         lines.append(f"""
-        <div class="sm-cart-item" style="padding-bottom: 8px; border-bottom: 1px dashed #e2e8f0; margin-bottom: 8px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
+        <div class="sm-cart-item" style="padding-bottom:8px; border-bottom:1px dashed #e2e8f0; margin-bottom:8px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
                 <strong class="sm-cart-title">{qty}x {html_escape(p[1])}</strong>
-                <span class="sm-cart-title" style="font-weight:600;">&#8377;{sub:.2f}</span>
+                <span class="sm-cart-title" style="font-weight:700;">&#8377;{sub:.2f}</span>
             </div>
-            <div class="sm-cart-desc">
-                Base: {html_escape(b[1])}
-            </div>
-            <div class="sm-cart-desc">
-                Toppings: {html_escape(t_names) if t_names else "None"}
+            <div style="font-size:13px; margin-top:4px;">
+                <div style="display:flex;justify-content:space-between;">
+                    <span style="color:#64748b;">Base: {html_escape(b[1])}</span>
+                    <span style="color:#64748b;">&#8377;{b[2]:.2f}</span>
+                </div>
+                <div style="display:flex;justify-content:space-between;">
+                    <span style="color:#64748b;">Pizza: {html_escape(p[1])}</span>
+                    <span style="color:#64748b;">&#8377;{p[2]:.2f}</span>
+                </div>
+                {topping_lines}
+                <div style="display:flex;justify-content:space-between; border-top:1px dotted #e2e8f0; margin-top:4px; padding-top:4px;">
+                    <span style="font-weight:600;color:#334155;">Unit price</span>
+                    <span style="font-weight:600;color:#334155;">&#8377;{unit:.2f}</span>
+                </div>
             </div>
         </div>
         """)
@@ -274,7 +292,7 @@ def render_bill_html(state, show_payment=False):
         """
 
     return f"""
-    <div style="font-family:Inter,system-ui,sans-serif; max-width:500px; margin:0 auto;">
+    <div class="sm-bill-wrapper">
       <table class="sm-bill-table">
         {items_html}
         <tr>
@@ -534,7 +552,7 @@ with gr.Blocks(title="SliceMatic") as app:
                             f'<strong>{html_escape(fname)}</strong> — {len(items)} {label} loaded</div>'
                         )
                     gr.HTML(
-                        '<div class="sm-card" style="max-width:480px;text-align:center;margin: 0 auto;">'
+                        '<div class="sm-card" style="max-width:720px;text-align:center;margin: 0 auto;">'
                         '<div style="width:80px;height:80px;background:#dcf5e0;border-radius:50%;'
                         'margin:8px auto 20px;display:flex;align-items:center;justify-content:center;'
                         'font-size:40px;color:#24963F;">✓</div>'
@@ -544,7 +562,7 @@ with gr.Blocks(title="SliceMatic") as app:
                         + "".join(init_lines) +
                         '</div></div>'
                     )
-                    start_btn = gr.Button("Start Ordering →", variant="primary", size="lg")
+                    start_btn = gr.Button("Start Ordering →", variant="primary", size="lg", elem_classes=["sm-start-btn"])
 
                 # ════════════════════════════════════════════════════
                 # STAGE 2 — Customer Intake (Step 1 of 5 per design)
@@ -846,7 +864,7 @@ with gr.Blocks(title="SliceMatic") as app:
 
                 if write_ok:
                     receipt = f"""
-                    <div style="text-align:center; padding:20px; font-family:Inter,system-ui,sans-serif;">
+                    <div class="sm-receipt-wrapper" style="text-align:center; font-family:Inter,system-ui,sans-serif;">
                       <div class="sm-success-icon">✅</div>
                       <h2 class="sm-success-title">Order Confirmed</h2>
                       <p class="sm-receipt-msg">
@@ -872,7 +890,7 @@ with gr.Blocks(title="SliceMatic") as app:
                 else:
                     safe_mode = html_escape(st["payment_mode"])
                     receipt = f"""
-                    <div style="text-align:center; padding:20px; font-family:Inter,system-ui,sans-serif;">
+                    <div class="sm-receipt-wrapper" style="text-align:center; font-family:Inter,system-ui,sans-serif;">
                       <div class="sm-error-icon">⚠️</div>
                       <h2 class="sm-error-title">Order Recording Failed</h2>
                       <p class="sm-receipt-msg">
@@ -1093,6 +1111,10 @@ if __name__ == "__main__":
     .dark body, .dark .gradio-container { background-color: #0f172a !important; }
     
     .gradio-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+    .gradio-container > .main > .wrap > .contain > div > .row {
+        align-items: stretch !important;
+    }
+    .sm-sidebar-col > div { position: sticky; top: 0; }
     
     .gradio-container .sm-card, .gradio-container .sm-card.column {
         background: #ffffff !important; border: 1px solid #e2e8f0 !important;
@@ -1100,7 +1122,21 @@ if __name__ == "__main__":
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
         max-width: 1400px !important; align-self: center !important; width: 100% !important;
     }
-    .narrow-container { max-width: 480px !important; margin: 0 auto !important; }
+    .narrow-container { max-width: 720px !important; margin: 0 auto !important; }
+    .sm-start-btn { max-width: 720px !important; margin: 16px auto 0 auto !important; }
+    .sm-bill-wrapper {
+        font-family: Inter, system-ui, sans-serif;
+        max-width: 720px; margin: 0 auto;
+        border: 1px solid #e2e8f0; border-radius: 12px;
+        padding: 8px; background: #ffffff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .sm-receipt-wrapper {
+        max-width: 720px; margin: 0 auto;
+        border: 1px solid #e2e8f0; border-radius: 12px;
+        padding: 24px 8px; background: #ffffff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
+    }
     
     /* Radio (payment modes) */
     .gradio-container [data-testid="radio"] { background: transparent !important; border: none !important; box-shadow: none !important; }
@@ -1241,7 +1277,7 @@ if __name__ == "__main__":
     /* Bill Summary Table */
     .sm-bill-table {
         width: 100%; border-collapse: collapse; background: #ffffff;
-        border: 1px solid #e4bebc; border-radius: 12px; overflow: hidden;
+        border-radius: 12px; overflow: hidden;
     }
     .sm-bill-row { border-bottom: 1px solid #eee; }
     .sm-bill-row-heavy { border-bottom: 2px solid #8f6f6e; }
@@ -1261,34 +1297,40 @@ if __name__ == "__main__":
     }
     
     .sm-dev-log {
-        background: #0B192C; 
-        border-radius: 8px; 
-        padding: 16px; 
-        margin: 24px auto 0 auto; 
-        max-width: 500px;
+        background: #0B192C;
+        border-radius: 8px;
+        padding: 16px;
+        margin: 24px auto 0 auto;
+        max-width: 720px;
         text-align: left;
     }
     .sm-dev-log-header {
         font-size: 11px;
         font-weight: 700;
         letter-spacing: 1px;
-        color: #94a3b8;
+        color: #e2e8f0 !important;
         margin-bottom: 12px;
         display: flex;
         align-items: center;
         justify-content: space-between;
     }
+    .sm-dev-log-header span, .sm-dev-log-header div {
+        color: #e2e8f0 !important;
+    }
     .sm-dev-log-copy {
-        background: transparent;
-        border: none;
-        color: #94a3b8;
+        background: rgba(255,255,255,0.08);
+        border: 1px solid rgba(255,255,255,0.2);
+        color: #e2e8f0 !important;
         cursor: pointer;
-        padding: 4px;
-        border-radius: 4px;
+        padding: 6px;
+        border-radius: 6px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-family: inherit;
+    }
+    .sm-dev-log-copy svg {
+        stroke: #e2e8f0 !important;
     }
     .sm-dev-log-copy:hover {
         background: #1e293b;
@@ -1312,13 +1354,14 @@ if __name__ == "__main__":
     
     .sm-pay-info { color: #336366; }
     .sm-receipt-msg { color: #5b403f; }
-    .sm-receipt-details { margin: 20px auto; text-align: left; max-width: 500px; color: #0F172A; }
+    .sm-receipt-details { margin: 20px auto; text-align: left; max-width: 720px; color: #0F172A; }
     .sm-receipt-details strong { color: #000000; }
     
     /* Sidebar CSS */
     .sm-sidebar-col {
         background: #f8f9fa !important; border-right: 1px solid #e2e8f0 !important;
-        padding: 0 !important; margin: 0 !important; min-height: 100vh !important;
+        padding: 0 !important; margin: 0 !important; min-height: 100% !important;
+        align-self: stretch !important;
     }
     .sm-main-col {
         padding: 0 32px !important; margin: 0 !important;
@@ -1355,6 +1398,7 @@ if __name__ == "__main__":
     
     /* Bill Summary Dark Mode Overrides */
     .dark .sm-bill-table { background: #0f172a !important; border-color: #334155 !important; }
+    .dark .sm-bill-wrapper, .dark .sm-receipt-wrapper { background: #0f172a !important; border-color: #334155 !important; }
     .dark .sm-bill-row { border-color: #1e293b !important; }
     .dark .sm-bill-row-heavy { border-color: #475569 !important; }
     .dark .sm-bill-row-top { border-color: #334155 !important; }
@@ -1383,7 +1427,8 @@ if __name__ == "__main__":
     }
     .dark .gradio-container label span { color: #cbd5e1 !important; }
     .dark .gradio-container span[data-testid="block-info"] { color: #cbd5e1 !important; }
-    .dark .gradio-container .prose .sm-dev-log-header, .dark .sm-dev-log-header, .dark .sm-dev-log-header span { color: #94a3b8 !important; }
+    .dark .gradio-container .prose .sm-dev-log-header, .dark .sm-dev-log-header, .dark .sm-dev-log-header span, .dark .sm-dev-log-header div { color: #e2e8f0 !important; }
+    .dark .sm-dev-log-copy, .dark .sm-dev-log-copy svg { color: #e2e8f0 !important; stroke: #e2e8f0 !important; }
     """
 
     app.launch(
