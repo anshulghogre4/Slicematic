@@ -3,3 +3,6 @@
 .env
 .env.local
 .env.production
+CLAUDE.md
+.venv/
+__pycache__/
