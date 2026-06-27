@@ -172,8 +172,8 @@ def render_bill_html(state, show_payment=False):
     if qty >= DISCOUNT_THRESHOLD:
         discount_row = f"""
         <tr>
-          <td style="padding:10px 16px; color:#336366;">Discount (10% OFF)</td>
-          <td style="padding:10px 16px; text-align:right; color:#336366; font-weight:600;">
+          <td class="sm-bill-cell sm-bill-discount">Discount (10% OFF)</td>
+          <td class="sm-bill-val sm-bill-discount">
             -&#8377;{bill['discount']:,.2f}
           </td>
         </tr>"""
@@ -183,8 +183,7 @@ def render_bill_html(state, show_payment=False):
         payment_badge = f"""
         <tr>
           <td colspan="2" style="padding:8px 16px; text-align:right;">
-            <span style="background:#e7eeff; padding:4px 12px; border-radius:6px;
-                         font-size:12px; color:#001b3c;">
+            <span class="sm-bill-badge">
               Paid via {html_escape(state['payment_mode'])}
             </span>
           </td>
@@ -192,58 +191,42 @@ def render_bill_html(state, show_payment=False):
 
     return f"""
     <div style="font-family:Inter,system-ui,sans-serif; max-width:500px; margin:0 auto;">
-      <table style="width:100%; border-collapse:collapse; background:#ffffff;
-                     border:1px solid #e4bebc; border-radius:12px; overflow:hidden;">
-        <tr style="border-bottom:1px solid #eee;">
-          <td style="padding:12px 16px;">{html_escape(b[1])}</td>
-          <td style="padding:12px 16px; text-align:right; font-weight:500;">
-            &#8377;{b[2]:,.2f}
-          </td>
+      <table class="sm-bill-table">
+        <tr class="sm-bill-row">
+          <td class="sm-bill-cell">{html_escape(b[1])}</td>
+          <td class="sm-bill-val">&#8377;{b[2]:,.2f}</td>
         </tr>
-        <tr style="border-bottom:1px solid #eee;">
-          <td style="padding:12px 16px;">{html_escape(p[1])}</td>
-          <td style="padding:12px 16px; text-align:right; font-weight:500;">
-            &#8377;{p[2]:,.2f}
-          </td>
+        <tr class="sm-bill-row">
+          <td class="sm-bill-cell">{html_escape(p[1])}</td>
+          <td class="sm-bill-val">&#8377;{p[2]:,.2f}</td>
         </tr>
-        <tr style="border-bottom:2px solid #8f6f6e;">
-          <td style="padding:12px 16px;">{html_escape(t[1])}</td>
-          <td style="padding:12px 16px; text-align:right; font-weight:500;">
-            &#8377;{t[2]:,.2f}
-          </td>
+        <tr class="sm-bill-row-heavy">
+          <td class="sm-bill-cell">{html_escape(t[1])}</td>
+          <td class="sm-bill-val">&#8377;{t[2]:,.2f}</td>
         </tr>
         <tr>
-          <td style="padding:10px 16px;">Unit Price</td>
-          <td style="padding:10px 16px; text-align:right; font-weight:500;">
-            &#8377;{bill['unit_price']:,.2f}
-          </td>
+          <td class="sm-bill-cell">Unit Price</td>
+          <td class="sm-bill-val">&#8377;{bill['unit_price']:,.2f}</td>
         </tr>
         <tr>
-          <td style="padding:10px 16px;">Quantity</td>
-          <td style="padding:10px 16px; text-align:right; font-weight:500;">x{qty}</td>
+          <td class="sm-bill-cell">Quantity</td>
+          <td class="sm-bill-val">x{qty}</td>
         </tr>
-        <tr style="border-top:1px solid #e4bebc;">
-          <td style="padding:10px 16px; font-weight:600;">Subtotal</td>
-          <td style="padding:10px 16px; text-align:right; font-weight:600;">
-            &#8377;{bill['subtotal']:,.2f}
-          </td>
+        <tr class="sm-bill-row-top">
+          <td class="sm-bill-cell sm-bill-bold">Subtotal</td>
+          <td class="sm-bill-val sm-bill-bold">&#8377;{bill['subtotal']:,.2f}</td>
         </tr>
         {discount_row}
         <tr>
-          <td style="padding:10px 16px;">GST (18%)</td>
-          <td style="padding:10px 16px; text-align:right; font-weight:500;">
-            &#8377;{bill['gst']:,.2f}
-          </td>
+          <td class="sm-bill-cell">GST (18%)</td>
+          <td class="sm-bill-val">&#8377;{bill['gst']:,.2f}</td>
         </tr>
-        <tr style="background:#f0f3ff; border-top:2px solid #b7102a;">
-          <td style="padding:16px; font-weight:700; font-size:1.1em;">
+        <tr class="sm-bill-total-row">
+          <td class="sm-bill-total-cell">
             Final Payable<br>
-            <span style="font-size:0.75em; font-weight:400; color:#5b403f;">
-              Includes all taxes and charges
-            </span>
+            <span class="sm-bill-tax-note">Includes all taxes and charges</span>
           </td>
-          <td style="padding:16px; text-align:right; font-weight:700;
-                     font-size:1.4em; color:#b7102a;">
+          <td class="sm-bill-total-val">
             &#8377;{bill['final_total']:,.2f}
           </td>
         </tr>
@@ -321,7 +304,7 @@ def render_base_cards(items):
             + '</div>'
         )
     return (
-        '<div style="font-weight:600;color:#001b3c;margin:8px 0 4px;">Choose your base</div>'
+        '<div class="sm-primary-text" style="font-weight:600;margin:8px 0 4px;">Choose your base</div>'
         '<div class="sm-base-grid">' + "".join(cards) + '</div>'
     )
 
@@ -340,8 +323,22 @@ def render_pizza_cards(items):
             + '</div>'
         )
     return (
-        '<div style="font-weight:600;color:#001b3c;margin:8px 0 4px;">Choose your pizza</div>'
+        '<div class="sm-primary-text" style="font-weight:600;margin:8px 0 4px;">Choose your pizza</div>'
         '<div class="sm-pizza-grid">' + "".join(cards) + '</div>'
+    )
+
+
+def render_topping_pills(items):
+    """Numbered pills (no image — matches the design's Stage 3 toppings row)."""
+    pills = []
+    for i, (_id, name, price) in enumerate(items, 1):
+        pills.append(
+            f'<span class="sm-pill"><span class="sm-num">{i}</span>'
+            f'{html_escape(name)} <span class="sm-topping-price">+₹{price:.2f}</span></span>'
+        )
+    return (
+        '<div class="sm-primary-text" style="font-weight:600;margin:8px 0 4px;">Choose your topping</div>'
+        '<div class="sm-topping-pills">' + "".join(pills) + '</div>'
     )
 
 
@@ -356,8 +353,8 @@ def render_sidebar(step):
     
     html = f"""
     <div class="sm-sidebar">
-        <div style="font-size:14px; font-weight:700; color:#b7102a; margin-left:12px;">Step {step} of 5</div>
-        <div style="font-size:12px; color:#64748b; margin-left:12px; margin-bottom:24px;">Customize your order</div>
+        <div class="sm-step-text" style="font-size:14px; font-weight:700; margin-left:12px;">Step {step} of 5</div>
+        <div class="sm-subtitle" style="font-size:12px; margin-left:12px; margin-bottom:24px;">Customize your order</div>
         <div style="display:flex; flex-direction:column; gap:8px;">
     """
     
@@ -373,47 +370,10 @@ def render_sidebar(step):
     return html
 
 
-def render_topping_pills(items):
-    """Numbered pills (no image — matches the design's Stage 3 toppings row)."""
-    pills = []
-    for i, (_id, name, price) in enumerate(items, 1):
-        pills.append(
-            f'<span class="sm-pill"><span class="sm-num">{i}</span>'
-            f'{html_escape(name)} <span style="color:#5b403f;">+₹{price:.2f}</span></span>'
-        )
-    return (
-        '<div style="font-weight:600;color:#001b3c;margin:8px 0 4px;">Choose your topping</div>'
-        '<div class="sm-topping-pills">' + "".join(pills) + '</div>'
-    )
-
-
-def render_sidebar(active_step):
-    """Render sidebar navigation matching the Stitch design. active_step: 1..5."""
-    items = [
-        ("⊙", "Base"),
-        ("🍕", "Pizza"),
-        ("◈", "Toppings"),
-        ("🍴", "Sides"),
-        ("🛒", "Checkout"),
-    ]
-    step_label = f"Step {active_step} of 5"
-    sub = "Customize your order"
-    html = '<div class="sm-sidebar">'
-    html += f'<div style="padding:12px 16px;font-weight:700;color:#b7102a;font-size:15px;">{step_label}</div>'
-    html += f'<div style="padding:0 16px 16px;font-size:13px;color:#64748b;">{sub}</div>'
-    for i, (icon, label) in enumerate(items, 1):
-        cls = "sm-sidebar-item"
-        if i == active_step:
-            cls += " sm-sidebar-active"
-        html += f'<div class="{cls}">{icon} &nbsp;{label}</div>'
-    html += '</div>'
-    return html
-
-
 def err(msg):
     if not msg:
         return ""
-    return f"<p style='color:#ba1a1a; font-size:13px; margin:4px 0;'>{html_escape(msg)}</p>"
+    return f"<p class='sm-error-text' style='font-size:13px; margin:4px 0;'>{html_escape(msg)}</p>"
 
 
 def initial_state():
@@ -439,11 +399,11 @@ with gr.Blocks(title="SliceMatic") as app:
     state = gr.State(initial_state())
     
     with gr.Row():
-        with gr.Column(scale=1, min_width=250, elem_classes=["sm-sidebar-col"]):
+        with gr.Column(scale=1, min_width=250, elem_classes=["sm-sidebar-col"], visible=False) as sidebar_col:
             gr.HTML(
                 '<div style="display:flex;align-items:center;gap:10px;padding:16px 8px;margin-bottom:24px;">'
                 '<span style="font-size:28px;">🍕</span>'
-                '<span style="font-size:22px;font-weight:700;color:#b7102a;">SliceMatic</span>'
+                '<span class="sm-logo-text" style="font-size:22px;font-weight:700;">SliceMatic</span>'
                 '</div>'
             )
             sidebar_display = gr.HTML(render_sidebar(1))
@@ -475,16 +435,16 @@ with gr.Blocks(title="SliceMatic") as app:
                         (TOPPING_FILE, toppings, "toppings"),
                     ]:
                         init_lines.append(
-                            f'<div style="font-size:14px;color:#001b3c;margin:6px 0;">'
+                            f'<div class="sm-primary-text" style="font-size:14px;margin:6px 0;">'
                             f'<span style="color:#24963F;font-weight:700;">✓</span> '
                             f'<strong>{html_escape(fname)}</strong> — {len(items)} {label} loaded</div>'
                         )
                     gr.HTML(
-                        '<div class="sm-card" style="max-width:480px;text-align:center;">'
+                        '<div class="sm-card" style="max-width:480px;text-align:center;margin: 0 auto;">'
                         '<div style="width:80px;height:80px;background:#dcf5e0;border-radius:50%;'
                         'margin:8px auto 20px;display:flex;align-items:center;justify-content:center;'
                         'font-size:40px;color:#24963F;">✓</div>'
-                        '<h2 style="font-size:24px;font-weight:700;color:#001b3c;margin:0 0 6px;">All systems ready.</h2>'
+                        '<h2 class="sm-primary-text" style="font-size:24px;font-weight:700;margin:0 0 6px;">All systems ready.</h2>'
                         '<p class="sm-subtitle">Menu files loaded successfully.</p>'
                         '<div style="text-align:left;margin:16px 0 8px;">'
                         + "".join(init_lines) +
@@ -520,7 +480,7 @@ with gr.Blocks(title="SliceMatic") as app:
                     gr.HTML('<h1 class="sm-headline" style="text-align:center;">Quantity &amp; Menu Selection</h1>')
 
                     with gr.Column(elem_classes=["narrow-container"]):
-                        gr.HTML('<div style="font-weight:600;font-size:18px;color:#001b3c;margin:16px 0 8px;text-align:center;">How many pizzas?</div>')
+                        gr.HTML('<div class="sm-primary-text" style="font-weight:600;font-size:18px;margin:16px 0 8px;text-align:center;">How many pizzas?</div>')
                         with gr.Row():
                             qty_input = gr.Textbox(
                                 label="Quantity (1–10 pizzas per order)",
@@ -596,9 +556,9 @@ with gr.Blocks(title="SliceMatic") as app:
         def on_start(st):
             st["stage"] = 2
             st["timestamp"] = datetime.now(IST).isoformat()
-            return st, render_sidebar(1), gr.update(visible=False), gr.update(visible=True)
+            return st, render_sidebar(1), gr.update(visible=False), gr.update(visible=True), gr.update(visible=True)
 
-        start_btn.click(on_start, [state], [state, sidebar_display, stage1, stage2])
+        start_btn.click(on_start, [state], [state, sidebar_display, stage1, stage2, sidebar_col])
 
         # ── Stage 2 → Stage 3 ──────────────────────────────
         def on_intake(st, name_raw, phone_raw):
@@ -636,7 +596,7 @@ with gr.Blocks(title="SliceMatic") as app:
                     return (
                         st,
                         err(""),
-                        f"<p style='color:#24963F; font-weight:600;'>✓ Quantity set to {q}</p>",
+                        f"<p class='sm-success-msg'>✓ Quantity set to {q}</p>",
                         gr.update(interactive=False),
                         gr.update(interactive=True),
                         gr.update(interactive=True),
@@ -712,7 +672,7 @@ with gr.Blocks(title="SliceMatic") as app:
             if selection in PAYMENT_MODES:
                 return (
                     "",
-                    f"<p style='color:#336366;'>ℹ {html_escape(PAYMENT_MESSAGES[selection])}</p>",
+                    f"<p class='sm-pay-info'>ℹ {html_escape(PAYMENT_MESSAGES[selection])}</p>",
                 )
             return err("Please select a valid payment mode: Cash, Card, or UPI."), ""
 
@@ -746,12 +706,12 @@ with gr.Blocks(title="SliceMatic") as app:
                 if write_ok:
                     receipt = f"""
                     <div style="text-align:center; padding:20px; font-family:Inter,system-ui,sans-serif;">
-                      <div style="color:#24963F; font-size:48px;">✅</div>
-                      <h2 style="color:#24963F; margin:12px 0;">Order Confirmed</h2>
-                      <p style="color:#5b403f;">
+                      <div class="sm-success-icon">✅</div>
+                      <h2 class="sm-success-title">Order Confirmed</h2>
+                      <p class="sm-receipt-msg">
                         Your pizza is on its way. Thank you for choosing SliceMatic.
                       </p>
-                      <div style="margin:20px auto; text-align:left; max-width:500px;">
+                      <div class="sm-receipt-details">
                         <p><strong>Customer:</strong> {safe_name}</p>
                         <p><strong>Order Time:</strong> {safe_ts}</p>
                       </div>
@@ -761,13 +721,13 @@ with gr.Blocks(title="SliceMatic") as app:
                     safe_mode = html_escape(st["payment_mode"])
                     receipt = f"""
                     <div style="text-align:center; padding:20px; font-family:Inter,system-ui,sans-serif;">
-                      <div style="color:#ba1a1a; font-size:48px;">⚠️</div>
-                      <h2 style="color:#ba1a1a; margin:12px 0;">Order Recording Failed</h2>
-                      <p style="color:#5b403f;">
+                      <div class="sm-error-icon">⚠️</div>
+                      <h2 class="sm-error-title">Order Recording Failed</h2>
+                      <p class="sm-receipt-msg">
                         Your order total and payment mode were confirmed, but we could not
                         save your order record. Please show this screen to staff:
                       </p>
-                      <div style="margin:20px auto; text-align:left; max-width:500px;">
+                      <div class="sm-receipt-details">
                         <p><strong>Customer:</strong> {safe_name}</p>
                         <p><strong>Order Time:</strong> {safe_ts}</p>
                         <p><strong>Payment:</strong> {safe_mode}</p>
@@ -825,6 +785,7 @@ with gr.Blocks(title="SliceMatic") as app:
                 gr.update(visible=True),                         # pay_section
                 gr.update(visible=False),                        # receipt_section
                 "",                                              # receipt_display
+                gr.update(visible=False),                        # sidebar_col
             )
 
         new_btn.click(
@@ -838,7 +799,7 @@ with gr.Blocks(title="SliceMatic") as app:
                 base_err_display, pizza_err_display, topping_err_display,
                 menu_btn, bill_display,
                 pay_radio, pay_err_display, pay_msg_display,
-                pay_section, receipt_section, receipt_display,
+                pay_section, receipt_section, receipt_display, sidebar_col,
             ],
         )
 
@@ -859,7 +820,35 @@ if __name__ == "__main__":
         max-width: 100% !important;
         margin: auto !important;
     }
-    body, gradio-app { background: #f8f9fa !important; }
+    body, gradio-app { background: #f8f9fa !important; color: #0F172A !important; }
+
+    /* Force light mode — override Gradio dark theme regardless of OS preference */
+    @media (prefers-color-scheme: dark) {
+        body, gradio-app, .gradio-container { background: #f8f9fa !important; color: #0F172A !important; }
+    }
+    .dark, .dark .gradio-container, .dark body,
+    [data-theme="dark"], [data-theme="dark"] .gradio-container {
+        background: #f8f9fa !important; color: #0F172A !important;
+    }
+    .dark .gradio-container h1, .dark .gradio-container h2, .dark .gradio-container h3,
+    .dark .gradio-container p, .dark .gradio-container label,
+    .dark .gradio-container span, .dark .gradio-container div {
+        color: inherit !important;
+    }
+    .dark input[type=text], .dark textarea {
+        background: #ffffff !important; color: #0F172A !important;
+        border: 1px solid #cbd5e1 !important;
+    }
+    .dark .gradio-container button.primary,
+    .dark .gradio-container .primary > button {
+        background: #b7102a !important; color: #ffffff !important;
+    }
+    .dark .sm-card, .dark .sm-card-item, .dark .sm-card-pizza, .dark .sm-pill {
+        background: #ffffff !important; color: #0F172A !important;
+    }
+    .dark .sm-sidebar-col {
+        background: #f8f9fa !important;
+    }
 
     /* Headings */
     .gradio-container h1, .gradio-container h2, .gradio-container h3,
@@ -1001,6 +990,44 @@ if __name__ == "__main__":
         padding: 8px 16px; font-size: 14px; color: #0F172A; display: inline-flex;
         align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
     }
+    .sm-primary-text { color: #001b3c; }
+    .sm-topping-price { color: #5b403f; }
+    .sm-step-text { color: #b7102a; }
+    .sm-logo-text { color: #b7102a; }
+    .sm-error-text { color: #ba1a1a; }
+    
+    /* Bill Summary Table */
+    .sm-bill-table {
+        width: 100%; border-collapse: collapse; background: #ffffff;
+        border: 1px solid #e4bebc; border-radius: 12px; overflow: hidden;
+    }
+    .sm-bill-row { border-bottom: 1px solid #eee; }
+    .sm-bill-row-heavy { border-bottom: 2px solid #8f6f6e; }
+    .sm-bill-row-top { border-top: 1px solid #e4bebc; }
+    .sm-bill-cell { padding: 12px 16px; color: #0F172A; }
+    .sm-bill-val { padding: 12px 16px; text-align: right; font-weight: 500; color: #0F172A; }
+    .sm-bill-bold { font-weight: 600; }
+    .sm-bill-discount { color: #336366; font-weight: 600; }
+    .sm-bill-total-row { background: #f0f3ff; border-top: 2px solid #b7102a; }
+    .sm-bill-total-cell { padding: 16px; font-weight: 700; font-size: 1.1em; color: #0F172A; }
+    .sm-bill-tax-note { font-size: 0.75em; font-weight: 400; color: #5b403f; }
+    .sm-bill-total-val { padding: 16px; text-align: right; font-weight: 700; font-size: 1.4em; color: #b7102a; }
+    .sm-bill-badge {
+        background: #e7eeff; padding: 4px 12px; border-radius: 6px;
+        font-size: 12px; color: #001b3c;
+        display: inline-block;
+    }
+    
+    .sm-success-msg { color: #24963F; font-weight: 600; }
+    .sm-success-icon { color: #24963F; font-size: 48px; }
+    .sm-success-title { color: #24963F; margin: 12px 0; }
+    .sm-error-icon { color: #ba1a1a; font-size: 48px; }
+    .sm-error-title { color: #ba1a1a; margin: 12px 0; }
+    
+    .sm-pay-info { color: #336366; }
+    .sm-receipt-msg { color: #5b403f; }
+    .sm-receipt-details { margin: 20px auto; text-align: left; max-width: 500px; color: #0F172A; }
+    .sm-receipt-details strong { color: #000000; }
     
     /* Sidebar CSS */
     .sm-sidebar-col {
@@ -1021,22 +1048,59 @@ if __name__ == "__main__":
     .sm-sidebar-active {
         background: #dee8ff; color: #1e3a8a; font-weight: 600;
     }
-    """
-
-    # Force light theme on every load — kills the dark-mode rendering bug
-    LIGHT_MODE_JS = """
-    () => {
-      const url = new URL(window.location.href);
-      if (url.searchParams.get('__theme') !== 'light') {
-        url.searchParams.set('__theme', 'light');
-        window.location.replace(url.toString());
-      }
+    
+    /* Dark Mode Overrides */
+    .dark .sm-card { background: #1e293b !important; border: none !important; }
+    .dark .sm-headline { color: #f8fafc !important; }
+    .dark .sm-subtitle { color: #94a3b8 !important; }
+    .dark .sm-item-name { color: #f8fafc !important; }
+    .dark .sm-item-price { color: #94a3b8 !important; }
+    .dark .sm-card-item, .dark .sm-card-pizza { background: #0f172a !important; border-color: #334155 !important; }
+    .dark .sm-pill { background: #0f172a !important; border-color: #334155 !important; color: #f8fafc !important; }
+    .dark .sm-sidebar-col { background: #020617 !important; border-right: 1px solid #1e293b !important; }
+    .dark .sm-sidebar-item { color: #cbd5e1 !important; }
+    .dark .sm-sidebar-active { background: #1e293b !important; color: #38bdf8 !important; }
+    .dark .sm-primary-text { color: #f8fafc !important; }
+    .dark .sm-topping-price { color: #cbd5e1 !important; }
+    .dark .sm-img, .dark .sm-thumb { background: #334155 !important; }
+    .dark .sm-step-text { color: #f87171 !important; }
+    .dark .sm-logo-text { color: #f8fafc !important; }
+    .dark .sm-error-text { color: #f87171 !important; }
+    
+    /* Bill Summary Dark Mode Overrides */
+    .dark .sm-bill-table { background: #0f172a !important; border-color: #334155 !important; }
+    .dark .sm-bill-row { border-color: #1e293b !important; }
+    .dark .sm-bill-row-heavy { border-color: #475569 !important; }
+    .dark .sm-bill-row-top { border-color: #334155 !important; }
+    .dark .sm-bill-cell { color: #f8fafc !important; }
+    .dark .sm-bill-val { color: #f8fafc !important; }
+    .dark .sm-bill-discount { color: #34d399 !important; }
+    .dark .sm-bill-total-row { background: #1e293b !important; border-color: #ef4444 !important; }
+    .dark .sm-bill-total-cell { color: #f8fafc !important; }
+    .dark .sm-bill-tax-note { color: #94a3b8 !important; }
+    .dark .sm-bill-total-val { color: #ef4444 !important; }
+    .dark .sm-bill-badge { background: #1e293b !important; color: #38bdf8 !important; }
+    
+    .dark .gradio-container .prose .sm-success-msg, .dark .sm-success-msg { color: #4ade80 !important; }
+    .dark .sm-success-icon { color: #4ade80 !important; }
+    .dark .gradio-container .prose .sm-success-title, .dark .sm-success-title { color: #4ade80 !important; }
+    .dark .sm-error-icon { color: #f87171 !important; }
+    .dark .gradio-container .prose .sm-error-title, .dark .sm-error-title { color: #f87171 !important; }
+    
+    .dark .sm-pay-info { color: #cbd5e1 !important; }
+    .dark .sm-receipt-msg { color: #94a3b8 !important; }
+    .dark .sm-receipt-details, .dark .sm-receipt-details p { color: #f8fafc !important; }
+    .dark .sm-receipt-details strong { color: #f8fafc !important; }
+    
+    .dark .gradio-container [data-testid="radio"] label {
+        background: #1e293b !important; border-color: #334155 !important; color: #f8fafc !important;
     }
+    .dark .gradio-container label span { color: #cbd5e1 !important; }
+    .dark .gradio-container span[data-testid="block-info"] { color: #cbd5e1 !important; }
     """
 
     app.launch(
         theme=gr.themes.Base(),
         css=DESIGN_CSS,
-        js=LIGHT_MODE_JS,
         allowed_paths=[str(APP_DIR)],
     )
