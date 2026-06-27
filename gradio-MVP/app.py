@@ -1257,6 +1257,20 @@ def build_app():
       border-color: rgba(23, 107, 77, 0.45) !important;
       box-shadow: 0 0 0 3px rgba(23, 107, 77, 0.1), 0 10px 24px rgba(35, 23, 13, 0.08) !important;
     }
+    #checkout-panel label:has(input[type="radio"]),
+    #mvp-admin-panel label:has(input[type="radio"]) {
+      border: 1px solid rgba(129, 109, 82, 0.2) !important;
+      border-radius: 8px !important;
+      padding: 9px 12px !important;
+      background: rgba(255, 255, 255, 0.92) !important;
+      transition: border-color 140ms ease, box-shadow 140ms ease, background 140ms ease;
+    }
+    #checkout-panel label:has(input[type="radio"]:checked),
+    #mvp-admin-panel label:has(input[type="radio"]:checked) {
+      border-color: rgba(23, 107, 77, 0.55) !important;
+      background: linear-gradient(135deg, rgba(23, 107, 77, 0.12), rgba(255, 255, 255, 0.96)) !important;
+      box-shadow: 0 10px 22px rgba(23, 107, 77, 0.12) !important;
+    }
     #selection-row {
       align-items: stretch;
     }
@@ -1717,7 +1731,7 @@ def build_app():
       padding: 8px !important;
       gap: 8px !important;
     }
-    #mvp-tabs button {
+    #mvp-tabs [role="tab"] {
       border-radius: 8px !important;
       font-weight: 850 !important;
     }
