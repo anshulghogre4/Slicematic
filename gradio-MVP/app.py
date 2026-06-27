@@ -253,6 +253,10 @@ def choice_label(index: int, item: MenuItem) -> str:
     return f"{index}. {item.name} - {money_text(item.price)}"
 
 
+def choice_labels(items: list[MenuItem]) -> list[str]:
+    return [choice_label(index, item) for index, item in enumerate(items, start=1)]
+
+
 def choice_index(value: Any) -> int | None:
     if not value:
         return None
@@ -515,6 +519,70 @@ def mvp_admin_html(menus: dict[str, list[MenuItem]]) -> str:
     """
 
 
+def menu_state_copy(menus: dict[str, list[MenuItem]]) -> dict[str, list[MenuItem]]:
+    return {key: list(value) for key, value in menus.items()}
+
+
+def validate_menu_item(kind: str, code: str, name: str, price_value: Any, menus: dict[str, list[MenuItem]]) -> tuple[bool, MenuItem | str]:
+    if kind not in MENU_FILES:
+        return False, "Choose pizzas, bases, or toppings."
+    item_id = code.strip().upper()
+    item_name = " ".join(name.strip().split())
+    if not re.fullmatch(r"[A-Z][0-9]{1,3}", item_id):
+        return False, "Code must look like P9, B6, or T17."
+    if len(item_name) < 2 or len(item_name) > 48:
+        return False, "Name must be 2-48 characters."
+    if any(item.item_id == item_id for item in menus[kind]):
+        return False, f"{item_id} already exists in {kind}."
+    try:
+        price = Decimal(str(price_value).strip())
+    except (InvalidOperation, AttributeError) as exc:
+        raise_error = False
+        if raise_error:
+            raise exc
+        return False, "Price must be numeric."
+    if price < 0:
+        return False, "Price cannot be negative."
+    if price > Decimal("9999"):
+        return False, "Price is too high for the MVP menu."
+    return True, MenuItem(item_id=item_id, name=item_name, price=money(price))
+
+
+def add_menu_item_ui(
+    kind: str,
+    code: str,
+    name: str,
+    price_value: Any,
+    menus: dict[str, list[MenuItem]] | None,
+) -> tuple[str, dict[str, list[MenuItem]], str, str, Any, Any, Any]:
+    current_menus = menu_state_copy(menus or MENUS)
+    ok, result = validate_menu_item(kind, code, name, price_value, current_menus)
+    if not ok:
+        return (
+            alert_html(str(result)),
+            current_menus,
+            menu_preview_html(current_menus),
+            mvp_admin_html(current_menus),
+            ui_update(),
+            ui_update(),
+            ui_update(),
+        )
+
+    item = result
+    assert isinstance(item, MenuItem)
+    current_menus[kind].append(item)
+    message = alert_html(f"Added {item.item_id} / {item.name} to {kind}. It is available in Build order for this session.", "success")
+    return (
+        message,
+        current_menus,
+        menu_preview_html(current_menus),
+        mvp_admin_html(current_menus),
+        ui_update(choices=choice_labels(current_menus["pizzas"]), value=choice_labels(current_menus["pizzas"])[0]),
+        ui_update(choices=choice_labels(current_menus["bases"]), value=choice_labels(current_menus["bases"])[0]),
+        ui_update(choices=choice_labels(current_menus["toppings"]), value=[]),
+    )
+
+
 def hero_image_url() -> str:
     if not HERO_IMAGE.exists():
         return ""
@@ -537,10 +605,12 @@ def add_cart_line_ui(
     topping_choices: list[str] | None,
     quantity_value: Any,
     cart: list[CartLine] | None,
+    menus: dict[str, list[MenuItem]] | None,
 ) -> tuple[str, list[CartLine], str, str]:
     if STARTUP_ERROR:
         return alert_html(STARTUP_ERROR), cart or [], cart_lines_html(cart or []), cart_summary_html(cart or [])
 
+    active_menus = menus or MENUS or {"bases": [], "pizzas": [], "toppings": []}
     current_cart = list(cart or [])
     quantity_ok, quantity_result = validate_quantity(quantity_value)
     if not quantity_ok:
@@ -556,15 +626,15 @@ def add_cart_line_ui(
             cart_summary_html(current_cart),
         )
 
-    base_ok, base_result = item_from_choice(base_choice, MENUS["bases"], "Base")
+    base_ok, base_result = item_from_choice(base_choice, active_menus["bases"], "Base")
     if not base_ok:
         return alert_html(str(base_result)), current_cart, cart_lines_html(current_cart), cart_summary_html(current_cart)
 
-    pizza_ok, pizza_result = item_from_choice(pizza_choice, MENUS["pizzas"], "Pizza")
+    pizza_ok, pizza_result = item_from_choice(pizza_choice, active_menus["pizzas"], "Pizza")
     if not pizza_ok:
         return alert_html(str(pizza_result)), current_cart, cart_lines_html(current_cart), cart_summary_html(current_cart)
 
-    toppings_ok, toppings_result = items_from_choices(topping_choices, MENUS["toppings"])
+    toppings_ok, toppings_result = items_from_choices(topping_choices, active_menus["toppings"])
     if not toppings_ok:
         return alert_html(str(toppings_result)), current_cart, cart_lines_html(current_cart), cart_summary_html(current_cart)
 
@@ -588,6 +658,13 @@ def payment_message(payment_mode: str) -> str:
     return messages[payment_mode]
 
 
+def normalize_customer_mode(value: Any) -> str:
+    raw = "" if value is None else str(value).strip().lower()
+    if "member" in raw:
+        return "Member"
+    return "Guest"
+
+
 def log_field(value: str) -> str:
     return re.sub(r"[\r\n|]+", " ", value).strip()
 
@@ -609,6 +686,7 @@ def order_log_line(
     customer_name: str,
     phone: str,
     delivery_address: str,
+    customer_mode: str,
     cart: list[CartLine],
     payment_mode: str,
     timestamp: str | None = None,
@@ -620,6 +698,7 @@ def order_log_line(
         log_field(customer_name),
         phone,
         f"address:{log_field(delivery_address)}",
+        f"customer_mode:{customer_mode}",
         f"line_count:{len(cart)}",
     ]
     parts.extend(line_log_value(index, line) for index, line in enumerate(cart, start=1))
@@ -640,12 +719,13 @@ def persist_order(
     customer_name: str,
     phone: str,
     delivery_address: str,
+    customer_mode: str,
     cart: list[CartLine],
     payment_mode: str,
     log_path: Path = ORDER_LOG,
 ) -> str:
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    line = order_log_line(customer_name, phone, delivery_address, cart, payment_mode)
+    line = order_log_line(customer_name, phone, delivery_address, customer_mode, cart, payment_mode)
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(line + "\n\n")
     return line
@@ -655,6 +735,7 @@ def checkout_ui(
     customer_name: str,
     phone: str,
     delivery_address: str,
+    customer_mode_value: Any,
     payment_value: Any,
     cart: list[CartLine] | None,
 ) -> tuple[str, str]:
@@ -678,7 +759,11 @@ def checkout_ui(
     if not payment_ok:
         return alert_html(str(payment_mode)), ""
 
-    log_line = persist_order(name_result, phone_result, address_result, current_cart, payment_mode)
+    customer_mode = normalize_customer_mode(customer_mode_value)
+    if customer_mode == "Guest" and payment_mode == "Cash":
+        return alert_html("Guest checkout is online payment only. Choose Card or UPI, or switch to Member checkout."), ""
+
+    log_line = persist_order(name_result, phone_result, address_result, customer_mode, current_cart, payment_mode)
     bill = calculate_cart_bill(current_cart)
     message = (
         f"{payment_message(payment_mode)} Order saved for {name_result}. "
@@ -1750,9 +1835,9 @@ def build_app():
         if hero_image
         else "background: #171717;"
     )
-    base_choices = [choice_label(index, item) for index, item in enumerate(MENUS["bases"], start=1)] if MENUS else []
-    pizza_choices = [choice_label(index, item) for index, item in enumerate(MENUS["pizzas"], start=1)] if MENUS else []
-    topping_choices = [choice_label(index, item) for index, item in enumerate(MENUS["toppings"], start=1)] if MENUS else []
+    base_choices = choice_labels(MENUS["bases"]) if MENUS else []
+    pizza_choices = choice_labels(MENUS["pizzas"]) if MENUS else []
+    topping_choices = choice_labels(MENUS["toppings"]) if MENUS else []
 
     with gr.Blocks(title="SliceMatic Gradio MVP") as demo:
         gr.HTML(css)
@@ -1778,6 +1863,7 @@ def build_app():
 
         gr.HTML(order_context_html())
         cart_state = gr.State([])
+        menu_state = gr.State(menu_state_copy(MENUS) if MENUS else {"bases": [], "pizzas": [], "toppings": []})
 
         with gr.Tabs(elem_id="mvp-tabs"):
             with gr.Tab("1. Menu"):
@@ -1789,9 +1875,8 @@ def build_app():
                     </section>
                     """
                 )
-                if MENUS:
-                    with gr.Column(elem_id="menu-panel"):
-                        gr.HTML(menu_preview_html(MENUS))
+                with gr.Column(elem_id="menu-panel"):
+                    menu_preview = gr.HTML(menu_preview_html(MENUS) if MENUS else alert_html("Menu files are not loaded."))
 
             with gr.Tab("2. Build order"):
                 gr.HTML(
@@ -1849,7 +1934,7 @@ def build_app():
                 gr.HTML(
                     """
                     <section class="mvp-page-head">
-                      <div><h2>Checkout</h2><p>Validate customer details, delivery address, payment mode, and save the order log.</p></div>
+                      <div><h2>Checkout</h2><p>Validate customer details, delivery address, payment mode, and show saved-order evidence.</p></div>
                       <span class="mvp-step-chip">Validated save</span>
                     </section>
                     """
@@ -1864,6 +1949,13 @@ def build_app():
                             placeholder="Flat 1202, Metro View Apartments, New Ashok Nagar",
                             lines=2,
                         )
+                        customer_mode = gr.Radio(
+                            label="Checkout mode",
+                            choices=["Guest checkout", "Member checkout"],
+                            value="Guest checkout",
+                            interactive=STARTUP_ERROR is None,
+                        )
+                        gr.HTML("<div class='alert success'>Guest checkout uses Card or UPI only. Member checkout can use Cash, Card, or UPI.</div>")
                         payment_choice = gr.Radio(
                             label="Payment mode",
                             choices=["Cash", "Card", "UPI"],
@@ -1874,20 +1966,10 @@ def build_app():
                     with gr.Column(scale=5, elem_id="status-panel"):
                         gr.Markdown("## Checkout status")
                         checkout_message = gr.HTML()
+                        gr.Markdown("## Saved order evidence")
+                        saved_log_line = gr.HTML()
 
-            with gr.Tab("4. Saved order"):
-                gr.HTML(
-                    """
-                    <section class="mvp-page-head">
-                      <div><h2>Saved order evidence</h2><p>After checkout, the parseable order line appears here for grading and audit.</p></div>
-                      <span class="mvp-step-chip">Order log</span>
-                    </section>
-                    """
-                )
-                with gr.Column(elem_id="saved-order-panel"):
-                    saved_log_line = gr.HTML()
-
-            with gr.Tab("5. MVP admin"):
+            with gr.Tab("4. MVP admin"):
                 gr.HTML(
                     """
                     <section class="mvp-page-head">
@@ -1897,11 +1979,25 @@ def build_app():
                     """
                 )
                 with gr.Column(elem_id="mvp-admin-panel"):
-                    gr.HTML(mvp_admin_html(MENUS) if MENUS else alert_html("Menu files are not loaded."))
+                    admin_snapshot = gr.HTML(mvp_admin_html(MENUS) if MENUS else alert_html("Menu files are not loaded."))
+                    gr.Markdown("## Customise menu for this MVP session")
+                    with gr.Row():
+                        admin_menu_kind = gr.Radio(
+                            label="Item type",
+                            choices=["pizzas", "bases", "toppings"],
+                            value="pizzas",
+                            interactive=STARTUP_ERROR is None,
+                        )
+                        admin_menu_code = gr.Textbox(label="Code", placeholder="P9")
+                    with gr.Row():
+                        admin_menu_name = gr.Textbox(label="Name", placeholder="Truffle Mushroom")
+                        admin_menu_price = gr.Textbox(label="Price", placeholder="389")
+                    add_menu_message = gr.HTML()
+                    add_menu_button = gr.Button("Add item to live MVP menu", variant="primary", interactive=STARTUP_ERROR is None)
 
         add_button.click(
             fn=add_cart_line_ui,
-            inputs=[base_choice, pizza_choice, topping_choice, quantity, cart_state],
+            inputs=[base_choice, pizza_choice, topping_choice, quantity, cart_state, menu_state],
             outputs=[add_message, cart_state, cart_table, cart_summary],
         )
         clear_button.click(
@@ -1911,8 +2007,13 @@ def build_app():
         )
         checkout_button.click(
             fn=checkout_ui,
-            inputs=[customer_name, phone, delivery_address, payment_choice, cart_state],
+            inputs=[customer_name, phone, delivery_address, customer_mode, payment_choice, cart_state],
             outputs=[checkout_message, saved_log_line],
+        )
+        add_menu_button.click(
+            fn=add_menu_item_ui,
+            inputs=[admin_menu_kind, admin_menu_code, admin_menu_name, admin_menu_price, menu_state],
+            outputs=[add_menu_message, menu_state, menu_preview, admin_snapshot, pizza_choice, base_choice, topping_choice],
         )
 
     return demo
