@@ -20,6 +20,12 @@ The app in `FullStack` is now a Next.js full-stack application with:
 
 - Separate customer, admin, and AI workspaces
 - Application-grade admin auth screens for login, logout, forgot password, and reset password
+- Customer account screens for login, logout, forgot password, reset password, and continue-as-guest ordering
+- Customer mode rules: guests use online payment only, logged-in customers can use Cash/Card/UPI
+- Customer convenience tools: saved profile and rebuild favourite order
+- Business-owner action board for peak protection, winner promotion, payment risk, and AOV levers
+- Customer promise strip and owner pulse strip for clearer app experience
+- Live owner settings for brand, delivery, GST, discount, order capacity, delivery fee, radius, and guest payment policy
 - Customer ordering journey
 - AI recommendation step
 - AI cart strategist
@@ -56,6 +62,16 @@ The customer journey is intentionally step-based and gated:
 This prevents the app from behaving like a loose form. The flow feels like a delivery product: intake, recommendation, customization, checkout, confirmation, operations.
 
 The admin side is a separate control room, not a continuation of the checkout form. It covers order analytics, menu lifecycle, AI operations, settings, and export workflows.
+
+The customer account side is also separate from the checkout form. Customers can sign in, recover access, reset passwords, sign out, or continue as guests before returning to the ordering workspace.
+
+Customer ordering now has explicit risk controls: guest orders are clearly labelled and limited to UPI/Card, while logged-in customer orders show the account identity and unlock Cash as a payment option.
+
+Signed-in customers also get practical convenience actions: apply a saved delivery profile and rebuild a favourite order into the cart. This makes account login valuable instead of cosmetic.
+
+The customer app now surfaces a concise promise strip before the form/menu flow: live pricing, payment policy, and signed-in convenience. This reduces uncertainty before the user commits to checkout.
+
+The admin Settings tab now works as a business configuration console. Financial, delivery, and payment-risk settings update the customer app immediately and are included in order API validation/billing.
 
 ## UI And Aesthetic Decisions
 
@@ -232,6 +248,7 @@ Admin features built:
 - Top 3 forecast peak windows.
 - Menu editor for pizzas, bases, and toppings.
 - Menu lifecycle studio for adding brand-new pizzas, crusts, and toppings.
+- Dynamic pizza image upload with live preview and auto-fit sizing.
 - Availability toggles.
 - Price/name editing.
 - Brand/outlet/hero copy editing.
@@ -344,6 +361,21 @@ Verified browser behavior:
 - Demo reset updates the local demo password.
 - Admin sign-in opens the dashboard shell.
 - Admin logout returns to the auth module.
+- Customer account screen renders as a separate application workspace.
+- Customer forgot password and reset password screens render.
+- Demo customer reset updates the local customer password.
+- Customer sign-in opens the account shell.
+- Customer logout returns to the auth module.
+- Continue-as-guest returns to the customer ordering app.
+- Customer app shows whether the user is logged in or checking out as guest.
+- Guest checkout disables Cash in the UI and rejects guest Cash orders server-side.
+- Logged-in customer checkout shows member mode and allows Cash/Card/UPI.
+- Signed-in customers can apply a saved profile.
+- Signed-in customers can rebuild a favourite order.
+- Admin overview shows four business-owner action cards from live summary data.
+- Customer promise strip renders with three trust/convenience cards.
+- Admin owner pulse strip renders with four operational health cards.
+- Settings console updates live customer GST/discount/radius/payment policy.
 - Menu hidden before intake.
 - Clicking Menu before valid intake keeps user on intake.
 - Specific toast appears for incomplete intake.
@@ -398,6 +430,7 @@ For application reviewers:
 
 - It is not a one-form UI.
 - It has login, logout, forgot password, and reset password screens.
+- It supports both customer and admin authentication workspaces.
 - It has a believable end-to-end customer journey.
 - It has operational admin screens.
 - It preserves business logic.

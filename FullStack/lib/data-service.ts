@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { calculateBill, getLineUnitPrice } from "./pricing";
+import { calculateBill, getLineUnitPrice, sanitizePricingConfig } from "./pricing";
 import { buildSeedSummary, seedMenu, seedOrders } from "./seed-data";
 import { getSupabaseServerClient } from "./supabase";
 import { AdminSummary, CartLine, MenuItem, MenuPayload, OrderPayload, SavedOrder } from "./types";
@@ -91,7 +91,8 @@ export async function loadMenu(): Promise<MenuPayload> {
 
 export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
   const menu = await loadMenu();
-  const totals = calculateBill(payload.lines, menu);
+  const pricingConfig = sanitizePricingConfig(payload.pricingConfig);
+  const totals = calculateBill(payload.lines, menu, pricingConfig);
   const now = new Date().toISOString();
   const orderId = `SM-${Date.now().toString().slice(-6)}`;
 
@@ -153,7 +154,7 @@ export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
       subtotal_amount: totals.subtotal,
       discount_amount: totals.discount,
       tax_amount: totals.gst,
-      delivery_charge: 0,
+      delivery_charge: pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? pricingConfig.deliveryFee : 0,
       final_amount: totals.finalTotal,
       city: "Delhi NCR",
       coupon_code: totals.discount > 0 ? "GROUP-SAVER" : null,

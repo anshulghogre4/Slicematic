@@ -54,10 +54,24 @@ export type BillTotals = {
   totalQuantity: number;
 };
 
+export type PricingConfig = {
+  gstRate: number;
+  bulkDiscountRate: number;
+  bulkDiscountQty: number;
+  maxOrderQty: number;
+  deliveryFee: number;
+  freeDeliveryMin: number;
+  activeDeliveryZone: "0-2" | "2-4" | "4-6";
+  guestCashAllowed: boolean;
+};
+
 export type OrderPayload = {
   customer: CustomerDetails;
   lines: CartLine[];
   paymentMode: PaymentMode;
+  customerMode?: "guest" | "member";
+  customerAccountEmail?: string | null;
+  pricingConfig?: PricingConfig;
   recommendationId?: string | null;
 };
 

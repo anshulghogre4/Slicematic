@@ -1,9 +1,20 @@
-import { BillTotals, CartLine, MenuPayload } from "./types";
+import { BillTotals, CartLine, MenuPayload, PricingConfig } from "./types";
 
 export const GST_RATE = 0.18;
 export const BULK_DISCOUNT_RATE = 0.1;
 export const BULK_DISCOUNT_QTY = 5;
 export const MAX_ORDER_QTY = 10;
+
+export const defaultPricingConfig: PricingConfig = {
+  gstRate: GST_RATE,
+  bulkDiscountRate: BULK_DISCOUNT_RATE,
+  bulkDiscountQty: BULK_DISCOUNT_QTY,
+  maxOrderQty: MAX_ORDER_QTY,
+  deliveryFee: 0,
+  freeDeliveryMin: 0,
+  activeDeliveryZone: "2-4",
+  guestCashAllowed: false
+};
 
 export function money(value: number) {
   return `Rs. ${Math.round(value).toLocaleString("en-IN")}`;
@@ -25,23 +36,24 @@ export function getLineUnitPrice(line: CartLine, menu: MenuPayload) {
   return pizza.price + base.price + size.extra + toppingTotal;
 }
 
-export function calculateBill(lines: CartLine[], menu: MenuPayload): BillTotals {
+export function calculateBill(lines: CartLine[], menu: MenuPayload, config: PricingConfig = defaultPricingConfig): BillTotals {
   const subtotal = lines.reduce((sum, line) => sum + getLineUnitPrice(line, menu) * line.quantity, 0);
   const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
-  const discount = totalQuantity >= BULK_DISCOUNT_QTY ? subtotal * BULK_DISCOUNT_RATE : 0;
+  const discount = totalQuantity >= config.bulkDiscountQty ? subtotal * config.bulkDiscountRate : 0;
   const taxable = subtotal - discount;
-  const gst = taxable * GST_RATE;
+  const gst = taxable * config.gstRate;
+  const deliveryCharge = config.deliveryFee > 0 && subtotal < config.freeDeliveryMin ? config.deliveryFee : 0;
   return {
     subtotal,
     discount,
     taxable,
     gst,
-    finalTotal: taxable + gst,
+    finalTotal: taxable + gst + deliveryCharge,
     totalQuantity
   };
 }
 
-export function validateCustomer(name: string, phone: string, address: string, deliveryZone?: string) {
+export function validateCustomer(name: string, phone: string, address: string, deliveryZone?: string, config: PricingConfig = defaultPricingConfig) {
   const errors: Record<string, string> = {};
   if (!/^[A-Za-z ]{2,40}$/.test(name.trim())) {
     errors.name = "Name must contain alphabetic characters and be 2-40 characters long.";
@@ -54,13 +66,13 @@ export function validateCustomer(name: string, phone: string, address: string, d
   }
   if (!deliveryZone) {
     errors.deliveryZone = "Choose a delivery radius before continuing.";
-  } else if (deliveryZone === "4-6") {
-    errors.deliveryZone = "SliceMatic currently delivers within the 4 km launch radius.";
+  } else if (deliveryZoneRank(deliveryZone) > deliveryZoneRank(config.activeDeliveryZone)) {
+    errors.deliveryZone = `SliceMatic currently delivers within the ${zoneLabel(config.activeDeliveryZone)} launch radius.`;
   }
   return errors;
 }
 
-export function validateOrderLines(lines: CartLine[] | undefined, menu: MenuPayload) {
+export function validateOrderLines(lines: CartLine[] | undefined, menu: MenuPayload, config: PricingConfig = defaultPricingConfig) {
   const errors: Record<string, string> = {};
   if (!lines?.length) {
     errors.cart = "Add at least one pizza before placing the order.";
@@ -78,8 +90,8 @@ export function validateOrderLines(lines: CartLine[] | undefined, menu: MenuPayl
       errors[`quantity_${row}`] = "Quantity must be between 1 and 10.";
       return;
     }
-    if (line.quantity > MAX_ORDER_QTY) {
-      errors[`quantity_${row}`] = `Maximum outlet capacity is ${MAX_ORDER_QTY} pizzas per order.`;
+    if (line.quantity > config.maxOrderQty) {
+      errors[`quantity_${row}`] = `Maximum outlet capacity is ${config.maxOrderQty} pizzas per order.`;
       return;
     }
     totalQuantity += line.quantity;
@@ -100,8 +112,52 @@ export function validateOrderLines(lines: CartLine[] | undefined, menu: MenuPayl
     }
   });
 
-  if (totalQuantity > MAX_ORDER_QTY) {
-    errors.cart = `Maximum outlet capacity is ${MAX_ORDER_QTY} pizzas per order.`;
+  if (totalQuantity > config.maxOrderQty) {
+    errors.cart = `Maximum outlet capacity is ${config.maxOrderQty} pizzas per order.`;
   }
   return errors;
+}
+
+export function sanitizePricingConfig(config?: Partial<PricingConfig>): PricingConfig {
+  return {
+    gstRate: clampPercent(config?.gstRate, defaultPricingConfig.gstRate),
+    bulkDiscountRate: clampPercent(config?.bulkDiscountRate, defaultPricingConfig.bulkDiscountRate),
+    bulkDiscountQty: clampInt(config?.bulkDiscountQty, 1, 50, defaultPricingConfig.bulkDiscountQty),
+    maxOrderQty: clampInt(config?.maxOrderQty, 1, 50, defaultPricingConfig.maxOrderQty),
+    deliveryFee: clampMoney(config?.deliveryFee, defaultPricingConfig.deliveryFee),
+    freeDeliveryMin: clampMoney(config?.freeDeliveryMin, defaultPricingConfig.freeDeliveryMin),
+    activeDeliveryZone: ["0-2", "2-4", "4-6"].includes(String(config?.activeDeliveryZone)) ? config?.activeDeliveryZone as PricingConfig["activeDeliveryZone"] : defaultPricingConfig.activeDeliveryZone,
+    guestCashAllowed: Boolean(config?.guestCashAllowed)
+  };
+}
+
+function deliveryZoneRank(zone?: string) {
+  if (zone === "0-2") return 1;
+  if (zone === "2-4") return 2;
+  if (zone === "4-6") return 3;
+  return 0;
+}
+
+function zoneLabel(zone: string) {
+  if (zone === "0-2") return "2 km";
+  if (zone === "2-4") return "4 km";
+  return "6 km";
+}
+
+function clampPercent(value: unknown, fallback: number) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(1, Math.max(0, numeric));
+}
+
+function clampInt(value: unknown, min: number, max: number, fallback: number) {
+  const numeric = Math.round(Number(value));
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, numeric));
+}
+
+function clampMoney(value: unknown, fallback: number) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(10000, Math.max(0, numeric));
 }

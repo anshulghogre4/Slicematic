@@ -24,7 +24,7 @@ flowchart LR
 
 SliceMatic is structured as a real product with separate workspaces, not one giant form:
 
-- Customer app: intake, AI recommendation, menu browsing, pizza builder, cart, checkout, tracking, and final bill.
+- Customer app: intake, optional customer account login/logout/recovery/reset, AI recommendation, menu browsing, pizza builder, cart, checkout, tracking, and final bill.
 - Admin console: login, logout, forgot password, reset password, authenticated operations dashboard, filters, revenue metrics, CSV export, order table, forecast, settings, and menu lifecycle tools.
 - AI lab: admin-facing AI explanations, recommendation strategy, cart strategist, menu copywriter, and operations briefing.
 
@@ -61,13 +61,15 @@ The source of truth is `lib/pricing.ts`.
 
 Admin users can add new sellable catalogue items from the Menu tab:
 
-- New pizza type: code, name, price, badge, prep time, tags, image path, description.
+- New pizza type: code, name, price, badge, prep time, tags, uploaded image/URL, live preview, and description.
 - New crust/base: code, name, price, description.
 - New topping: code, name, price.
 
 When Supabase is configured and the admin is signed in, `POST /api/admin/menu` creates a real database row in the correct menu table. During local demo mode, the item is added to the in-memory menu so the workflow can still be shown without credentials.
 
 New available pizzas appear in the customer menu immediately. New bases and toppings appear inside the pizza builder immediately.
+
+Pizza images are uploaded through the admin menu studio. The upload route validates JPG, PNG, WEBP, and GIF files up to 4 MB, saves them under `public/uploads/menu`, returns a dynamic URL, and the menu preview auto-fits the image before the item is saved.
 
 ## Admin Authentication
 
@@ -79,6 +81,57 @@ The admin console is built like a secure application workspace:
 - Reset password screen using Supabase `updateUser` during a recovery session.
 - Local demo fallback that can reset the demo password for the current browser session.
 - Admin APIs remain protected with bearer-token checks when Supabase admin env keys exist.
+
+## Customer Authentication
+
+Customer accounts are supported without blocking guest checkout:
+
+- Customer login screen.
+- Customer logout action.
+- Forgot password screen using Supabase recovery when env keys are configured.
+- Reset password screen using Supabase recovery sessions.
+- Local demo customer account with session-only password reset fallback.
+- Continue-as-guest action for quick ordering.
+- Clear customer mode indicator in the order workspace: guest vs logged-in member.
+- Guest checkout is online-payment only: UPI or Card.
+- Logged-in customers can use UPI, Card, or Cash.
+- Signed-in customers can apply a saved delivery profile.
+- Signed-in customers can rebuild a favourite order into the cart.
+
+Demo customer credentials:
+
+```text
+Email: customer@slicematic.in
+Password: slice-customer
+```
+
+## Business Owner Controls
+
+The admin overview includes an owner action board, not only passive metrics:
+
+- Outlet pulse strip: readiness, peak load, online payment mix, and AI briefing state.
+- Protect peak: highlights the busiest hour and forecast window for staffing/prep.
+- Push winner: uses the top pizza as the merchandising/menu focus.
+- Payment risk: explains online-payment share and guest/member payment controls.
+- Margin lever: turns AOV into a cart-AI/topping upsell action.
+
+The customer ordering workspace includes a promise strip that makes the experience clear before checkout: live bill visibility, guest/member payment policy, and the value of signing in for saved profile/favourites.
+
+## Owner Settings
+
+The Settings tab is a live configuration console:
+
+- Brand, outlet, open status, delivery promise, hero headline, and customer promise copy.
+- GST percentage.
+- Bulk discount percentage.
+- Bulk discount quantity threshold.
+- Maximum pizzas per order.
+- Delivery fee.
+- Free delivery threshold.
+- Active delivery radius.
+- Guest Cash payment policy.
+
+These settings update the customer app preview immediately and are sent to the order API for billing and validation.
 
 ## Local Setup
 
