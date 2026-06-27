@@ -409,7 +409,7 @@ document.addEventListener('click', function(e) {
 </script>
 """
 
-with gr.Blocks(title="SliceMatic", head=HEAD_JS) as app:
+with gr.Blocks(title="SliceMatic") as app:
 
     state = gr.State(initial_state())
     
@@ -943,11 +943,16 @@ if __name__ == "__main__":
     }
 
     /* Reusable design classes */
+    body, .gradio-container { background-color: #f8fafc !important; }
+    .dark body, .dark .gradio-container { background-color: #0f172a !important; }
+    
+    .gradio-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
+    
     .gradio-container .sm-card, .gradio-container .sm-card.column {
         background: #ffffff !important; border: 1px solid #e2e8f0 !important;
         border-radius: 12px !important; padding: 32px !important; margin: 24px auto !important;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
-        max-width: 1000px !important;
+        max-width: 1400px !important; align-self: center !important; width: 100% !important;
     }
     .narrow-container { max-width: 480px !important; margin: 0 auto !important; }
     
@@ -1185,4 +1190,5 @@ if __name__ == "__main__":
         theme=gr.themes.Base(),
         css=DESIGN_CSS,
         allowed_paths=[str(APP_DIR)],
+        head=HEAD_JS
     )
