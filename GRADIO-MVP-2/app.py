@@ -394,7 +394,22 @@ def initial_state():
 # ═══════════════════════════════════════════════════════════
 # GRADIO APPLICATION
 # ═══════════════════════════════════════════════════════════
-with gr.Blocks(title="SliceMatic") as app:
+HEAD_JS = """
+<script>
+document.addEventListener('click', function(e) {
+    let btn = e.target.closest('.sm-dev-log-copy');
+    if (btn) {
+        let text = btn.getAttribute('data-log');
+        navigator.clipboard.writeText(text);
+        let oldHtml = btn.innerHTML;
+        btn.innerHTML = '<span style="color:#4ade80; font-size:12px; margin-left:4px;">✓ Copied</span>';
+        setTimeout(() => { btn.innerHTML = oldHtml; }, 2000);
+    }
+});
+</script>
+"""
+
+with gr.Blocks(title="SliceMatic", head=HEAD_JS) as app:
 
     state = gr.State(initial_state())
     
@@ -716,6 +731,17 @@ with gr.Blocks(title="SliceMatic") as app:
                         <p><strong>Order Time:</strong> {safe_ts}</p>
                       </div>
                       {bill_html}
+                      <div class="sm-dev-log">
+                        <div class="sm-dev-log-header">
+                          <div style="display:flex; align-items:center;">
+                            <span style="font-family:monospace;font-size:14px;color:#94a3b8;margin-right:6px;">>_</span> DEVELOPER TRACE LOG
+                          </div>
+                          <button class="sm-dev-log-copy" data-log="{html_escape(order_line)}" title="Copy to clipboard">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                          </button>
+                        </div>
+                        <div class="sm-dev-log-content">{html_escape(order_line)}</div>
+                      </div>
                     </div>"""
                 else:
                     safe_mode = html_escape(st["payment_mode"])
@@ -733,6 +759,17 @@ with gr.Blocks(title="SliceMatic") as app:
                         <p><strong>Payment:</strong> {safe_mode}</p>
                       </div>
                       {bill_html}
+                      <div class="sm-dev-log">
+                        <div class="sm-dev-log-header">
+                          <div style="display:flex; align-items:center;">
+                            <span style="font-family:monospace;font-size:14px;color:#94a3b8;margin-right:6px;">>_</span> DEVELOPER TRACE LOG
+                          </div>
+                          <button class="sm-dev-log-copy" data-log="{html_escape(order_line)}" title="Copy to clipboard">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                          </button>
+                        </div>
+                        <div class="sm-dev-log-content">{html_escape(order_line)}</div>
+                      </div>
                     </div>"""
 
                 return (
@@ -1018,6 +1055,50 @@ if __name__ == "__main__":
         display: inline-block;
     }
     
+    .sm-dev-log {
+        background: #0B192C; 
+        border-radius: 8px; 
+        padding: 16px; 
+        margin: 24px auto 0 auto; 
+        max-width: 500px;
+        text-align: left;
+    }
+    .sm-dev-log-header {
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 1px;
+        color: #94a3b8;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+    }
+    .sm-dev-log-copy {
+        background: transparent;
+        border: none;
+        color: #94a3b8;
+        cursor: pointer;
+        padding: 4px;
+        border-radius: 4px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: inherit;
+    }
+    .sm-dev-log-copy:hover {
+        background: #1e293b;
+        color: #f8fafc;
+    }
+    .sm-dev-log-content {
+        background: #4C2E2A !important; 
+        color: #fca5a5 !important;
+        padding: 12px; 
+        border-radius: 6px; 
+        font-size: 13px; 
+        word-break: break-all;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+    }
+    
     .sm-success-msg { color: #24963F; font-weight: 600; }
     .sm-success-icon { color: #24963F; font-size: 48px; }
     .sm-success-title { color: #24963F; margin: 12px 0; }
@@ -1097,6 +1178,7 @@ if __name__ == "__main__":
     }
     .dark .gradio-container label span { color: #cbd5e1 !important; }
     .dark .gradio-container span[data-testid="block-info"] { color: #cbd5e1 !important; }
+    .dark .gradio-container .prose .sm-dev-log-header, .dark .sm-dev-log-header, .dark .sm-dev-log-header span { color: #94a3b8 !important; }
     """
 
     app.launch(
