@@ -44,10 +44,11 @@ def item_image_url(item_id):
     fall back to a styled placeholder — this matters because the grader may
     swap menu files with IDs we have no image for.
     """
-    p = MENU_IMAGE_DIR / f"{item_id}.jpg"
-    if not p.exists():
-        return ""
-    return f"/gradio_api/file={quote(str(p))}"
+    for ext in ("png", "jpg", "jpeg", "webp"):
+        p = MENU_IMAGE_DIR / f"{item_id}.{ext}"
+        if p.exists():
+            return f"/gradio_api/file={quote(str(p))}"
+    return ""
 
 
 # ═══════════════════════════════════════════════════════════
@@ -202,7 +203,7 @@ def render_cart_html(cart):
     </div>
     <div style="text-align:center; font-size:12px; color:#64748b; margin-top:8px;">{total_qty}/10 pizzas selected</div>
     """)
-    return "".join(lines)
+    return '<div class="sm-cart-scroll">' + "".join(lines) + '</div>'
 
 
 # ═══════════════════════════════════════════════════════════
@@ -388,21 +389,19 @@ def render_base_cards(items):
 
 
 def render_pizza_cards(items):
-    """2-column grid of pizza cards: thumbnail + name + price + selection number."""
+    """Grid of pizza cards — same vertical layout as base cards."""
     cards = []
     for i, (item_id, name, price) in enumerate(items, 1):
         cards.append(
-            '<div class="sm-card-pizza">'
-            + _img_block(item_id, "thumb")
-            + '<div style="flex:1;">'
+            '<div class="sm-card-item">'
+            + _img_block(item_id, "square")
             + f'<div class="sm-item-name"><span class="sm-num">{i}</span>{html_escape(name)}</div>'
             + f'<div class="sm-item-price">₹{price:.2f}</div>'
-            + '</div>'
             + '</div>'
         )
     return (
         '<div class="sm-primary-text" style="font-weight:600;margin:8px 0 4px;">Choose your pizza</div>'
-        '<div class="sm-pizza-grid">' + "".join(cards) + '</div>'
+        '<div class="sm-base-grid">' + "".join(cards) + '</div>'
     )
 
 
@@ -432,7 +431,13 @@ def render_sidebar(step):
     html = f"""
     <div class="sm-sidebar">
         <div class="sm-step-text" style="font-size:14px; font-weight:700; margin-left:12px;">Step {step} of 5</div>
-        <div class="sm-subtitle" style="font-size:12px; margin-left:12px; margin-bottom:24px;">Customize your order</div>
+        <div class="sm-subtitle" style="font-size:12px; margin-left:12px; margin-bottom:24px;">{
+            {1: "Tell us who you are",
+             2: "Pick your base, pizza & toppings",
+             3: "Review your order total",
+             4: "Choose how to pay",
+             5: "Order confirmed!"}[step]
+        }</div>
         <div style="display:flex; flex-direction:column; gap:8px;">
     """
     
@@ -568,55 +573,55 @@ with gr.Blocks(title="SliceMatic") as app:
                 with gr.Column(visible=False, elem_classes=["sm-card"]) as stage3:
                     gr.HTML('<h1 class="sm-headline" style="text-align:center;">Build Your Order</h1>')
 
-                    with gr.Row():
-                        # Left side - Build order
-                        with gr.Column(scale=2):
-                            gr.HTML('<h2 class="sm-headline" style="font-size:20px; border-left: 4px solid #b7102a; padding-left: 8px;">Menu Selection</h2>')
-                            
-                            base_menu_md = gr.HTML(render_base_cards(bases))
-                            with gr.Column(elem_classes=["narrow-container"]):
-                                base_input = gr.Textbox(label="Enter base number", placeholder="e.g. 1", max_lines=1)
-                                base_err_display = gr.HTML("")
+                    # Menu items — full width, no side column
+                    base_menu_md = gr.HTML(render_base_cards(bases))
+                    with gr.Column(elem_classes=["narrow-container"]):
+                        base_input = gr.Textbox(label="Enter base number", placeholder="e.g. 1", max_lines=1)
+                        base_err_display = gr.HTML("")
 
-                            pizza_menu_md = gr.HTML(render_pizza_cards(pizzas))
-                            with gr.Column(elem_classes=["narrow-container"]):
-                                pizza_input = gr.Textbox(label="Enter pizza number", placeholder="e.g. 1", max_lines=1)
-                                pizza_err_display = gr.HTML("")
+                    pizza_menu_md = gr.HTML(render_pizza_cards(pizzas))
+                    with gr.Column(elem_classes=["narrow-container"]):
+                        pizza_input = gr.Textbox(label="Enter pizza number", placeholder="e.g. 1", max_lines=1)
+                        pizza_err_display = gr.HTML("")
 
-                            topping_choices = [f"{i}. {name} (+₹{price:.2f})" for i, (_, name, price) in enumerate(toppings, 1)]
-                            topping_input = gr.CheckboxGroup(
-                                choices=topping_choices, label="Choose your toppings", value=[], elem_classes=["sm-topping-checkboxes"]
-                            )
-                            topping_err_display = gr.HTML("")
-                            
-                            gr.HTML('<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;">')
-                            with gr.Column(elem_classes=["narrow-container"]):
-                                qty_input = gr.Slider(label="Quantity for this pizza", minimum=1, maximum=10, step=1, value=1)
-                                
-                                with gr.Row(elem_classes=["sm-action-buttons"]):
-                                    add_cart_btn = gr.Button("Add to cart", variant="primary")
-                                    clear_build_btn = gr.Button("Clear selection", variant="secondary")
-                                
-                                add_cart_err = gr.HTML("")
-                                add_cart_msg = gr.HTML("")
+                    topping_choices = [f"{i}. {name} (+₹{price:.2f})" for i, (_, name, price) in enumerate(toppings, 1)]
+                    topping_input = gr.CheckboxGroup(
+                        choices=topping_choices, label="Choose your toppings", value=[], elem_classes=["sm-topping-checkboxes"]
+                    )
+                    topping_err_display = gr.HTML("")
 
-                        # Right side - Cart
-                        with gr.Column(scale=1):
-                            gr.HTML('<h2 class="sm-headline" style="font-size:20px; border-left: 4px solid #b7102a; padding-left: 8px;">Cart</h2>')
-                            cart_display = gr.HTML(
-                                '<div style="padding:20px; border:1px dashed #cbd5e1; border-radius:8px; text-align:center; color:#64748b;">'
-                                'Your cart is empty<br><span style="font-size:12px;">Add a pizza combination to begin.</span>'
-                                '</div>'
-                            )
-                            
-                            with gr.Row(elem_classes=["sm-action-buttons"]):
-                                clear_cart_btn = gr.Button("Clear cart", variant="secondary")
-                                menu_btn = gr.Button("Continue to Bill →", variant="primary", interactive=False)
+                    gr.HTML('<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;">')
+
+                    # Quantity + Add to cart
+                    with gr.Column(elem_classes=["narrow-container"]):
+                        qty_input = gr.Slider(label="Quantity for this pizza", minimum=1, maximum=10, step=1, value=1)
+
+                        with gr.Row(elem_classes=["sm-action-buttons"]):
+                            add_cart_btn = gr.Button("Add to cart", variant="primary")
+                            clear_build_btn = gr.Button("Clear selection", variant="secondary")
+
+                        add_cart_err = gr.HTML("")
+                        add_cart_msg = gr.HTML("")
+
+                    gr.HTML('<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;">')
+
+                    # Cart — full width below menu
+                    gr.HTML('<h2 class="sm-headline" style="font-size:20px; border-left: 4px solid #b7102a; padding-left: 8px;">Your Cart</h2>')
+                    cart_display = gr.HTML(
+                        '<div style="padding:20px; border:1px dashed #cbd5e1; border-radius:8px; text-align:center; color:#64748b;">'
+                        'Your cart is empty<br><span style="font-size:12px;">Add a pizza combination to begin.</span>'
+                        '</div>'
+                    )
+
+                    with gr.Row(elem_classes=["sm-action-buttons"]):
+                        clear_cart_btn = gr.Button("Clear cart", variant="secondary")
+                        menu_btn = gr.Button("Continue to Bill →", variant="primary", interactive=False)
 
                 # ════════════════════════════════════════════════════
                 # STAGE 4 — Bill Review (design step 3)
                 # ════════════════════════════════════════════════════
                 with gr.Column(visible=False, elem_classes=["sm-card"]) as stage4:
+                    back_to_menu_btn = gr.Button("← Back", variant="secondary", size="sm", elem_classes=["sm-back-btn"], scale=0, min_width=80)
                     gr.HTML('<h1 class="sm-headline" style="text-align:center;">Your Order</h1>')
                     bill_display = gr.HTML("")
                     with gr.Column(elem_classes=["narrow-container"]):
@@ -628,6 +633,7 @@ with gr.Blocks(title="SliceMatic") as app:
                 with gr.Column(visible=False, elem_classes=["sm-card"]) as stage5:
 
                     with gr.Column(visible=True) as pay_section:
+                        back_to_bill_btn = gr.Button("← Back", variant="secondary", size="sm", elem_classes=["sm-back-btn"], scale=0, min_width=80)
                         gr.HTML('<h1 class="sm-headline" style="text-align:center;">How would you like to pay?</h1>')
                         with gr.Column(elem_classes=["narrow-container"]):
                             pay_radio = gr.Radio(
@@ -685,22 +691,31 @@ with gr.Blocks(title="SliceMatic") as app:
                 bi, be = validate_selection(b_raw, bases)
                 pi, pe = validate_selection(p_raw, pizzas)
                 ti, te = validate_toppings_checkbox(t_selected, toppings)
-                
+
                 if bi is None or pi is None or (not ti and "select at least one" in te):
                     return (
                         st, err(be), err(pe), err(te), err(""),
-                        "", __import__("gradio").update(), __import__("gradio").update()
+                        "", gr.update(), gr.update(),
+                        gr.update(), gr.update(), gr.update(), gr.update()
                     )
-                
+
                 qty, qe = validate_quantity(qty_raw)
                 if qty is None:
-                    return st, err(""), err(""), err(""), err(qe), "", __import__("gradio").update(), __import__("gradio").update()
-                    
+                    return (
+                        st, err(""), err(""), err(""), err(qe),
+                        "", gr.update(), gr.update(),
+                        gr.update(), gr.update(), gr.update(), gr.update()
+                    )
+
                 cart = st.get("cart", [])
                 total_qty = sum(item["quantity"] for item in cart)
                 if total_qty + qty > 10:
-                    return st, err(""), err(""), err(""), err(f"Cannot add {qty} pizzas. Maximum order is 10. Cart has {total_qty}."), "", __import__("gradio").update(), __import__("gradio").update()
-                    
+                    return (
+                        st, err(""), err(""), err(""), err(f"Cannot add {qty} pizzas. Maximum order is 10. Cart has {total_qty}."),
+                        "", gr.update(), gr.update(),
+                        gr.update(), gr.update(), gr.update(), gr.update()
+                    )
+
                 cart.append({
                     "base_idx": bi,
                     "pizza_idx": pi,
@@ -708,19 +723,25 @@ with gr.Blocks(title="SliceMatic") as app:
                     "quantity": qty
                 })
                 st["cart"] = cart
-                
+
                 html = render_cart_html(cart)
                 return (
                     st, err(""), err(""), err(""), err(""),
-                    f"<p class='sm-success-msg'>✓ Added to cart</p>", html, __import__("gradio").update(interactive=True)
+                    f"<p class='sm-success-msg'>✓ Added to cart</p>", html, gr.update(interactive=True),
+                    gr.update(value=""), gr.update(value=""), gr.update(value=[]), gr.update(value=1)
                 )
             except Exception as e:
-                return st, err("An unexpected error occurred."), err(""), err(""), err(""), "", __import__("gradio").update(), __import__("gradio").update()
+                return (
+                    st, err("An unexpected error occurred."), err(""), err(""), err(""),
+                    "", gr.update(), gr.update(),
+                    gr.update(), gr.update(), gr.update(), gr.update()
+                )
 
         add_cart_btn.click(
             on_add_cart,
             [state, base_input, pizza_input, topping_input, qty_input],
-            [state, base_err_display, pizza_err_display, topping_err_display, add_cart_err, add_cart_msg, cart_display, menu_btn]
+            [state, base_err_display, pizza_err_display, topping_err_display, add_cart_err, add_cart_msg, cart_display, menu_btn,
+             base_input, pizza_input, topping_input, qty_input]
         )
 
         def on_clear_build():
@@ -772,6 +793,20 @@ with gr.Blocks(title="SliceMatic") as app:
             return st, render_sidebar(4), gr.update(visible=False), gr.update(visible=True)
 
         bill_btn.click(on_proceed, [state], [state, sidebar_display, stage4, stage5])
+
+        # ── Back: Stage 4 → Stage 3 (Bill → Menu) ────────
+        def on_back_to_menu(st):
+            st["stage"] = 3
+            return st, render_sidebar(2), gr.update(visible=False), gr.update(visible=True)
+
+        back_to_menu_btn.click(on_back_to_menu, [state], [state, sidebar_display, stage4, stage3])
+
+        # ── Back: Stage 5 → Stage 4 (Payment → Bill) ─────
+        def on_back_to_bill(st):
+            st["stage"] = 4
+            return st, render_sidebar(3), gr.update(visible=False), gr.update(visible=True)
+
+        back_to_bill_btn.click(on_back_to_bill, [state], [state, sidebar_display, stage5, stage4])
 
         # ── Stage 5: Payment selection change ──────────────
         def on_pay_select(selection):
@@ -999,6 +1034,26 @@ if __name__ == "__main__":
     .gradio-container button.primary:disabled { background: #cbd5e1 !important; color: #ffffff !important; box-shadow: none !important; }
     .gradio-container button.secondary { border-radius: 8px !important; }
 
+    /* Back button */
+    .sm-back-btn {
+        align-self: flex-start !important;
+        max-width: fit-content !important;
+        margin: 0 !important;
+        padding: 0 !important;
+    }
+    .sm-back-btn button, .sm-back-btn > button {
+        background: transparent !important; border: 1px solid #e2e8f0 !important;
+        box-shadow: none !important; color: #64748b !important;
+        font-size: 13px !important; font-weight: 500 !important;
+        padding: 6px 14px !important; margin: 0 !important;
+        border-radius: 6px !important; cursor: pointer !important;
+        min-width: auto !important; width: auto !important;
+    }
+    .sm-back-btn button:hover, .sm-back-btn > button:hover {
+        color: #b7102a !important; border-color: #b7102a !important;
+        background: #fef2f2 !important;
+    }
+
     /* Gradio Theme Variable Overrides */
     .gradio-container {
         --background-fill-primary: transparent !important;
@@ -1086,14 +1141,12 @@ if __name__ == "__main__":
 
     /* Grids */
     .sm-base-grid {
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px;
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px;
     }
-    .sm-base-grid > .sm-card-item { max-width: 250px; }
-    
+
     .sm-pizza-grid {
-        display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;
+        display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;
     }
-    .sm-pizza-grid > .sm-card-pizza { max-width: 280px; }
     
     .sm-topping-pills { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
     
