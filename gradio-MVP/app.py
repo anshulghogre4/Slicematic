@@ -160,6 +160,17 @@ def validate_phone(value: str) -> tuple[bool, str]:
     return True, phone
 
 
+def validate_delivery_address(value: str) -> tuple[bool, str]:
+    address = " ".join(value.strip().split())
+    if len(address) < 10:
+        return False, "Delivery address must include flat/house, street or landmark, and area."
+    if len(address) > 160:
+        return False, "Delivery address must be 160 characters or fewer."
+    if not re.search(r"[A-Za-z]", address) or not re.search(r"\d", address):
+        return False, "Delivery address must include both text and a flat/house number."
+    return True, address
+
+
 def validate_quantity(value: Any) -> tuple[bool, int | str]:
     if isinstance(value, float) and value.is_integer():
         raw = str(int(value))
@@ -316,7 +327,7 @@ def cart_lines_html(cart: list[CartLine]) -> str:
               <div class="cart-line-index">{index:02d}</div>
               <div class="cart-line-main">
                 <strong>{escape(line.pizza.name)}</strong>
-                <span>{escape(line.base.name)} · {escape(toppings)}</span>
+                <span>{escape(line.base.name)} / {escape(toppings)}</span>
               </div>
               <div class="cart-line-meta">
                 <span>Qty {line.quantity}</span>
@@ -458,6 +469,52 @@ def order_context_html() -> str:
     """
 
 
+def latest_order_lines(limit: int = 5) -> list[str]:
+    if not ORDER_LOG.exists():
+        return []
+    lines = [line.strip() for line in ORDER_LOG.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return lines[-limit:]
+
+
+def mvp_admin_html(menus: dict[str, list[MenuItem]]) -> str:
+    order_lines = latest_order_lines()
+    latest_orders = "".join(
+        f"<li><code>{escape(line)}</code></li>" for line in reversed(order_lines)
+    ) or "<li><span>No saved orders yet. Place an order from Checkout to populate the audit log.</span></li>"
+
+    return f"""
+    <section class="mvp-admin-grid">
+      <article>
+        <span>Menu health</span>
+        <strong>{len(menus["pizzas"])} pizzas</strong>
+        <p>{len(menus["bases"])} crusts and {len(menus["toppings"])} toppings loaded from text files.</p>
+      </article>
+      <article>
+        <span>Pricing rules</span>
+        <strong>18% GST</strong>
+        <p>10% discount applies when the cart reaches 5 or more pizzas.</p>
+      </article>
+      <article>
+        <span>Kitchen capacity</span>
+        <strong>10 pizzas/order</strong>
+        <p>Quantity validation blocks invalid numbers and over-capacity carts.</p>
+      </article>
+      <article>
+        <span>Customer validation</span>
+        <strong>Name, phone, address</strong>
+        <p>Indian mobile format and delivery-address checks run before save.</p>
+      </article>
+    </section>
+    <section class="mvp-admin-log">
+      <div>
+        <h3>Latest saved orders</h3>
+        <p>Read-only evidence from <code>orders_log.txt</code>.</p>
+      </div>
+      <ol>{latest_orders}</ol>
+    </section>
+    """
+
+
 def hero_image_url() -> str:
     if not HERO_IMAGE.exists():
         return ""
@@ -531,6 +588,10 @@ def payment_message(payment_mode: str) -> str:
     return messages[payment_mode]
 
 
+def log_field(value: str) -> str:
+    return re.sub(r"[\r\n|]+", " ", value).strip()
+
+
 def line_log_value(index: int, line: CartLine) -> str:
     toppings = ",".join(f"{item.item_id}:{item.name}:{money(item.price):.2f}" for item in line.toppings)
     return (
@@ -547,6 +608,7 @@ def line_log_value(index: int, line: CartLine) -> str:
 def order_log_line(
     customer_name: str,
     phone: str,
+    delivery_address: str,
     cart: list[CartLine],
     payment_mode: str,
     timestamp: str | None = None,
@@ -555,8 +617,9 @@ def order_log_line(
     parts = [
         "ORDER",
         timestamp or now_ist_iso(),
-        customer_name,
+        log_field(customer_name),
         phone,
+        f"address:{log_field(delivery_address)}",
         f"line_count:{len(cart)}",
     ]
     parts.extend(line_log_value(index, line) for index, line in enumerate(cart, start=1))
@@ -576,12 +639,13 @@ def order_log_line(
 def persist_order(
     customer_name: str,
     phone: str,
+    delivery_address: str,
     cart: list[CartLine],
     payment_mode: str,
     log_path: Path = ORDER_LOG,
 ) -> str:
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    line = order_log_line(customer_name, phone, cart, payment_mode)
+    line = order_log_line(customer_name, phone, delivery_address, cart, payment_mode)
     with log_path.open("a", encoding="utf-8") as handle:
         handle.write(line + "\n\n")
     return line
@@ -590,6 +654,7 @@ def persist_order(
 def checkout_ui(
     customer_name: str,
     phone: str,
+    delivery_address: str,
     payment_value: Any,
     cart: list[CartLine] | None,
 ) -> tuple[str, str]:
@@ -605,11 +670,15 @@ def checkout_ui(
     if not phone_ok:
         return alert_html(str(phone_result)), ""
 
+    address_ok, address_result = validate_delivery_address(delivery_address)
+    if not address_ok:
+        return alert_html(str(address_result)), ""
+
     payment_ok, payment_mode = validate_payment(payment_value)
     if not payment_ok:
         return alert_html(str(payment_mode)), ""
 
-    log_line = persist_order(name_result, phone_result, current_cart, payment_mode)
+    log_line = persist_order(name_result, phone_result, address_result, current_cart, payment_mode)
     bill = calculate_cart_bill(current_cart)
     message = (
         f"{payment_message(payment_mode)} Order saved for {name_result}. "
@@ -926,6 +995,103 @@ def build_app():
     #checkout-panel::before,
     #status-panel::before {
       background: linear-gradient(90deg, var(--basil), rgba(244, 185, 66, 0.72), rgba(210, 56, 34, 0.58));
+    }
+    #saved-order-panel {
+      position: relative;
+      overflow: hidden;
+      min-height: 220px;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(241, 248, 242, 0.96)),
+        linear-gradient(90deg, rgba(23, 107, 77, 0.085), transparent 46%),
+        var(--surface);
+      border: 1px solid rgba(23, 107, 77, 0.2);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 18px 46px rgba(25, 84, 62, 0.1);
+      backdrop-filter: blur(14px);
+    }
+    #saved-order-panel::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 4px;
+      pointer-events: none;
+      background: linear-gradient(90deg, var(--basil), rgba(244, 185, 66, 0.72), rgba(210, 56, 34, 0.58));
+    }
+    #mvp-admin-panel {
+      position: relative;
+      overflow: hidden;
+      background:
+        linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(246, 239, 229, 0.97)),
+        linear-gradient(90deg, rgba(23, 19, 15, 0.05), transparent 46%),
+        var(--surface);
+      border: 1px solid rgba(91, 75, 53, 0.22);
+      border-radius: 8px;
+      padding: 18px;
+      box-shadow: 0 18px 48px rgba(47, 35, 22, 0.13);
+      backdrop-filter: blur(14px);
+    }
+    #mvp-admin-panel::before {
+      content: "";
+      position: absolute;
+      inset: 0 0 auto;
+      height: 4px;
+      pointer-events: none;
+      background: linear-gradient(90deg, #17130f, rgba(91, 75, 53, 0.58), rgba(23, 107, 77, 0.72));
+    }
+    .mvp-admin-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+      margin-bottom: 14px;
+    }
+    .mvp-admin-grid article,
+    .mvp-admin-log {
+      border: 1px solid rgba(129, 109, 82, 0.18);
+      border-radius: 8px;
+      background: rgba(255, 255, 255, 0.82);
+      padding: 14px;
+    }
+    .mvp-admin-grid span {
+      display: block;
+      color: #6f665d;
+      font-size: 12px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+    .mvp-admin-grid strong {
+      display: block;
+      margin-top: 8px;
+      color: var(--charcoal);
+      font-size: 22px;
+      line-height: 1.05;
+    }
+    .mvp-admin-grid p,
+    .mvp-admin-log p {
+      margin: 8px 0 0;
+      color: #6f665d;
+      line-height: 1.45;
+    }
+    .mvp-admin-log h3 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .mvp-admin-log ol {
+      display: grid;
+      gap: 10px;
+      margin: 14px 0 0;
+      padding-left: 20px;
+    }
+    .mvp-admin-log li {
+      color: #6f665d;
+      line-height: 1.45;
+    }
+    .mvp-admin-log code {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+      color: #17130f;
+      font-size: 12px;
     }
     #menu-panel h2,
     #menu-panel h3,
@@ -1455,6 +1621,52 @@ def build_app():
       border-color: rgba(15, 75, 54, 0.86) !important;
       box-shadow: 0 12px 24px rgba(23, 107, 77, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.16) !important;
     }
+    #mvp-tabs {
+      margin-top: 18px;
+    }
+    #mvp-tabs > .tab-nav,
+    #mvp-tabs .tab-nav {
+      border: 1px solid rgba(129, 109, 82, 0.18) !important;
+      border-radius: 8px !important;
+      background: rgba(255, 255, 255, 0.92) !important;
+      padding: 8px !important;
+      gap: 8px !important;
+    }
+    #mvp-tabs button {
+      border-radius: 8px !important;
+      font-weight: 850 !important;
+    }
+    .mvp-page-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      border: 1px solid rgba(129, 109, 82, 0.18);
+      border-radius: 8px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.94), rgba(246, 238, 225, 0.88));
+      padding: 16px;
+      margin-bottom: 12px;
+    }
+    .mvp-page-head h2,
+    .mvp-page-head p {
+      margin: 0;
+    }
+    .mvp-page-head p {
+      margin-top: 5px;
+      color: #6f665d;
+      line-height: 1.45;
+    }
+    .mvp-step-chip {
+      min-height: 36px;
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      background: #176b4d;
+      color: #fff;
+      padding: 8px 12px;
+      font-weight: 900;
+      white-space: nowrap;
+    }
     table {
       border-radius: 8px;
     }
@@ -1478,6 +1690,15 @@ def build_app():
       .menu-filters {
         justify-content: flex-start;
       }
+      .mvp-page-head {
+        flex-direction: column;
+      }
+      .mvp-step-chip {
+        white-space: normal;
+      }
+      .mvp-admin-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
       .visual-grid-base,
       .visual-grid-pizza {
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1494,6 +1715,9 @@ def build_app():
     @media (max-width: 560px) {
       .visual-grid-base,
       .visual-grid-pizza {
+        grid-template-columns: 1fr;
+      }
+      .mvp-admin-grid {
         grid-template-columns: 1fr;
       }
       .hero-chips span {
@@ -1555,71 +1779,125 @@ def build_app():
         gr.HTML(order_context_html())
         cart_state = gr.State([])
 
-        if MENUS:
-            with gr.Column(elem_id="menu-panel"):
-                gr.HTML(menu_preview_html(MENUS))
-
-        with gr.Row(equal_height=False):
-            with gr.Column(scale=6, elem_id="builder-panel"):
-                gr.Markdown("## Build order")
-                with gr.Row(elem_id="selection-row"):
-                    pizza_choice = gr.Radio(
-                        label="Pizza",
-                        choices=pizza_choices,
-                        value=pizza_choices[0] if pizza_choices else None,
-                        interactive=STARTUP_ERROR is None,
-                        elem_id="pizza-selector",
-                    )
-                    base_choice = gr.Radio(
-                        label="Base",
-                        choices=base_choices,
-                        value=base_choices[0] if base_choices else None,
-                        interactive=STARTUP_ERROR is None,
-                        elem_id="base-selector",
-                    )
-                topping_choice = gr.CheckboxGroup(
-                    label="Add toppings",
-                    choices=topping_choices,
-                    value=[],
-                    interactive=STARTUP_ERROR is None,
-                    elem_id="topping-selector",
+        with gr.Tabs(elem_id="mvp-tabs"):
+            with gr.Tab("1. Menu"):
+                gr.HTML(
+                    """
+                    <section class="mvp-page-head">
+                      <div><h2>Menu preview</h2><p>Review the text-file driven menu before building a customer order.</p></div>
+                      <span class="mvp-step-chip">Dynamic menu files</span>
+                    </section>
+                    """
                 )
-                quantity = gr.Slider(
-                    label="Quantity for this pizza",
-                    minimum=1,
-                    maximum=10,
-                    step=1,
-                    value=1,
-                    interactive=STARTUP_ERROR is None,
-                    buttons=[],
-                )
-                add_message = gr.HTML()
-                with gr.Row():
-                    add_button = gr.Button("Add to cart", variant="primary", interactive=STARTUP_ERROR is None)
-                    clear_button = gr.Button("Clear cart")
+                if MENUS:
+                    with gr.Column(elem_id="menu-panel"):
+                        gr.HTML(menu_preview_html(MENUS))
 
-            with gr.Column(scale=5, elem_id="cart-panel"):
-                gr.Markdown("## Cart")
-                cart_table = gr.HTML(cart_lines_html([]))
-                cart_summary = gr.HTML(cart_summary_html([]))
-
-        with gr.Row(equal_height=False):
-            with gr.Column(scale=7, elem_id="checkout-panel"):
-                gr.Markdown("## Checkout")
-                with gr.Row():
-                    customer_name = gr.Textbox(label="Customer name", placeholder="Aman Sharma")
-                    phone = gr.Textbox(label="Phone number", placeholder="9876543210")
-                payment_choice = gr.Radio(
-                    label="Payment mode",
-                    choices=["Cash", "Card", "UPI"],
-                    value="UPI",
-                    interactive=STARTUP_ERROR is None,
+            with gr.Tab("2. Build order"):
+                gr.HTML(
+                    """
+                    <section class="mvp-page-head">
+                      <div><h2>Build order</h2><p>Select pizza, crust, toppings, and quantity. The shared cart follows into checkout.</p></div>
+                      <span class="mvp-step-chip">Cart builder</span>
+                    </section>
+                    """
                 )
-                checkout_button = gr.Button("Confirm and save order", variant="primary", interactive=STARTUP_ERROR is None)
-            with gr.Column(scale=5, elem_id="status-panel"):
-                gr.Markdown("## Order status")
-                checkout_message = gr.HTML()
-                saved_log_line = gr.HTML()
+                with gr.Row(equal_height=False):
+                    with gr.Column(scale=6, elem_id="builder-panel"):
+                        with gr.Row(elem_id="selection-row"):
+                            pizza_choice = gr.Radio(
+                                label="Pizza",
+                                choices=pizza_choices,
+                                value=pizza_choices[0] if pizza_choices else None,
+                                interactive=STARTUP_ERROR is None,
+                                elem_id="pizza-selector",
+                            )
+                            base_choice = gr.Radio(
+                                label="Base",
+                                choices=base_choices,
+                                value=base_choices[0] if base_choices else None,
+                                interactive=STARTUP_ERROR is None,
+                                elem_id="base-selector",
+                            )
+                        topping_choice = gr.CheckboxGroup(
+                            label="Add toppings",
+                            choices=topping_choices,
+                            value=[],
+                            interactive=STARTUP_ERROR is None,
+                            elem_id="topping-selector",
+                        )
+                        quantity = gr.Slider(
+                            label="Quantity for this pizza",
+                            minimum=1,
+                            maximum=10,
+                            step=1,
+                            value=1,
+                            interactive=STARTUP_ERROR is None,
+                            buttons=[],
+                        )
+                        add_message = gr.HTML()
+                        with gr.Row():
+                            add_button = gr.Button("Add to cart", variant="primary", interactive=STARTUP_ERROR is None)
+                            clear_button = gr.Button("Clear cart")
+
+                    with gr.Column(scale=5, elem_id="cart-panel"):
+                        gr.Markdown("## Cart")
+                        cart_table = gr.HTML(cart_lines_html([]))
+                        cart_summary = gr.HTML(cart_summary_html([]))
+
+            with gr.Tab("3. Checkout"):
+                gr.HTML(
+                    """
+                    <section class="mvp-page-head">
+                      <div><h2>Checkout</h2><p>Validate customer details, delivery address, payment mode, and save the order log.</p></div>
+                      <span class="mvp-step-chip">Validated save</span>
+                    </section>
+                    """
+                )
+                with gr.Row(equal_height=False):
+                    with gr.Column(scale=7, elem_id="checkout-panel"):
+                        with gr.Row():
+                            customer_name = gr.Textbox(label="Customer name", placeholder="Aman Sharma")
+                            phone = gr.Textbox(label="Phone number", placeholder="9876543210")
+                        delivery_address = gr.Textbox(
+                            label="Delivery address",
+                            placeholder="Flat 1202, Metro View Apartments, New Ashok Nagar",
+                            lines=2,
+                        )
+                        payment_choice = gr.Radio(
+                            label="Payment mode",
+                            choices=["Cash", "Card", "UPI"],
+                            value="UPI",
+                            interactive=STARTUP_ERROR is None,
+                        )
+                        checkout_button = gr.Button("Confirm and save order", variant="primary", interactive=STARTUP_ERROR is None)
+                    with gr.Column(scale=5, elem_id="status-panel"):
+                        gr.Markdown("## Checkout status")
+                        checkout_message = gr.HTML()
+
+            with gr.Tab("4. Saved order"):
+                gr.HTML(
+                    """
+                    <section class="mvp-page-head">
+                      <div><h2>Saved order evidence</h2><p>After checkout, the parseable order line appears here for grading and audit.</p></div>
+                      <span class="mvp-step-chip">Order log</span>
+                    </section>
+                    """
+                )
+                with gr.Column(elem_id="saved-order-panel"):
+                    saved_log_line = gr.HTML()
+
+            with gr.Tab("5. MVP admin"):
+                gr.HTML(
+                    """
+                    <section class="mvp-page-head">
+                      <div><h2>MVP admin snapshot</h2><p>Read-only operational checks for menu data, pricing rules, validation coverage, and saved-order evidence.</p></div>
+                      <span class="mvp-step-chip">Owner view</span>
+                    </section>
+                    """
+                )
+                with gr.Column(elem_id="mvp-admin-panel"):
+                    gr.HTML(mvp_admin_html(MENUS) if MENUS else alert_html("Menu files are not loaded."))
 
         add_button.click(
             fn=add_cart_line_ui,
@@ -1633,7 +1911,7 @@ def build_app():
         )
         checkout_button.click(
             fn=checkout_ui,
-            inputs=[customer_name, phone, payment_choice, cart_state],
+            inputs=[customer_name, phone, delivery_address, payment_choice, cart_state],
             outputs=[checkout_message, saved_log_line],
         )
 
