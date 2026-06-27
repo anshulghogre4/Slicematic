@@ -44,6 +44,8 @@ type Workspace = "customer" | "account" | "admin";
 type AdminAuthView = "login" | "forgot" | "reset";
 type CustomerAuthView = "login" | "forgot" | "reset";
 type MenuSection = "pizzas" | "bases" | "toppings";
+type MenuAdminPage = "create" | MenuSection;
+type SettingsPage = "brand" | "financials" | "delivery";
 type MenuDraft = {
   code: string;
   name: string;
@@ -137,6 +139,8 @@ export default function SliceMaticStage3() {
   const [adminPaymentFilter, setAdminPaymentFilter] = useState("All");
   const [adminDateFilter, setAdminDateFilter] = useState("");
   const [menuDraftSection, setMenuDraftSection] = useState<MenuSection>("pizzas");
+  const [menuAdminPage, setMenuAdminPage] = useState<MenuAdminPage>("create");
+  const [settingsPage, setSettingsPage] = useState<SettingsPage>("brand");
   const [menuDraft, setMenuDraft] = useState<MenuDraft>(emptyMenuDraft);
   const [menuSaving, setMenuSaving] = useState(false);
   const [menuImageUploading, setMenuImageUploading] = useState(false);
@@ -1320,6 +1324,7 @@ export default function SliceMaticStage3() {
 
       {workspace === "customer" && (
       <>
+      {step !== "checkout" && step !== "tracking" && (
       <section className="hero-shell" id="customer-app">
         <aside className="status-rail">
           <div className="rail-card open">
@@ -1406,7 +1411,7 @@ export default function SliceMaticStage3() {
             </section>
           )}
 
-          {step !== "intake" && (
+          {step === "menu" && (
           <section className="menu-section">
             <div className="section-head">
               <div><p className="eyebrow">Menu loaded from DB</p><h2>Signature pizzas</h2></div>
@@ -1474,31 +1479,70 @@ export default function SliceMaticStage3() {
           <button className="primary" disabled={!cart.length} onClick={() => goToStep("checkout")} type="button">Continue to checkout <Send /></button>
         </aside>
       </section>
+      )}
 
       {step === "checkout" && (
-        <section className="checkout-panel">
-          <div className="checkout-head">
-            <div><p className="eyebrow">Checkout</p><h2>Confirm payment and bill</h2></div>
-            <div className={customerLoggedIn ? "checkout-policy member" : "checkout-policy guest"}>
-              <strong>{customerOrderMode}</strong>
-              <span>{customerPaymentPolicy}</span>
+        <section className="checkout-page" id="checkout">
+          <div className="checkout-page-head">
+            <div>
+              <p className="eyebrow">Checkout</p>
+              <h1>Confirm payment and bill</h1>
+              <p>Review the basket, payment rules, and live bill before the kitchen accepts the order.</p>
             </div>
+            <button type="button" onClick={() => goToStep("menu")}><ArrowLeft /> Back to cart</button>
           </div>
-          <div className="payment-grid">
-            {paymentModes.map((payment) => {
-              const disabledForGuest = !customerLoggedIn && !pricingConfig.guestCashAllowed && payment.mode === "Cash";
-              return (
-              <button key={payment.mode} className={paymentMode === payment.mode ? "active" : ""} disabled={disabledForGuest} onClick={() => disabledForGuest ? showToast("Cash is available after customer login.") : setPaymentMode(payment.mode)} type="button">
-                {payment.icon}<strong>{payment.mode}</strong><span>{disabledForGuest ? "Login required. Guests use UPI or Card only." : payment.copy}</span>
-              </button>
-              );
-            })}
+
+          <div className="checkout-layout">
+            <section className="checkout-review-card">
+              <div className="cart-head"><div><p className="eyebrow">Order review</p><h2>Basket</h2></div><ShoppingBag /></div>
+              <div className={customerLoggedIn ? "order-mode member" : "order-mode guest"}>
+                <div><UserRound /><strong>{customerOrderMode}</strong></div>
+                <span>{customerLoggedIn ? `Logged in as ${customerSessionEmail}` : "Guest checkout. UPI/Card required unless owner enables guest cash."}</span>
+              </div>
+              {cart.length ? cart.map(renderLine) : <div className="empty-cart">Your cart is empty.<br /><span>Go back to menu and build a pizza.</span></div>}
+              <div className="summary">
+                <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
+                <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
+                <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
+                <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
+                <div className="total"><span>Total payable</span><b>{moneyExact(totals.finalTotal)}</b></div>
+              </div>
+            </section>
+
+            <section className="checkout-payment-card">
+              <div className="checkout-head">
+                <div><p className="eyebrow">Payment</p><h2>Select payment mode</h2></div>
+                <div className={customerLoggedIn ? "checkout-policy member" : "checkout-policy guest"}>
+                  <strong>{customerOrderMode}</strong>
+                  <span>{customerPaymentPolicy}</span>
+                </div>
+              </div>
+              <div className="payment-grid">
+                {paymentModes.map((payment) => {
+                  const disabledForGuest = !customerLoggedIn && !pricingConfig.guestCashAllowed && payment.mode === "Cash";
+                  return (
+                  <button key={payment.mode} className={paymentMode === payment.mode ? "active" : ""} disabled={disabledForGuest} onClick={() => disabledForGuest ? showToast("Cash is available after customer login.") : setPaymentMode(payment.mode)} type="button">
+                    {payment.icon}<strong>{payment.mode}</strong><span>{disabledForGuest ? "Login required. Guests use UPI or Card only." : payment.copy}</span>
+                  </button>
+                  );
+                })}
+              </div>
+              <button className="primary" disabled={!cart.length} onClick={placeOrder} type="button"><Send /> Place order</button>
+            </section>
           </div>
-          <button className="primary" onClick={placeOrder} type="button"><Send /> Place order</button>
         </section>
       )}
 
       {step === "tracking" && lastOrder && (
+        <section className="tracking-page" id="tracking">
+        <div className="tracking-page-head">
+          <div>
+            <p className="eyebrow">Order journey</p>
+            <h1>Track your SliceMatic order</h1>
+            <p>The cart is closed now. The customer sees fulfilment status, rider progress, and final bill on a dedicated page.</p>
+          </div>
+          <button type="button" onClick={() => goToStep("menu")}><Utensils /> New order</button>
+        </div>
         <section className="tracking-grid">
           <div className="map-card"><div className="route-line" /><span className="pin store">S</span><span className="pin home">H</span><div className="rider-card">Ravi assigned<br /><small>Arrives in 34 min</small></div></div>
           <div className="tracking-card">
@@ -1528,6 +1572,7 @@ export default function SliceMaticStage3() {
             </div>
             <small>Delivery zone {lastOrder.deliveryZone ?? customer.deliveryZone} km / {lastOrder.address ?? customer.address}</small>
           </div>
+        </section>
         </section>
       )}
       </>
@@ -1564,6 +1609,24 @@ export default function SliceMaticStage3() {
             {adminTab === "forecast" && <ForecastPanel summary={adminSummary} />}
             {adminTab === "menu" && (
               <section className="admin-card menu-editor">
+                <div className="admin-page-head">
+                  <div>
+                    <p className="eyebrow">Menu operations</p>
+                    <h3>Manage the live menu catalogue.</h3>
+                  </div>
+                  <span>{menu.pizzas.length} pizzas / {menu.bases.length} bases / {menu.toppings.length} toppings</span>
+                </div>
+                <div className="sub-tabs">
+                  {[
+                    ["create", "Create item"],
+                    ["pizzas", "Pizzas"],
+                    ["bases", "Bases"],
+                    ["toppings", "Toppings"]
+                  ].map(([page, label]) => (
+                    <button key={page} className={menuAdminPage === page ? "active" : ""} onClick={() => setMenuAdminPage(page as MenuAdminPage)} type="button">{label}</button>
+                  ))}
+                </div>
+                {menuAdminPage === "create" && (
                 <div className="menu-create-studio wide">
                   <div>
                     <p className="eyebrow">Menu lifecycle</p>
@@ -1609,7 +1672,10 @@ export default function SliceMaticStage3() {
                     <button className="primary wide" disabled={menuSaving} onClick={addMenuItem} type="button"><Plus /> {menuSaving ? "Saving item" : `Add to ${menuDraftSection}`}</button>
                   </div>
                 </div>
-                <div className="menu-editor-section wide"><p className="eyebrow">Pizza catalogue</p></div>
+                )}
+                {menuAdminPage === "pizzas" && (
+                <>
+                <div className="menu-editor-section wide"><p className="eyebrow">Pizza catalogue</p><span>Customer-facing pizzas with price, availability, and image preview.</span></div>
                 {menu.pizzas.map((pizza) => (
                   <article key={pizza.id}>
                     <img src={pizza.image} alt="" />
@@ -1618,7 +1684,11 @@ export default function SliceMaticStage3() {
                     <label><input type="checkbox" checked={pizza.available} onChange={(event) => updatePizza(pizza.id, "available", event.target.checked)} /> Available</label>
                   </article>
                 ))}
-                <div className="menu-editor-section wide"><p className="eyebrow">Bases</p></div>
+                </>
+                )}
+                {menuAdminPage === "bases" && (
+                <>
+                <div className="menu-editor-section wide"><p className="eyebrow">Bases</p><span>Crust options available in the pizza builder.</span></div>
                 {menu.bases.map((base) => (
                   <article className="compact" key={base.id}>
                     <strong>{base.code}</strong>
@@ -1627,7 +1697,11 @@ export default function SliceMaticStage3() {
                     <label><input type="checkbox" checked={base.available} onChange={(event) => updateMenuItem("bases", base.id, "available", event.target.checked)} /> Available</label>
                   </article>
                 ))}
-                <div className="menu-editor-section wide"><p className="eyebrow">Toppings</p></div>
+                </>
+                )}
+                {menuAdminPage === "toppings" && (
+                <>
+                <div className="menu-editor-section wide"><p className="eyebrow">Toppings</p><span>Add-ons that change basket value and personalization quality.</span></div>
                 {menu.toppings.map((topping) => (
                   <article className="compact" key={topping.id}>
                     <strong>{topping.code}</strong>
@@ -1636,6 +1710,8 @@ export default function SliceMaticStage3() {
                     <label><input type="checkbox" checked={topping.available} onChange={(event) => updateMenuItem("toppings", topping.id, "available", event.target.checked)} /> Available</label>
                   </article>
                 ))}
+                </>
+                )}
               </section>
             )}
             {adminTab === "ai" && <AIPanel />}
@@ -1649,6 +1725,17 @@ export default function SliceMaticStage3() {
                   <button type="button" onClick={() => showToast("Settings applied to the live app preview.")}><Check /> Apply live preview</button>
                 </div>
 
+                <div className="sub-tabs">
+                  {[
+                    ["brand", "Brand"],
+                    ["financials", "Financials"],
+                    ["delivery", "Delivery & risk"]
+                  ].map(([page, label]) => (
+                    <button key={page} className={settingsPage === page ? "active" : ""} onClick={() => setSettingsPage(page as SettingsPage)} type="button">{label}</button>
+                  ))}
+                </div>
+
+                {settingsPage === "brand" && (
                 <div className="settings-group">
                   <div><p className="eyebrow">Brand and outlet</p><span>Everything here is visible to customers.</span></div>
                   <div className="settings-grid">
@@ -1662,7 +1749,9 @@ export default function SliceMaticStage3() {
                     <label className="wide">Operations promise<input value={brand.opsPromise} onChange={(event) => setBrand({ ...brand, opsPromise: event.target.value })} /></label>
                   </div>
                 </div>
+                )}
 
+                {settingsPage === "financials" && (
                 <div className="settings-group">
                   <div><p className="eyebrow">Financial rules</p><span>These values drive live cart totals and the order API.</span></div>
                   <div className="settings-grid">
@@ -1674,7 +1763,9 @@ export default function SliceMaticStage3() {
                     <label>Free delivery above<input type="number" min={0} value={pricingConfig.freeDeliveryMin} onChange={(event) => updatePositiveNumber("freeDeliveryMin", event.target.value)} /></label>
                   </div>
                 </div>
+                )}
 
+                {settingsPage === "delivery" && (
                 <div className="settings-group">
                   <div><p className="eyebrow">Delivery and payment risk</p><span>Use stricter controls for guest orders and delivery radius expansion.</span></div>
                   <div className="settings-grid">
@@ -1686,6 +1777,7 @@ export default function SliceMaticStage3() {
                     </div>
                   </div>
                 </div>
+                )}
               </section>
             )}
           </>

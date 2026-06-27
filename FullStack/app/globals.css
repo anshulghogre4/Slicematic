@@ -335,7 +335,8 @@ img {
 .rail-card,
 .cart-panel,
 .glass-panel,
-.checkout-panel,
+.checkout-review-card,
+.checkout-payment-card,
 .tracking-card,
 .map-card,
 .admin-card,
@@ -479,7 +480,8 @@ img {
 .hero-card h1,
 .glass-panel h2,
 .section-head h2,
-.checkout-panel h2,
+.checkout-review-card h2,
+.checkout-payment-card h2,
 .tracking-card h2,
 .admin-hero h2,
 .forecast-card h2,
@@ -603,6 +605,7 @@ a.primary:hover {
 
 .flow-tabs,
 .admin-tabs,
+.sub-tabs,
 .category-row {
   display: flex;
   flex-wrap: wrap;
@@ -619,6 +622,7 @@ a.primary:hover {
 
 .flow-tabs button,
 .admin-tabs button,
+.sub-tabs button,
 .category-row button {
   min-height: 38px;
   padding: 8px 12px;
@@ -628,6 +632,7 @@ a.primary:hover {
 
 .flow-tabs button.active,
 .admin-tabs button.active,
+.sub-tabs button.active,
 .category-row button.active,
 .payment-grid button.active,
 .builder-group button.active {
@@ -1033,7 +1038,8 @@ a.primary:hover {
   color: #fff;
 }
 
-.checkout-panel,
+.checkout-page,
+.tracking-page,
 .tracking-grid,
 .account-shell,
 .admin-section {
@@ -1041,10 +1047,66 @@ a.primary:hover {
   margin: 18px auto 0;
 }
 
-.checkout-panel {
-  padding: 22px;
+.checkout-page,
+.tracking-page {
   display: grid;
-  gap: 16px;
+  gap: 14px;
+  padding-bottom: 48px;
+}
+
+.checkout-page-head,
+.tracking-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 18px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--shadow-soft);
+  padding: 20px;
+}
+
+.checkout-page-head h1,
+.tracking-page-head h1 {
+  margin: 2px 0 7px;
+  font-size: clamp(1.9rem, 3vw, 3.1rem);
+}
+
+.checkout-page-head p,
+.tracking-page-head p {
+  max-width: 720px;
+  color: var(--muted);
+  line-height: 1.55;
+}
+
+.checkout-page-head button,
+.tracking-page-head button {
+  min-width: 150px;
+  align-self: center;
+}
+
+.checkout-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 0.78fr) minmax(430px, 1.22fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.checkout-review-card,
+.checkout-payment-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: var(--shadow-soft);
+  padding: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.checkout-payment-card {
+  position: sticky;
+  top: 94px;
 }
 
 .checkout-head {
@@ -1118,6 +1180,8 @@ a.primary:hover {
   display: grid;
   grid-template-columns: minmax(360px, 0.95fr) minmax(320px, 1.05fr);
   gap: 16px;
+  width: 100%;
+  margin: 0;
 }
 
 .map-card {
@@ -1910,6 +1974,49 @@ a.primary:hover {
   gap: 12px;
 }
 
+.admin-page-head,
+.sub-tabs {
+  grid-column: 1 / -1;
+}
+
+.admin-page-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  border: 1px solid rgba(22, 109, 69, 0.14);
+  border-radius: var(--radius);
+  background:
+    linear-gradient(135deg, rgba(22, 109, 69, 0.08), rgba(47, 111, 152, 0.05)),
+    #fff;
+  padding: 16px;
+}
+
+.admin-page-head h3,
+.admin-page-head p {
+  margin: 0;
+}
+
+.admin-page-head span {
+  min-height: 38px;
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(22, 109, 69, 0.18);
+  border-radius: var(--radius);
+  background: var(--basil-soft);
+  color: var(--basil);
+  padding: 8px 11px;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.sub-tabs {
+  padding: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: #fff;
+}
+
 .menu-create-studio {
   display: grid;
   grid-template-columns: minmax(260px, 0.7fr) minmax(360px, 1.3fr);
@@ -2055,6 +2162,13 @@ a.primary:hover {
 
 .menu-editor-section .eyebrow {
   margin-bottom: 0;
+}
+
+.menu-editor-section span {
+  display: block;
+  margin-top: 4px;
+  color: var(--muted);
+  line-height: 1.35;
 }
 
 .menu-editor article.compact {
@@ -2390,6 +2504,9 @@ a.primary:hover {
 
   .payment-grid,
   .checkout-head,
+  .checkout-layout,
+  .checkout-page-head,
+  .tracking-page-head,
   .kpi-grid,
   .customer-promise-strip,
   .chart-grid,
@@ -2414,11 +2531,31 @@ a.primary:hover {
     min-height: 260px;
   }
 
-  .checkout-panel,
-  .tracking-grid,
+  .checkout-page,
+  .tracking-page,
   .account-shell,
   .admin-section {
     width: calc(100% - 24px);
+  }
+
+  .checkout-payment-card {
+    position: static;
+  }
+
+  .admin-page-head,
+  .settings-head {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .admin-page-head span {
+    justify-content: center;
+    white-space: normal;
+  }
+
+  .checkout-page-head button,
+  .tracking-page-head button {
+    width: 100%;
   }
 
   .auth-visual {
