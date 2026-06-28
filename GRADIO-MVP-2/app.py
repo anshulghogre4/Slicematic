@@ -1,4 +1,5 @@
 import gradio as gr
+import os
 from datetime import datetime
 from html import escape as html_escape
 from pathlib import Path
@@ -22,6 +23,7 @@ MAX_QTY = 10
 MIN_QTY = 1
 PAYMENT_MODES = ["Cash", "Card", "UPI"]
 LOG_FILE = "orders_log.txt"
+LOG_HEADER = "MARKER|TIMESTAMP|CUSTOMER_NAME|PHONE|BASE_ID|BASE_NAME|BASE_PRICE|PIZZA_ID|PIZZA_NAME|PIZZA_PRICE|TOPPING_IDS|TOPPING_NAMES|TOPPING_TOTAL_PRICE|QUANTITY|UNIT_PRICE|SUBTOTAL|DISCOUNT|GST|FINAL_TOTAL|PAYMENT_MODE"
 BASE_FILE = "Types_of_Base.txt"
 PIZZA_FILE = "Types_of_Pizza.txt"
 TOPPING_FILE = "Types_of_Toppings.txt"
@@ -513,7 +515,7 @@ def render_sidebar(step):
 def err(msg):
     if not msg:
         return ""
-    return f"<p class='sm-error-text' style='font-size:13px; margin:4px 0;'>{html_escape(msg)}</p>"
+    return f"<p class='sm-error-text' style='font-size:13px; margin:4px 0; color:#dc2626 !important;'>* {html_escape(msg)}</p>"
 
 
 def initial_state():
@@ -919,7 +921,10 @@ with gr.Blocks(title="SliceMatic") as app:
 
                     # Dedicated try/except for file write — the critical edge case
                     try:
+                        needs_header = not os.path.exists(LOG_FILE) or os.path.getsize(LOG_FILE) == 0
                         with open(LOG_FILE, "a", encoding="utf-8") as f:
+                            if needs_header:
+                                f.write(LOG_HEADER + "\n\n")
                             f.write(order_line + "\n\n")
                         write_ok = True
                     except Exception:
@@ -1345,7 +1350,7 @@ if __name__ == "__main__":
     .sm-topping-price { color: #5b403f; }
     .sm-step-text { color: #b7102a; }
     .sm-logo-text { color: #b7102a; }
-    .sm-error-text { color: #ba1a1a; }
+    .sm-error-text, .gradio-container .prose .sm-error-text, .gradio-container .prose p.sm-error-text { color: #dc2626 !important; }
     
     /* Bill Summary Table */
     .sm-bill-table {
@@ -1467,7 +1472,7 @@ if __name__ == "__main__":
     .dark .sm-img, .dark .sm-thumb { background: #334155 !important; }
     .dark .sm-step-text { color: #f87171 !important; }
     .dark .sm-logo-text { color: #f8fafc !important; }
-    .dark .sm-error-text { color: #f87171 !important; }
+    .dark .sm-error-text, .dark .gradio-container .prose .sm-error-text, .dark .gradio-container .prose p.sm-error-text { color: #f87171 !important; }
     
     /* Bill Summary Dark Mode Overrides */
     .dark .sm-bill-table { background: #0f172a !important; border-color: #334155 !important; }
