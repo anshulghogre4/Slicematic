@@ -1,8 +1,10 @@
 """Standalone test script for SliceMatic core logic — no gradio required."""
 import re
-import sys
+import os
+import tempfile
 
 def load_menu_file(filepath):
+    """Mirror of app.py's loader — items with bad name/price kept as unavailable."""
     items = []
     try:
         with open(filepath, "r", encoding="utf-8") as f:
@@ -14,11 +16,19 @@ def load_menu_file(filepath):
                 if len(parts) != 3:
                     continue
                 item_id, name, price_str = [p.strip() for p in parts]
+                if not name:
+                    items.append((item_id, "Unnamed", 0.0))
+                    continue
+                if not price_str:
+                    items.append((item_id, name, 0.0))
+                    continue
                 try:
                     price = float(price_str)
                 except ValueError:
+                    items.append((item_id, name, 0.0))
                     continue
                 if price < 0:
+                    items.append((item_id, name, 0.0))
                     continue
                 items.append((item_id, name, price))
     except Exception:
@@ -71,6 +81,8 @@ def validate_selection(raw, items):
         return None, "Select a valid item number from the list."
     if n > len(items):
         return None, "That item number is not available."
+    if items[n - 1][2] <= 0:
+        return None, f"{items[n - 1][1]} is currently unavailable."
     return n - 1, ""
 
 GST_RATE = 0.18
@@ -93,8 +105,8 @@ def run_tests():
 
     assert len(bases) == 5, f"Expected 5 bases, got {len(bases)}"
     assert len(pizzas) == 8, f"Expected 8 pizzas, got {len(pizzas)}"
-    assert len(toppings) == 10, f"Expected 10 toppings, got {len(toppings)}"
-    print("File loading: PASS")
+    assert len(toppings) == 16, f"Expected 16 toppings, got {len(toppings)}"
+    print(f"File loading: PASS ({len(bases)} bases, {len(pizzas)} pizzas, {len(toppings)} toppings)")
 
     # ─── Name ───
     assert validate_name("Aman Sharma") == ("Aman Sharma", "")
@@ -144,8 +156,45 @@ def run_tests():
     assert validate_selection("229", bases)[1] == "That item number is not available."
     print("Selection validation: PASS")
 
-    # ─── Bill: PRD sample ───
-    bill = compute_bill(bases, pizzas, toppings, 2, 6, 1, 5)
+    # ─── Unavailable item (price=0) selection ───
+    test_items = [("X1", "Good Item", 100.0), ("X2", "No Price", 0.0), ("X3", "Also Good", 200.0)]
+    idx, err = validate_selection("1", test_items)
+    assert idx == 0 and err == ""
+    idx, err = validate_selection("2", test_items)
+    assert idx is None and "unavailable" in err.lower()
+    idx, err = validate_selection("3", test_items)
+    assert idx == 2 and err == ""
+    print("Unavailable item validation: PASS")
+
+    # ─── Loader: empty/bad names and prices kept as unavailable ───
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as tmp:
+        tmp.write("X1;Good;100\n")
+        tmp.write("X2;Empty;\n")
+        tmp.write("X3;Bad;abc\n")
+        tmp.write("X4;Negative;-50\n")
+        tmp.write("X5;Zero;0\n")
+        tmp.write("X6;Also Good;200\n")
+        tmp.write("X7;;150\n")
+        tmp.write("X8;  ;300\n")
+        tmp_path = tmp.name
+    try:
+        loaded = load_menu_file(tmp_path)
+        assert len(loaded) == 8, f"Expected 8 items, got {len(loaded)}"
+        assert loaded[0] == ("X1", "Good", 100.0)
+        assert loaded[1][2] == 0.0, f"Empty price should be 0, got {loaded[1][2]}"
+        assert loaded[2][2] == 0.0, f"Bad price should be 0, got {loaded[2][2]}"
+        assert loaded[3][2] == 0.0, f"Negative price should be 0, got {loaded[3][2]}"
+        assert loaded[4][2] == 0.0, f"Zero price should stay 0, got {loaded[4][2]}"
+        assert loaded[5] == ("X6", "Also Good", 200.0)
+        assert loaded[6][1] == "Unnamed" and loaded[6][2] == 0.0, f"Empty name should be Unnamed+unavailable, got {loaded[6]}"
+        assert loaded[7][1] == "Unnamed" and loaded[7][2] == 0.0, f"Blank name should be Unnamed+unavailable, got {loaded[7]}"
+    finally:
+        os.unlink(tmp_path)
+    print("Loader (unavailable items): PASS")
+
+    # ─── Bill: Cheese Burst + BBQ Chicken + Extra Cheese, qty=5 ───
+    # b[2]=Cheese Burst(229), p[6]=BBQ Chicken(379), t[0]=Extra Cheese(69)
+    bill = compute_bill(bases, pizzas, toppings, 2, 6, 0, 5)
     assert bill["unit_price"] == 677.0, f"unit_price={bill['unit_price']}"
     assert bill["subtotal"] == 3385.0, f"subtotal={bill['subtotal']}"
     assert bill["discount"] == 338.5, f"discount={bill['discount']}"
@@ -155,9 +204,10 @@ def run_tests():
     print("Bill (PRD sample qty=5): PASS")
 
     # No discount when qty < 5
+    # b[0]=Thin Crust(149), p[0]=Margherita(299), t[0]=Extra Cheese(69) = 517
     bill2 = compute_bill(bases, pizzas, toppings, 0, 0, 0, 3)
     assert bill2["discount"] == 0
-    assert bill2["subtotal"] == 1491.0
+    assert bill2["subtotal"] == 1551.0, f"subtotal={bill2['subtotal']}"
     print("Bill (qty=3 no discount): PASS")
 
     # Discount at threshold
@@ -170,8 +220,8 @@ def run_tests():
     print("Bill (qty=4 no discount): PASS")
 
     # ─── Order line format ───
-    b = bases[2]; p = pizzas[6]; t = toppings[1]
-    bill = compute_bill(bases, pizzas, toppings, 2, 6, 1, 5)
+    b = bases[2]; p = pizzas[6]; t = toppings[0]
+    bill = compute_bill(bases, pizzas, toppings, 2, 6, 0, 5)
     line = (
         f"ORDER|2026-06-25T19:42:10+05:30|Aman Sharma|9876543210|"
         f"{b[0]}|{b[1]}|{b[2]:.2f}|"

@@ -55,7 +55,12 @@ def item_image_url(item_id):
 # MENU FILE LOADER
 # ═══════════════════════════════════════════════════════════
 def load_menu_file(filepath):
-    """Load menu items from a semicolon-delimited file. Returns list of (id, name, price) tuples."""
+    """Load menu items from a semicolon-delimited file. Returns list of (id, name, price) tuples.
+
+    Items with missing/empty name or missing/bad/zero/negative price are kept with
+    price=0 (and name='Unnamed' if blank) so numbering stays consistent —
+    rendering and validation treat these as unavailable.
+    """
     items = []
     try:
         with open(filepath, "r", encoding="utf-8") as f:
@@ -68,13 +73,23 @@ def load_menu_file(filepath):
                     print(f"[WARN] {filepath}:{line_num} — expected 3 fields, got {len(parts)}, skipping")
                     continue
                 item_id, name, price_str = [p.strip() for p in parts]
+                if not name:
+                    print(f"[WARN] {filepath}:{line_num} — empty name for '{item_id}', marking unavailable")
+                    items.append((item_id, "Unnamed", 0.0))
+                    continue
+                if not price_str:
+                    print(f"[WARN] {filepath}:{line_num} — empty price for '{name}', marking unavailable")
+                    items.append((item_id, name, 0.0))
+                    continue
                 try:
                     price = float(price_str)
                 except ValueError:
-                    print(f"[WARN] {filepath}:{line_num} — non-numeric price '{price_str}', skipping")
+                    print(f"[WARN] {filepath}:{line_num} — non-numeric price '{price_str}' for '{name}', marking unavailable")
+                    items.append((item_id, name, 0.0))
                     continue
                 if price < 0:
-                    print(f"[WARN] {filepath}:{line_num} — negative price {price}, skipping")
+                    print(f"[WARN] {filepath}:{line_num} — negative price {price} for '{name}', marking unavailable")
+                    items.append((item_id, name, 0.0))
                     continue
                 items.append((item_id, name, price))
     except FileNotFoundError:
@@ -88,7 +103,11 @@ def load_menu_file(filepath):
 bases = load_menu_file(BASE_FILE)
 pizzas = load_menu_file(PIZZA_FILE)
 toppings = load_menu_file(TOPPING_FILE)
-SYSTEM_READY = len(bases) > 0 and len(pizzas) > 0 and len(toppings) > 0
+SYSTEM_READY = (
+    any(p > 0 for _, _, p in bases)
+    and any(p > 0 for _, _, p in pizzas)
+    and any(p > 0 for _, _, p in toppings)
+)
 
 
 # ═══════════════════════════════════════════════════════════
@@ -146,6 +165,8 @@ def validate_selection(raw, items):
         return None, "Select a valid item number from the list."
     if n > len(items):
         return None, "That item number is not available."
+    if items[n - 1][2] <= 0:
+        return None, f"{items[n - 1][1]} is currently unavailable."
     return n - 1, ""
 
 
@@ -393,6 +414,15 @@ def render_base_cards(items):
     """3-column grid of base cards: square image + name + price + selection number."""
     cards = []
     for i, (item_id, name, price) in enumerate(items, 1):
+        if price <= 0:
+            cards.append(
+                '<div class="sm-card-item sm-card-unavailable">'
+                + _img_block(item_id, "square")
+                + f'<div class="sm-item-name"><span class="sm-num sm-num-disabled">{i}</span>{html_escape(name)}</div>'
+                + '<div class="sm-item-price" style="color:#94a3b8;">Unavailable</div>'
+                + '</div>'
+            )
+            continue
         cards.append(
             '<div class="sm-card-item">'
             + _img_block(item_id, "square")
@@ -410,6 +440,15 @@ def render_pizza_cards(items):
     """Grid of pizza cards — same vertical layout as base cards."""
     cards = []
     for i, (item_id, name, price) in enumerate(items, 1):
+        if price <= 0:
+            cards.append(
+                '<div class="sm-card-item sm-card-unavailable">'
+                + _img_block(item_id, "square")
+                + f'<div class="sm-item-name"><span class="sm-num sm-num-disabled">{i}</span>{html_escape(name)}</div>'
+                + '<div class="sm-item-price" style="color:#94a3b8;">Unavailable</div>'
+                + '</div>'
+            )
+            continue
         cards.append(
             '<div class="sm-card-item">'
             + _img_block(item_id, "square")
@@ -523,17 +562,38 @@ with gr.Blocks(title="SliceMatic") as app:
         with gr.Column(scale=4, elem_classes=["sm-main-col"]):
 
             if not SYSTEM_READY:
-                # ──── SYSTEM UNAVAILABLE (matches service_unavailable screen) ────
-                gr.HTML("""
-                <div style="text-align:center; padding:120px 20px;">
-                  <div style="width:96px; height:96px; background:#dee8ff; border-radius:50%;
-                              margin:0 auto 32px; display:flex; align-items:center;
-                              justify-content:center; font-size:44px;">🍕</div>
-                  <h1 class="sm-headline" style="font-size:32px; line-height:1.2;">
-                    SliceMatic is<br>temporarily unavailable</h1>
-                  <p class="sm-subtitle">Please try again shortly.</p>
-                </div>
-                """)
+                # ──── SYSTEM UNAVAILABLE — show which files are missing ────
+                missing_lines = []
+                for fname, items, label in [
+                    (BASE_FILE, bases, "bases"),
+                    (PIZZA_FILE, pizzas, "pizzas"),
+                    (TOPPING_FILE, toppings, "toppings"),
+                ]:
+                    if not items:
+                        missing_lines.append(
+                            f'<div style="font-size:14px;margin:6px 0;color:#dc2626;">'
+                            f'<span style="font-weight:700;">✗</span> '
+                            f'<strong>{html_escape(fname)}</strong> — file missing or empty</div>'
+                        )
+                    else:
+                        missing_lines.append(
+                            f'<div style="font-size:14px;margin:6px 0;color:#24963F;">'
+                            f'<span style="font-weight:700;">✓</span> '
+                            f'<strong>{html_escape(fname)}</strong> — {len(items)} {label} loaded</div>'
+                        )
+                gr.HTML(
+                    '<div style="text-align:center; padding:80px 20px;">'
+                    '  <div style="width:96px; height:96px; background:#fee2e2; border-radius:50%;'
+                    '              margin:0 auto 32px; display:flex; align-items:center;'
+                    '              justify-content:center; font-size:44px;">⚠️</div>'
+                    '  <h1 class="sm-headline" style="font-size:28px; line-height:1.2;">'
+                    '    SliceMatic could not start</h1>'
+                    '  <p class="sm-subtitle" style="margin-bottom:24px;">One or more menu files are missing or empty.</p>'
+                    '  <div class="sm-card" style="max-width:480px;margin:0 auto;text-align:left;padding:20px;">'
+                    + "".join(missing_lines) +
+                    '  </div>'
+                    '</div>'
+                )
 
             else:
                 # ════════════════════════════════════════════════════
@@ -546,10 +606,16 @@ with gr.Blocks(title="SliceMatic") as app:
                         (PIZZA_FILE, pizzas, "pizzas"),
                         (TOPPING_FILE, toppings, "toppings"),
                     ]:
+                        available = sum(1 for _, _, p in items if p > 0)
+                        total = len(items)
+                        if available == total:
+                            status = f'{total} {label} loaded'
+                        else:
+                            status = f'{available}/{total} {label} available'
                         init_lines.append(
                             f'<div class="sm-primary-text" style="font-size:14px;margin:6px 0;">'
                             f'<span style="color:#24963F;font-weight:700;">✓</span> '
-                            f'<strong>{html_escape(fname)}</strong> — {len(items)} {label} loaded</div>'
+                            f'<strong>{html_escape(fname)}</strong> — {status}</div>'
                         )
                     gr.HTML(
                         '<div class="sm-card" style="max-width:720px;text-align:center;margin: 0 auto;">'
@@ -602,7 +668,7 @@ with gr.Blocks(title="SliceMatic") as app:
                         pizza_input = gr.Textbox(label="Enter pizza number", placeholder="e.g. 1", max_lines=1)
                         pizza_err_display = gr.HTML("")
 
-                    topping_choices = [f"{i}. {name} (+₹{price:.2f})" for i, (_, name, price) in enumerate(toppings, 1)]
+                    topping_choices = [f"{i}. {name} (+₹{price:.2f})" for i, (_, name, price) in enumerate(toppings, 1) if price > 0]
                     topping_input = gr.CheckboxGroup(
                         choices=topping_choices, label="Choose your toppings", value=[], elem_classes=["sm-topping-checkboxes"]
                     )
@@ -666,324 +732,325 @@ with gr.Blocks(title="SliceMatic") as app:
                         new_btn = gr.Button("🏠 New Order", variant="secondary", size="lg")
 
         # ════════════════════════════════════════════════════
-        # EVENT HANDLERS
+        # EVENT HANDLERS (only wired when system is ready)
         # ════════════════════════════════════════════════════
+        if SYSTEM_READY:
 
-        # ── Stage 1 → Stage 2 ──────────────────────────────
-        def on_start(st):
-            st["stage"] = 2
-            st["timestamp"] = datetime.now(IST).isoformat()
-            return st, render_sidebar(1), gr.update(visible=False), gr.update(visible=True), gr.update(visible=True)
+            # ── Stage 1 → Stage 2 ──────────────────────────────
+            def on_start(st):
+                st["stage"] = 2
+                st["timestamp"] = datetime.now(IST).isoformat()
+                return st, render_sidebar(1), gr.update(visible=False), gr.update(visible=True), gr.update(visible=True)
 
-        start_btn.click(on_start, [state], [state, sidebar_display, stage1, stage2, sidebar_col])
+            start_btn.click(on_start, [state], [state, sidebar_display, stage1, stage2, sidebar_col])
 
-        # ── Stage 2 → Stage 3 ──────────────────────────────
-        def on_intake(st, name_raw, phone_raw):
-            try:
-                name, ne = validate_name(name_raw)
-                phone, pe = validate_phone(phone_raw)
-                if name is not None and phone is not None:
-                    st["name"] = name
-                    st["phone"] = phone
-                    st["stage"] = 3
+            # ── Stage 2 → Stage 3 ──────────────────────────────
+            def on_intake(st, name_raw, phone_raw):
+                try:
+                    name, ne = validate_name(name_raw)
+                    phone, pe = validate_phone(phone_raw)
+                    if name is not None and phone is not None:
+                        st["name"] = name
+                        st["phone"] = phone
+                        st["stage"] = 3
+                        return (
+                            st, render_sidebar(2), err(ne), err(pe),
+                            gr.update(visible=False), gr.update(visible=True),
+                        )
+                    return st, gr.update(), err(ne), err(pe), gr.update(), gr.update()
+                except Exception:
                     return (
-                        st, render_sidebar(2), err(ne), err(pe),
-                        gr.update(visible=False), gr.update(visible=True),
+                        st, gr.update(), err("An unexpected error occurred."), err(""),
+                        gr.update(), gr.update(),
                     )
-                return st, gr.update(), err(ne), err(pe), gr.update(), gr.update()
-            except Exception:
-                return (
-                    st, gr.update(), err("An unexpected error occurred."), err(""),
-                    gr.update(), gr.update(),
-                )
 
-        intake_btn.click(
-            on_intake,
-            [state, name_input, phone_input],
-            [state, sidebar_display, name_err_display, phone_err_display, stage2, stage3],
-        )
+            intake_btn.click(
+                on_intake,
+                [state, name_input, phone_input],
+                [state, sidebar_display, name_err_display, phone_err_display, stage2, stage3],
+            )
 
-        # ── Stage 3: Build Order & Cart ───────────────────────────
-        def on_add_cart(st, b_raw, p_raw, t_selected, qty_raw):
-            try:
-                bi, be = validate_selection(b_raw, bases)
-                pi, pe = validate_selection(p_raw, pizzas)
-                ti, te = validate_toppings_checkbox(t_selected, toppings)
+            # ── Stage 3: Build Order & Cart ───────────────────────────
+            def on_add_cart(st, b_raw, p_raw, t_selected, qty_raw):
+                try:
+                    bi, be = validate_selection(b_raw, bases)
+                    pi, pe = validate_selection(p_raw, pizzas)
+                    ti, te = validate_toppings_checkbox(t_selected, toppings)
 
-                if bi is None or pi is None or (not ti and "select at least one" in te):
+                    if bi is None or pi is None or (not ti and "select at least one" in te):
+                        return (
+                            st, err(be), err(pe), err(te), err(""),
+                            "", gr.update(), gr.update(),
+                            gr.update(), gr.update(), gr.update(), gr.update()
+                        )
+
+                    qty, qe = validate_quantity(qty_raw)
+                    if qty is None:
+                        return (
+                            st, err(""), err(""), err(""), err(qe),
+                            "", gr.update(), gr.update(),
+                            gr.update(), gr.update(), gr.update(), gr.update()
+                        )
+
+                    cart = st.get("cart", [])
+                    total_qty = sum(item["quantity"] for item in cart)
+                    if total_qty + qty > 10:
+                        return (
+                            st, err(""), err(""), err(""), err(f"Cannot add {qty} pizzas. Maximum order is 10. Cart has {total_qty}."),
+                            "", gr.update(), gr.update(),
+                            gr.update(), gr.update(), gr.update(), gr.update()
+                        )
+
+                    cart.append({
+                        "base_idx": bi,
+                        "pizza_idx": pi,
+                        "topping_idx": ti,
+                        "quantity": qty
+                    })
+                    st["cart"] = cart
+
+                    html = render_cart_html(cart)
                     return (
-                        st, err(be), err(pe), err(te), err(""),
+                        st, err(""), err(""), err(""), err(""),
+                        f"<p class='sm-success-msg'>✓ Added to cart</p>", html, gr.update(interactive=True),
+                        gr.update(value=""), gr.update(value=""), gr.update(value=[]), gr.update(value=1)
+                    )
+                except Exception as e:
+                    return (
+                        st, err("An unexpected error occurred."), err(""), err(""), err(""),
                         "", gr.update(), gr.update(),
                         gr.update(), gr.update(), gr.update(), gr.update()
                     )
 
-                qty, qe = validate_quantity(qty_raw)
-                if qty is None:
-                    return (
-                        st, err(""), err(""), err(""), err(qe),
-                        "", gr.update(), gr.update(),
-                        gr.update(), gr.update(), gr.update(), gr.update()
-                    )
+            add_cart_btn.click(
+                on_add_cart,
+                [state, base_input, pizza_input, topping_input, qty_input],
+                [state, base_err_display, pizza_err_display, topping_err_display, add_cart_err, add_cart_msg, cart_display, menu_btn,
+                 base_input, pizza_input, topping_input, qty_input]
+            )
 
-                cart = st.get("cart", [])
-                total_qty = sum(item["quantity"] for item in cart)
-                if total_qty + qty > 10:
-                    return (
-                        st, err(""), err(""), err(""), err(f"Cannot add {qty} pizzas. Maximum order is 10. Cart has {total_qty}."),
-                        "", gr.update(), gr.update(),
-                        gr.update(), gr.update(), gr.update(), gr.update()
-                    )
-
-                cart.append({
-                    "base_idx": bi,
-                    "pizza_idx": pi,
-                    "topping_idx": ti,
-                    "quantity": qty
-                })
-                st["cart"] = cart
-
-                html = render_cart_html(cart)
-                return (
-                    st, err(""), err(""), err(""), err(""),
-                    f"<p class='sm-success-msg'>✓ Added to cart</p>", html, gr.update(interactive=True),
-                    gr.update(value=""), gr.update(value=""), gr.update(value=[]), gr.update(value=1)
-                )
-            except Exception as e:
-                return (
-                    st, err("An unexpected error occurred."), err(""), err(""), err(""),
-                    "", gr.update(), gr.update(),
-                    gr.update(), gr.update(), gr.update(), gr.update()
-                )
-
-        add_cart_btn.click(
-            on_add_cart,
-            [state, base_input, pizza_input, topping_input, qty_input],
-            [state, base_err_display, pizza_err_display, topping_err_display, add_cart_err, add_cart_msg, cart_display, menu_btn,
-             base_input, pizza_input, topping_input, qty_input]
-        )
-
-        def on_clear_build():
-            return "", "", [], 1, "", "", "", "", ""
+            def on_clear_build():
+                return "", "", [], 1, "", "", "", "", ""
         
-        clear_build_btn.click(
-            on_clear_build,
-            [],
-            [base_input, pizza_input, topping_input, qty_input, base_err_display, pizza_err_display, topping_err_display, add_cart_err, add_cart_msg]
-        )
+            clear_build_btn.click(
+                on_clear_build,
+                [],
+                [base_input, pizza_input, topping_input, qty_input, base_err_display, pizza_err_display, topping_err_display, add_cart_err, add_cart_msg]
+            )
         
-        def on_clear_cart(st):
-            st["cart"] = []
-            html = render_cart_html([])
-            return st, html, __import__("gradio").update(interactive=False)
+            def on_clear_cart(st):
+                st["cart"] = []
+                html = render_cart_html([])
+                return st, html, __import__("gradio").update(interactive=False)
             
-        clear_cart_btn.click(
-            on_clear_cart, [state], [state, cart_display, menu_btn]
-        )
+            clear_cart_btn.click(
+                on_clear_cart, [state], [state, cart_display, menu_btn]
+            )
 
-        # ── Stage 3 → Stage 4 ─────────────────────────────
-        def on_menu_continue(st):
-            try:
-                cart = st.get("cart", [])
-                if not cart:
-                    return st, render_sidebar(2), __import__("gradio").update(), __import__("gradio").update(), ""
+            # ── Stage 3 → Stage 4 ─────────────────────────────
+            def on_menu_continue(st):
+                try:
+                    cart = st.get("cart", [])
+                    if not cart:
+                        return st, render_sidebar(2), __import__("gradio").update(), __import__("gradio").update(), ""
                 
-                st["stage"] = 4
-                html = render_bill_html(st)
-                return (
-                    st, render_sidebar(3),
-                    __import__("gradio").update(visible=False), __import__("gradio").update(visible=True), html,
-                )
-            except Exception:
-                return st, render_sidebar(2), __import__("gradio").update(), __import__("gradio").update(), ""
-
-        menu_btn.click(
-            on_menu_continue,
-            [state],
-            [
-                state, sidebar_display,
-                stage3, stage4, bill_display,
-            ],
-        )
-
-        # ── Stage 4 → Stage 5 ─────────────────────────────
-        def on_proceed(st):
-            st["stage"] = 5
-            return st, render_sidebar(4), gr.update(visible=False), gr.update(visible=True)
-
-        bill_btn.click(on_proceed, [state], [state, sidebar_display, stage4, stage5])
-
-        # ── Back: Stage 4 → Stage 3 (Bill → Menu) ────────
-        def on_back_to_menu(st):
-            st["stage"] = 3
-            return st, render_sidebar(2), gr.update(visible=False), gr.update(visible=True)
-
-        back_to_menu_btn.click(on_back_to_menu, [state], [state, sidebar_display, stage4, stage3])
-
-        # ── Back: Stage 5 → Stage 4 (Payment → Bill) ─────
-        def on_back_to_bill(st):
-            st["stage"] = 4
-            return st, render_sidebar(3), gr.update(visible=False), gr.update(visible=True)
-
-        back_to_bill_btn.click(on_back_to_bill, [state], [state, sidebar_display, stage5, stage4])
-
-        # ── Stage 5: Payment selection change ──────────────
-        def on_pay_select(selection):
-            if selection in PAYMENT_MODES:
-                return (
-                    "",
-                    f"<p class='sm-pay-info'>ℹ {html_escape(PAYMENT_MESSAGES[selection])}</p>",
-                )
-            return err("Please select a valid payment mode: Cash, Card, or UPI."), ""
-
-        pay_radio.change(on_pay_select, [pay_radio], [pay_err_display, pay_msg_display])
-
-        # ── Stage 5: Confirm Order + Persistence ──────────
-        def on_confirm_order(st, selection):
-            try:
-                if selection is None or selection not in PAYMENT_MODES:
+                    st["stage"] = 4
+                    html = render_bill_html(st)
                     return (
-                        st, render_sidebar(4),
-                        err("Please select a valid payment mode: Cash, Card, or UPI."),
+                        st, render_sidebar(3),
+                        __import__("gradio").update(visible=False), __import__("gradio").update(visible=True), html,
+                    )
+                except Exception:
+                    return st, render_sidebar(2), __import__("gradio").update(), __import__("gradio").update(), ""
+
+            menu_btn.click(
+                on_menu_continue,
+                [state],
+                [
+                    state, sidebar_display,
+                    stage3, stage4, bill_display,
+                ],
+            )
+
+            # ── Stage 4 → Stage 5 ─────────────────────────────
+            def on_proceed(st):
+                st["stage"] = 5
+                return st, render_sidebar(4), gr.update(visible=False), gr.update(visible=True)
+
+            bill_btn.click(on_proceed, [state], [state, sidebar_display, stage4, stage5])
+
+            # ── Back: Stage 4 → Stage 3 (Bill → Menu) ────────
+            def on_back_to_menu(st):
+                st["stage"] = 3
+                return st, render_sidebar(2), gr.update(visible=False), gr.update(visible=True)
+
+            back_to_menu_btn.click(on_back_to_menu, [state], [state, sidebar_display, stage4, stage3])
+
+            # ── Back: Stage 5 → Stage 4 (Payment → Bill) ─────
+            def on_back_to_bill(st):
+                st["stage"] = 4
+                return st, render_sidebar(3), gr.update(visible=False), gr.update(visible=True)
+
+            back_to_bill_btn.click(on_back_to_bill, [state], [state, sidebar_display, stage5, stage4])
+
+            # ── Stage 5: Payment selection change ──────────────
+            def on_pay_select(selection):
+                if selection in PAYMENT_MODES:
+                    return (
+                        "",
+                        f"<p class='sm-pay-info'>ℹ {html_escape(PAYMENT_MESSAGES[selection])}</p>",
+                    )
+                return err("Please select a valid payment mode: Cash, Card, or UPI."), ""
+
+            pay_radio.change(on_pay_select, [pay_radio], [pay_err_display, pay_msg_display])
+
+            # ── Stage 5: Confirm Order + Persistence ──────────
+            def on_confirm_order(st, selection):
+                try:
+                    if selection is None or selection not in PAYMENT_MODES:
+                        return (
+                            st, render_sidebar(4),
+                            err("Please select a valid payment mode: Cash, Card, or UPI."),
+                            "", gr.update(), gr.update(), "",
+                        )
+
+                    st["payment_mode"] = selection
+                    order_line = build_order_line(st)
+
+                    # Dedicated try/except for file write — the critical edge case
+                    try:
+                        with open(LOG_FILE, "a", encoding="utf-8") as f:
+                            f.write(order_line + "\n\n")
+                        write_ok = True
+                    except Exception:
+                        write_ok = False
+
+                    bill_html = render_bill_html(st, show_payment=True)
+                    safe_name = html_escape(st["name"])
+                    safe_ts = html_escape(st["timestamp"])
+
+                    if write_ok:
+                        receipt = f"""
+                        <div class="sm-receipt-wrapper" style="text-align:center; font-family:Inter,system-ui,sans-serif;">
+                          <div class="sm-success-icon">✅</div>
+                          <h2 class="sm-success-title">Order Confirmed</h2>
+                          <p class="sm-receipt-msg">
+                            Your pizza is on its way. Thank you for choosing SliceMatic.
+                          </p>
+                          <div class="sm-receipt-details">
+                            <p><strong>Customer:</strong> {safe_name}</p>
+                            <p><strong>Order Time:</strong> {safe_ts}</p>
+                          </div>
+                          {bill_html}
+                          <div class="sm-dev-log">
+                            <div class="sm-dev-log-header">
+                              <div style="display:flex; align-items:center;">
+                                <span style="font-family:monospace;font-size:14px;color:#94a3b8;margin-right:6px;">>_</span> DEVELOPER TRACE LOG
+                              </div>
+                              <button class="sm-dev-log-copy" data-log="{html_escape(order_line)}" title="Copy to clipboard">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                              </button>
+                            </div>
+                            <div class="sm-dev-log-content">{html_escape(order_line)}</div>
+                          </div>
+                        </div>"""
+                    else:
+                        safe_mode = html_escape(st["payment_mode"])
+                        receipt = f"""
+                        <div class="sm-receipt-wrapper" style="text-align:center; font-family:Inter,system-ui,sans-serif;">
+                          <div class="sm-error-icon">⚠️</div>
+                          <h2 class="sm-error-title">Order Recording Failed</h2>
+                          <p class="sm-receipt-msg">
+                            Your order total and payment mode were confirmed, but we could not
+                            save your order record. Please show this screen to staff:
+                          </p>
+                          <div class="sm-receipt-details">
+                            <p><strong>Customer:</strong> {safe_name}</p>
+                            <p><strong>Order Time:</strong> {safe_ts}</p>
+                            <p><strong>Payment:</strong> {safe_mode}</p>
+                          </div>
+                          {bill_html}
+                          <div class="sm-dev-log">
+                            <div class="sm-dev-log-header">
+                              <div style="display:flex; align-items:center;">
+                                <span style="font-family:monospace;font-size:14px;color:#94a3b8;margin-right:6px;">>_</span> DEVELOPER TRACE LOG
+                              </div>
+                              <button class="sm-dev-log-copy" data-log="{html_escape(order_line)}" title="Copy to clipboard">
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                              </button>
+                            </div>
+                            <div class="sm-dev-log-content">{html_escape(order_line)}</div>
+                          </div>
+                        </div>"""
+
+                    return (
+                        st, render_sidebar(5), "", "",
+                        gr.update(visible=False), gr.update(visible=True), receipt,
+                    )
+                except Exception:
+                    return (
+                        st, render_sidebar(4), err("An unexpected error occurred. Please try again."),
                         "", gr.update(), gr.update(), "",
                     )
 
-                st["payment_mode"] = selection
-                order_line = build_order_line(st)
-
-                # Dedicated try/except for file write — the critical edge case
-                try:
-                    with open(LOG_FILE, "a", encoding="utf-8") as f:
-                        f.write(order_line + "\n\n")
-                    write_ok = True
-                except Exception:
-                    write_ok = False
-
-                bill_html = render_bill_html(st, show_payment=True)
-                safe_name = html_escape(st["name"])
-                safe_ts = html_escape(st["timestamp"])
-
-                if write_ok:
-                    receipt = f"""
-                    <div class="sm-receipt-wrapper" style="text-align:center; font-family:Inter,system-ui,sans-serif;">
-                      <div class="sm-success-icon">✅</div>
-                      <h2 class="sm-success-title">Order Confirmed</h2>
-                      <p class="sm-receipt-msg">
-                        Your pizza is on its way. Thank you for choosing SliceMatic.
-                      </p>
-                      <div class="sm-receipt-details">
-                        <p><strong>Customer:</strong> {safe_name}</p>
-                        <p><strong>Order Time:</strong> {safe_ts}</p>
-                      </div>
-                      {bill_html}
-                      <div class="sm-dev-log">
-                        <div class="sm-dev-log-header">
-                          <div style="display:flex; align-items:center;">
-                            <span style="font-family:monospace;font-size:14px;color:#94a3b8;margin-right:6px;">>_</span> DEVELOPER TRACE LOG
-                          </div>
-                          <button class="sm-dev-log-copy" data-log="{html_escape(order_line)}" title="Copy to clipboard">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                          </button>
-                        </div>
-                        <div class="sm-dev-log-content">{html_escape(order_line)}</div>
-                      </div>
-                    </div>"""
-                else:
-                    safe_mode = html_escape(st["payment_mode"])
-                    receipt = f"""
-                    <div class="sm-receipt-wrapper" style="text-align:center; font-family:Inter,system-ui,sans-serif;">
-                      <div class="sm-error-icon">⚠️</div>
-                      <h2 class="sm-error-title">Order Recording Failed</h2>
-                      <p class="sm-receipt-msg">
-                        Your order total and payment mode were confirmed, but we could not
-                        save your order record. Please show this screen to staff:
-                      </p>
-                      <div class="sm-receipt-details">
-                        <p><strong>Customer:</strong> {safe_name}</p>
-                        <p><strong>Order Time:</strong> {safe_ts}</p>
-                        <p><strong>Payment:</strong> {safe_mode}</p>
-                      </div>
-                      {bill_html}
-                      <div class="sm-dev-log">
-                        <div class="sm-dev-log-header">
-                          <div style="display:flex; align-items:center;">
-                            <span style="font-family:monospace;font-size:14px;color:#94a3b8;margin-right:6px;">>_</span> DEVELOPER TRACE LOG
-                          </div>
-                          <button class="sm-dev-log-copy" data-log="{html_escape(order_line)}" title="Copy to clipboard">
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                          </button>
-                        </div>
-                        <div class="sm-dev-log-content">{html_escape(order_line)}</div>
-                      </div>
-                    </div>"""
-
-                return (
-                    st, render_sidebar(5), "", "",
-                    gr.update(visible=False), gr.update(visible=True), receipt,
-                )
-            except Exception:
-                return (
-                    st, render_sidebar(4), err("An unexpected error occurred. Please try again."),
-                    "", gr.update(), gr.update(), "",
-                )
-
-        pay_btn.click(
-            on_confirm_order,
-            [state, pay_radio],
-            [
-                state, sidebar_display, pay_err_display, pay_msg_display,
-                pay_section, receipt_section, receipt_display,
-            ],
-        )
-
-        # ── New Order (reset everything) ───────────────────────────
-        def on_new_order():
-            return (
-                initial_state(),
-                render_sidebar(1),                               # sidebar
-                __import__("gradio").update(visible=True),                        # stage1
-                __import__("gradio").update(visible=False),                       # stage2
-                __import__("gradio").update(visible=False),                       # stage3
-                __import__("gradio").update(visible=False),                       # stage4
-                __import__("gradio").update(visible=False),                       # stage5
-                __import__("gradio").update(value=""),                             # name_input
-                __import__("gradio").update(value=""),                             # phone_input
-                "",                                              # name_err
-                "",                                              # phone_err
-                __import__("gradio").update(value=1),                              # qty_input
-                "",                                              # add_cart_err
-                "",                                              # add_cart_msg
-                '<div style="padding:20px; border:1px dashed #cbd5e1; border-radius:8px; text-align:center; color:#64748b;">Your cart is empty<br><span style="font-size:12px;">Add a pizza combination to begin.</span></div>', # cart_display
-                __import__("gradio").update(value=""),                            # base_input
-                __import__("gradio").update(value=""),                            # pizza_input
-                __import__("gradio").update(value=[]),                             # topping_input
-                "",                                              # base_err
-                "",                                              # pizza_err
-                "",                                              # topping_err
-                __import__("gradio").update(interactive=False),                    # menu_btn
-                "",                                              # bill_display
-                __import__("gradio").update(value=None),                           # pay_radio
-                "",                                              # pay_err
-                "",                                              # pay_msg
-                __import__("gradio").update(visible=True),                         # pay_section
-                __import__("gradio").update(visible=False),                        # receipt_section
-                "",                                              # receipt_display
-                __import__("gradio").update(visible=False),                        # sidebar_col
+            pay_btn.click(
+                on_confirm_order,
+                [state, pay_radio],
+                [
+                    state, sidebar_display, pay_err_display, pay_msg_display,
+                    pay_section, receipt_section, receipt_display,
+                ],
             )
 
-        new_btn.click(
-            on_new_order,
-            [],
-            [
-                state, sidebar_display, stage1, stage2, stage3, stage4, stage5,
-                name_input, phone_input, name_err_display, phone_err_display,
-                qty_input, add_cart_err, add_cart_msg, cart_display,
-                base_input, pizza_input, topping_input,
-                base_err_display, pizza_err_display, topping_err_display,
-                menu_btn, bill_display,
-                pay_radio, pay_err_display, pay_msg_display,
-                pay_section, receipt_section, receipt_display, sidebar_col,
-            ],
-        )
+            # ── New Order (reset everything) ───────────────────────────
+            def on_new_order():
+                return (
+                    initial_state(),
+                    render_sidebar(1),                               # sidebar
+                    __import__("gradio").update(visible=True),                        # stage1
+                    __import__("gradio").update(visible=False),                       # stage2
+                    __import__("gradio").update(visible=False),                       # stage3
+                    __import__("gradio").update(visible=False),                       # stage4
+                    __import__("gradio").update(visible=False),                       # stage5
+                    __import__("gradio").update(value=""),                             # name_input
+                    __import__("gradio").update(value=""),                             # phone_input
+                    "",                                              # name_err
+                    "",                                              # phone_err
+                    __import__("gradio").update(value=1),                              # qty_input
+                    "",                                              # add_cart_err
+                    "",                                              # add_cart_msg
+                    '<div style="padding:20px; border:1px dashed #cbd5e1; border-radius:8px; text-align:center; color:#64748b;">Your cart is empty<br><span style="font-size:12px;">Add a pizza combination to begin.</span></div>', # cart_display
+                    __import__("gradio").update(value=""),                            # base_input
+                    __import__("gradio").update(value=""),                            # pizza_input
+                    __import__("gradio").update(value=[]),                             # topping_input
+                    "",                                              # base_err
+                    "",                                              # pizza_err
+                    "",                                              # topping_err
+                    __import__("gradio").update(interactive=False),                    # menu_btn
+                    "",                                              # bill_display
+                    __import__("gradio").update(value=None),                           # pay_radio
+                    "",                                              # pay_err
+                    "",                                              # pay_msg
+                    __import__("gradio").update(visible=True),                         # pay_section
+                    __import__("gradio").update(visible=False),                        # receipt_section
+                    "",                                              # receipt_display
+                    __import__("gradio").update(visible=False),                        # sidebar_col
+                )
+
+            new_btn.click(
+                on_new_order,
+                [],
+                [
+                    state, sidebar_display, stage1, stage2, stage3, stage4, stage5,
+                    name_input, phone_input, name_err_display, phone_err_display,
+                    qty_input, add_cart_err, add_cart_msg, cart_display,
+                    base_input, pizza_input, topping_input,
+                    base_err_display, pizza_err_display, topping_err_display,
+                    menu_btn, bill_display,
+                    pay_radio, pay_err_display, pay_msg_display,
+                    pay_section, receipt_section, receipt_display, sidebar_col,
+                ],
+            )
 
 if __name__ == "__main__":
     # Design-system stylesheet — applies Stitch tokens to native Gradio
@@ -1240,6 +1307,12 @@ if __name__ == "__main__":
     .sm-card-item {
         background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
         padding: 12px; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    }
+    .sm-card-unavailable {
+        opacity: 0.45; pointer-events: none; filter: grayscale(0.6);
+    }
+    .sm-num-disabled {
+        background: #94a3b8 !important;
     }
     .sm-card-pizza {
         background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
