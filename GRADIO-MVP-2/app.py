@@ -39,18 +39,34 @@ PAYMENT_MESSAGES = {
 }
 
 
-def item_image_url(item_id):
-    """Return a Gradio-served URL for an item's menu image, or '' if missing.
+def item_image_url(item_id, fallback_id=None):
+    """Return a Gradio-served URL for an item's menu image.
 
-    Keyed by item ID (e.g. 'B1', 'P3'). Returning '' on miss lets the renderer
-    fall back to a styled placeholder — this matters because the grader may
-    swap menu files with IDs we have no image for.
+    Keyed by item ID (e.g. 'B1', 'P3'). If no image is found for `item_id`,
+    tries `fallback_id` before giving up and returning ''. This handles cases
+    where menu files are extended with new IDs that have no dedicated image.
     """
     for ext in ("png", "jpg", "jpeg", "webp"):
         p = MENU_IMAGE_DIR / f"{item_id}.{ext}"
         if p.exists():
             return f"/gradio_api/file={quote(str(p))}"
+    if fallback_id and fallback_id != item_id:
+        for ext in ("png", "jpg", "jpeg", "webp"):
+            p = MENU_IMAGE_DIR / f"{fallback_id}.{ext}"
+            if p.exists():
+                return f"/gradio_api/file={quote(str(p))}"
     return ""
+
+
+def base_image_url(item_id):
+    """Return image URL for a base item, falling back to B1 (Thin Crust) if no specific image exists."""
+    return item_image_url(item_id, fallback_id="B1")
+
+
+def pizza_image_url(item_id):
+    """Return image URL for a pizza item, falling back to P1 (Margherita) if no specific image exists."""
+    return item_image_url(item_id, fallback_id="P1")
+
 
 
 # ═══════════════════════════════════════════════════════════
@@ -137,7 +153,9 @@ def validate_quantity(raw):
     if isinstance(raw, (int, float)):
         q = int(raw)
         if q <= 0:
-            return None, "Quantity must be greater than 0."
+            return None, "Quantity must be between 1 and 10."
+        if q > MAX_QTY:
+            return None, "Maximum outlet capacity is 10 pizzas per order."
         return q, ""
     s = str(raw or "").strip()
     if not s:
@@ -185,6 +203,72 @@ def validate_toppings_checkbox(selected, items):
     if not indices:
         return [], "Please select at least one topping."
     return indices, ""
+
+
+def _render_cart_item_html(item):
+    """Render a single cart item's detail block (no wrapper)."""
+    b = bases[item["base_idx"]]
+    p = pizzas[item["pizza_idx"]]
+    topping_list = [toppings[t] for t in item["topping_idx"]]
+    unit = b[2] + p[2] + sum(t[2] for t in topping_list)
+    qty = item["quantity"]
+    sub = unit * qty
+
+    topping_lines = "".join(
+        f'<div style="display:flex;justify-content:space-between;">'
+        f'<span style="color:#64748b;">&nbsp;&nbsp;+ {html_escape(t[1])}</span>'
+        f'<span style="color:#64748b;">&#8377;{t[2]:.2f}</span></div>'
+        for t in topping_list
+    )
+    if not topping_lines:
+        topping_lines = '<div style="color:#94a3b8;font-style:italic;">&nbsp;&nbsp;No toppings</div>'
+
+    return f"""
+    <div style="padding-bottom:8px; margin-bottom:4px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
+            <strong class="sm-cart-title">{qty}x {html_escape(p[1])}</strong>
+            <span class="sm-cart-title" style="font-weight:700;">&#8377;{sub:.2f}</span>
+        </div>
+        <div style="font-size:13px; margin-top:4px;">
+            <div style="display:flex;justify-content:space-between;">
+                <span style="color:#64748b;">Base: {html_escape(b[1])}</span>
+                <span style="color:#64748b;">&#8377;{b[2]:.2f}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+                <span style="color:#64748b;">Pizza: {html_escape(p[1])}</span>
+                <span style="color:#64748b;">&#8377;{p[2]:.2f}</span>
+            </div>
+            {topping_lines}
+            <div style="display:flex;justify-content:space-between; border-top:1px dotted #e2e8f0; margin-top:4px; padding-top:4px;">
+                <span style="font-weight:600;color:#334155;">Unit price</span>
+                <span style="font-weight:600;color:#334155;">&#8377;{unit:.2f}</span>
+            </div>
+        </div>
+    </div>"""
+
+
+def _render_cart_totals_html(cart):
+    """Render the cart totals row (or empty-cart placeholder)."""
+    if not cart:
+        return (
+            '<div style="padding:20px; border:1px dashed #cbd5e1; border-radius:8px;'
+            ' text-align:center; color:#64748b;">Your cart is empty<br>'
+            '<span style="font-size:12px;">Add a pizza combination to begin.</span></div>'
+        )
+    total = 0
+    total_qty = 0
+    for item in cart:
+        b = bases[item["base_idx"]]
+        p = pizzas[item["pizza_idx"]]
+        unit = b[2] + p[2] + sum(toppings[t][2] for t in item["topping_idx"])
+        total += unit * item["quantity"]
+        total_qty += item["quantity"]
+    return f"""
+    <div style="margin-top:16px; padding-top:16px; border-top:1px solid #e2e8f0; display:flex; justify-content:space-between; font-weight:700; color:var(--body-text-color);">
+        <span>Cart Total <span style="font-size:12px;font-weight:normal;color:#64748b;">(Excl. GST)</span></span>
+        <span>&#8377;{total:.2f}</span>
+    </div>
+    <div style="text-align:center; font-size:12px; color:#64748b; margin-top:8px;">{total_qty}/10 pizzas selected</div>"""
 
 
 def render_cart_html(cart):
@@ -403,9 +487,9 @@ def render_steps(active):
     return "".join(parts)
 
 
-def _img_block(item_id, kind="square"):
-    """Image tile for an item — uses item_image_url; falls back to pizza emoji on miss."""
-    url = item_image_url(item_id)
+def _img_block(item_id, kind="square", fallback_id=None):
+    """Image tile for an item — uses item_image_url with optional fallback; falls back to pizza emoji on miss."""
+    url = item_image_url(item_id, fallback_id=fallback_id)
     cls = "sm-img" if kind == "square" else "sm-thumb"
     if url:
         return f'<div class="{cls}"><img src="{url}" alt=""></div>'
@@ -419,7 +503,7 @@ def render_base_cards(items):
         if price <= 0:
             cards.append(
                 '<div class="sm-card-item sm-card-unavailable">'
-                + _img_block(item_id, "square")
+                + _img_block(item_id, "square", fallback_id="B1")
                 + f'<div class="sm-item-name"><span class="sm-num sm-num-disabled">{i}</span>{html_escape(name)}</div>'
                 + '<div class="sm-item-price" style="color:#94a3b8;">Unavailable</div>'
                 + '</div>'
@@ -427,7 +511,7 @@ def render_base_cards(items):
             continue
         cards.append(
             '<div class="sm-card-item">'
-            + _img_block(item_id, "square")
+            + _img_block(item_id, "square", fallback_id="B1")
             + f'<div class="sm-item-name"><span class="sm-num">{i}</span>{html_escape(name)}</div>'
             + f'<div class="sm-item-price">₹{price:.2f}</div>'
             + '</div>'
@@ -445,7 +529,7 @@ def render_pizza_cards(items):
         if price <= 0:
             cards.append(
                 '<div class="sm-card-item sm-card-unavailable">'
-                + _img_block(item_id, "square")
+                + _img_block(item_id, "square", fallback_id="P1")
                 + f'<div class="sm-item-name"><span class="sm-num sm-num-disabled">{i}</span>{html_escape(name)}</div>'
                 + '<div class="sm-item-price" style="color:#94a3b8;">Unavailable</div>'
                 + '</div>'
@@ -453,7 +537,7 @@ def render_pizza_cards(items):
             continue
         cards.append(
             '<div class="sm-card-item">'
-            + _img_block(item_id, "square")
+            + _img_block(item_id, "square", fallback_id="P1")
             + f'<div class="sm-item-name"><span class="sm-num">{i}</span>{html_escape(name)}</div>'
             + f'<div class="sm-item-price">₹{price:.2f}</div>'
             + '</div>'
@@ -680,7 +764,7 @@ with gr.Blocks(title="SliceMatic") as app:
 
                     # Quantity + Add to cart
                     with gr.Column(elem_classes=["narrow-container"]):
-                        qty_input = gr.Slider(label="Quantity for this pizza", minimum=1, maximum=10, step=1, value=1)
+                        qty_input = gr.Number(label="Quantity for this pizza", value=1, precision=0)
 
                         with gr.Row(elem_classes=["sm-action-buttons"]):
                             add_cart_btn = gr.Button("Add to cart", variant="primary")
@@ -693,11 +777,29 @@ with gr.Blocks(title="SliceMatic") as app:
 
                     # Cart — full width below menu
                     gr.HTML('<h2 class="sm-headline" style="font-size:20px; border-left: 4px solid #b7102a; padding-left: 8px;">Your Cart</h2>')
-                    cart_display = gr.HTML(
-                        '<div style="padding:20px; border:1px dashed #cbd5e1; border-radius:8px; text-align:center; color:#64748b;">'
-                        'Your cart is empty<br><span style="font-size:12px;">Add a pizza combination to begin.</span>'
-                        '</div>'
-                    )
+
+                    @gr.render(inputs=state)
+                    def render_cart_section(st):
+                        cart = st.get("cart", [])
+                        if not cart:
+                            gr.HTML(
+                                '<div style="padding:20px; border:1px dashed #cbd5e1; border-radius:8px;'
+                                ' text-align:center; color:#64748b;">Your cart is empty<br>'
+                                '<span style="font-size:12px;">Add a pizza combination to begin.</span></div>'
+                            )
+                            return
+                        for i, item in enumerate(cart):
+                            with gr.Row(elem_classes=["sm-cart-row"]):
+                                gr.HTML(_render_cart_item_html(item))
+                                del_btn = gr.Button("✕", variant="secondary", size="sm", scale=0, min_width=40, elem_classes=["sm-cart-remove-btn"])
+                                def remove_item(st_val, idx=i):
+                                    c = st_val.get("cart", [])
+                                    if 0 <= idx < len(c):
+                                        c.pop(idx)
+                                        st_val["cart"] = c
+                                    return st_val, gr.update(interactive=len(c) > 0)
+                                del_btn.click(remove_item, [state], [state, menu_btn])
+                        gr.HTML(_render_cart_totals_html(cart))
 
                     with gr.Row(elem_classes=["sm-action-buttons"]):
                         clear_cart_btn = gr.Button("Clear cart", variant="secondary")
@@ -782,7 +884,7 @@ with gr.Blocks(title="SliceMatic") as app:
                     if bi is None or pi is None or (not ti and "select at least one" in te):
                         return (
                             st, err(be), err(pe), err(te), err(""),
-                            "", gr.update(), gr.update(),
+                            "", gr.update(),
                             gr.update(), gr.update(), gr.update(), gr.update()
                         )
 
@@ -790,7 +892,7 @@ with gr.Blocks(title="SliceMatic") as app:
                     if qty is None:
                         return (
                             st, err(""), err(""), err(""), err(qe),
-                            "", gr.update(), gr.update(),
+                            "", gr.update(),
                             gr.update(), gr.update(), gr.update(), gr.update()
                         )
 
@@ -799,7 +901,7 @@ with gr.Blocks(title="SliceMatic") as app:
                     if total_qty + qty > 10:
                         return (
                             st, err(""), err(""), err(""), err(f"Cannot add {qty} pizzas. Maximum order is 10. Cart has {total_qty}."),
-                            "", gr.update(), gr.update(),
+                            "", gr.update(),
                             gr.update(), gr.update(), gr.update(), gr.update()
                         )
 
@@ -811,23 +913,22 @@ with gr.Blocks(title="SliceMatic") as app:
                     })
                     st["cart"] = cart
 
-                    html = render_cart_html(cart)
                     return (
                         st, err(""), err(""), err(""), err(""),
-                        f"<p class='sm-success-msg'>✓ Added to cart</p>", html, gr.update(interactive=True),
+                        f"<p class='sm-success-msg'>✓ Added to cart</p>", gr.update(interactive=True),
                         gr.update(value=""), gr.update(value=""), gr.update(value=[]), gr.update(value=1)
                     )
                 except Exception as e:
                     return (
                         st, err("An unexpected error occurred."), err(""), err(""), err(""),
-                        "", gr.update(), gr.update(),
+                        "", gr.update(),
                         gr.update(), gr.update(), gr.update(), gr.update()
                     )
 
             add_cart_btn.click(
                 on_add_cart,
                 [state, base_input, pizza_input, topping_input, qty_input],
-                [state, base_err_display, pizza_err_display, topping_err_display, add_cart_err, add_cart_msg, cart_display, menu_btn,
+                [state, base_err_display, pizza_err_display, topping_err_display, add_cart_err, add_cart_msg, menu_btn,
                  base_input, pizza_input, topping_input, qty_input]
             )
 
@@ -842,28 +943,28 @@ with gr.Blocks(title="SliceMatic") as app:
         
             def on_clear_cart(st):
                 st["cart"] = []
-                html = render_cart_html([])
-                return st, html, __import__("gradio").update(interactive=False)
-            
+                return st, gr.update(interactive=False)
+
             clear_cart_btn.click(
-                on_clear_cart, [state], [state, cart_display, menu_btn]
+                on_clear_cart, [state], [state, menu_btn]
             )
+
 
             # ── Stage 3 → Stage 4 ─────────────────────────────
             def on_menu_continue(st):
                 try:
                     cart = st.get("cart", [])
                     if not cart:
-                        return st, render_sidebar(2), __import__("gradio").update(), __import__("gradio").update(), ""
-                
+                        return st, render_sidebar(2), gr.update(), gr.update(), ""
+
                     st["stage"] = 4
                     html = render_bill_html(st)
                     return (
                         st, render_sidebar(3),
-                        __import__("gradio").update(visible=False), __import__("gradio").update(visible=True), html,
+                        gr.update(visible=False), gr.update(visible=True), html,
                     )
                 except Exception:
-                    return st, render_sidebar(2), __import__("gradio").update(), __import__("gradio").update(), ""
+                    return st, render_sidebar(2), gr.update(), gr.update(), ""
 
             menu_btn.click(
                 on_menu_continue,
@@ -1012,34 +1113,33 @@ with gr.Blocks(title="SliceMatic") as app:
                 return (
                     initial_state(),
                     render_sidebar(1),                               # sidebar
-                    __import__("gradio").update(visible=True),                        # stage1
-                    __import__("gradio").update(visible=False),                       # stage2
-                    __import__("gradio").update(visible=False),                       # stage3
-                    __import__("gradio").update(visible=False),                       # stage4
-                    __import__("gradio").update(visible=False),                       # stage5
-                    __import__("gradio").update(value=""),                             # name_input
-                    __import__("gradio").update(value=""),                             # phone_input
+                    gr.update(visible=True),                         # stage1
+                    gr.update(visible=False),                        # stage2
+                    gr.update(visible=False),                        # stage3
+                    gr.update(visible=False),                        # stage4
+                    gr.update(visible=False),                        # stage5
+                    gr.update(value=""),                              # name_input
+                    gr.update(value=""),                              # phone_input
                     "",                                              # name_err
                     "",                                              # phone_err
-                    __import__("gradio").update(value=1),                              # qty_input
+                    gr.update(value=1),                               # qty_input
                     "",                                              # add_cart_err
                     "",                                              # add_cart_msg
-                    '<div style="padding:20px; border:1px dashed #cbd5e1; border-radius:8px; text-align:center; color:#64748b;">Your cart is empty<br><span style="font-size:12px;">Add a pizza combination to begin.</span></div>', # cart_display
-                    __import__("gradio").update(value=""),                            # base_input
-                    __import__("gradio").update(value=""),                            # pizza_input
-                    __import__("gradio").update(value=[]),                             # topping_input
+                    gr.update(value=""),                              # base_input
+                    gr.update(value=""),                              # pizza_input
+                    gr.update(value=[]),                              # topping_input
                     "",                                              # base_err
                     "",                                              # pizza_err
                     "",                                              # topping_err
-                    __import__("gradio").update(interactive=False),                    # menu_btn
+                    gr.update(interactive=False),                     # menu_btn
                     "",                                              # bill_display
-                    __import__("gradio").update(value=None),                           # pay_radio
+                    gr.update(value=None),                            # pay_radio
                     "",                                              # pay_err
                     "",                                              # pay_msg
-                    __import__("gradio").update(visible=True),                         # pay_section
-                    __import__("gradio").update(visible=False),                        # receipt_section
+                    gr.update(visible=True),                          # pay_section
+                    gr.update(visible=False),                         # receipt_section
                     "",                                              # receipt_display
-                    __import__("gradio").update(visible=False),                        # sidebar_col
+                    gr.update(visible=False),                         # sidebar_col
                 )
 
             new_btn.click(
@@ -1048,7 +1148,7 @@ with gr.Blocks(title="SliceMatic") as app:
                 [
                     state, sidebar_display, stage1, stage2, stage3, stage4, stage5,
                     name_input, phone_input, name_err_display, phone_err_display,
-                    qty_input, add_cart_err, add_cart_msg, cart_display,
+                    qty_input, add_cart_err, add_cart_msg,
                     base_input, pizza_input, topping_input,
                     base_err_display, pizza_err_display, topping_err_display,
                     menu_btn, bill_display,
@@ -1195,7 +1295,7 @@ if __name__ == "__main__":
         max-width: 1400px !important; align-self: center !important; width: 100% !important;
     }
     .narrow-container { max-width: 720px !important; margin: 0 auto !important; }
-    .sm-start-btn { max-width: 720px !important; margin: 16px auto 0 auto !important; }
+    .sm-start-btn { max-width: 720px !important; margin: 16px auto 24px auto !important; }
     .sm-bill-wrapper {
         font-family: Inter, system-ui, sans-serif;
         max-width: 720px; margin: 0 auto;
@@ -1261,6 +1361,30 @@ if __name__ == "__main__":
     /* Cart Styling */
     .sm-cart-title { color: #0F172A; }
     .dark .sm-cart-title { color: #f8fafc !important; }
+    .sm-cart-remove {
+        background: none; border: 1px solid #e2e8f0; border-radius: 6px;
+        color: #94a3b8; cursor: pointer; font-size: 14px; line-height: 1;
+        width: 28px; height: 28px; display: flex; align-items: center;
+        justify-content: center; padding: 0; flex-shrink: 0;
+        transition: all 0.15s ease;
+    }
+    .sm-cart-remove:hover { background: #fef2f2; border-color: #dc2626; color: #dc2626; }
+    .sm-cart-remove-btn { max-width: 40px !important; min-width: 40px !important; }
+    .sm-cart-remove-btn button {
+        background: none !important; border: 1px solid #e2e8f0 !important;
+        color: #94a3b8 !important; font-size: 16px !important; padding: 4px !important;
+        margin: 0 !important; border-radius: 6px !important; box-shadow: none !important;
+        min-width: 36px !important; height: 36px !important;
+    }
+    .sm-cart-remove-btn button:hover {
+        background: #fef2f2 !important; border-color: #dc2626 !important; color: #dc2626 !important;
+    }
+    .sm-cart-row {
+        align-items: flex-start !important; gap: 0 !important;
+        border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px; margin-bottom: 8px;
+    }
+    .sm-cart-row > :first-child { flex: 1 !important; }
+    .sm-cart-row > .sm-cart-remove-btn { margin-top: 4px !important; }
     .sm-cart-desc { font-size: 13px; color: #64748b; }
     .dark .sm-cart-desc { color: #cbd5e1 !important; }
     
