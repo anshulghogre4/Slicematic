@@ -78,8 +78,12 @@ def load_menu_file(filepath):
     Items with missing/empty name or missing/bad/zero/negative price are kept with
     price=0 (and name='Unnamed' if blank) so numbering stays consistent —
     rendering and validation treat these as unavailable.
+
+    Exact duplicate rows (same id AND same name AND same price) are skipped with
+    a [WARN] log so they do not appear as separate menu entries.
     """
     items = []
+    seen = set()  # tracks (item_id, name, price) tuples to catch exact duplicate rows
     try:
         with open(filepath, "r", encoding="utf-8") as f:
             for line_num, line in enumerate(f, 1):
@@ -109,6 +113,11 @@ def load_menu_file(filepath):
                     print(f"[WARN] {filepath}:{line_num} — negative price {price} for '{name}', marking unavailable")
                     items.append((item_id, name, 0.0))
                     continue
+                row_key = (item_id, name, price)
+                if row_key in seen:
+                    print(f"[WARN] {filepath}:{line_num} — exact duplicate row '{item_id};{name};{price_str}', skipping")
+                    continue
+                seen.add(row_key)
                 items.append((item_id, name, price))
     except FileNotFoundError:
         print(f"[ERROR] File not found: {filepath}")
