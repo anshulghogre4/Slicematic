@@ -1,4 +1,4 @@
-# SliceMatic — Pizza Ordering System
+﻿# SliceMatic — Pizza Ordering System
 
 > FDE Academy Group 9 | Team Project | Single-outlet pizza delivery for SliceMatic, New Ashok Nagar, Delhi
 
@@ -6,12 +6,12 @@
 
 ## Project Overview
 
-SliceMatic is a cart-based pizza ordering application built for a single-outlet delivery business. The project is delivered in stages — this README covers **Stage 1 (PRD)** and **Stage 2 (Gradio MVP)**.
+SliceMatic is a cart-based pizza ordering application built for a single-outlet delivery business. The project is delivered in stages — this README covers **Stage 1 (PRD)** and **Stage 2 (Gradio MVP 2)**.
 
 | Stage | Deliverable | Status |
 |-------|-------------|--------|
 | 1 — PRD + Business Economics | PDF document | Done |
-| 2 — Gradio MVP | Python app + menu files + order log | Done |
+| 2 — Gradio MVP 2 | Python app + menu files + order log + tests | Done |
 
 ---
 
@@ -27,12 +27,12 @@ SliceMatic is a cart-based pizza ordering application built for a single-outlet 
 
 | Decision | Rationale |
 |----------|-----------|
-| `Decimal` with `ROUND_HALF_UP` | Avoid floating-point money errors; rounding only at display/log |
+| `float` with no mid-calc rounding | Avoid floating-point money errors; rounding only at display/log |
 | Named constants (`GST_RATE`, `DISCOUNT_RATE`, etc.) | No magic numbers; easy to audit |
 | Menu loaded from `.txt` at runtime | Grader swaps files before testing — defensive parsing required |
-| Cart-based (multi-line) vs single-pizza | Supports realistic orders; discount triggers on total qty across cart |
+| Cart-based multi-item ordering | Supports realistic orders; discount triggers on total qty across cart |
 | GST calculated AFTER discount | `gst = (subtotal - discount) * 0.18` — matches PRD spec |
-| Validation rejects without exception | All 8 edge cases return user-friendly error, never crash |
+| Validation rejects without exception | All 11 edge cases return user-friendly error, never crash |
 
 ---
 
@@ -41,25 +41,27 @@ SliceMatic is a cart-based pizza ordering application built for a single-outlet 
 ```
 Slicematic/
 ├── README.md                          ← you are here
-├── Requirements/
+├── Project_Requirements/
 │   ├── PizzaFlow_Assignment_Brief_FDE.pdf
 │   ├── SliceMatic_Business_Economics.pdf
 │   └── Types_of_*.txt                 (reference menus)
 ├── documents/
 │   ├── SliceMatic_PRD_Business_Economics.pdf   (Stage 1 deliverable)
 │   └── Our Team.xlsx
-├── gradio-MVP/                        (Stage 2 deliverable)
+├── GRADIO-MVP-2/                      (Stage 2 deliverable)
 │   ├── app.py                         (main application ~1650 lines)
 │   ├── Types_of_Base.txt              (5 items)
 │   ├── Types_of_Pizza.txt             (8 items)
 │   ├── Types_of_Toppings.txt          (16 items)
-│   ├── requirements.txt               (gradio>=4.44)
+│   ├── requirements.txt               (gradio>=6.0,<7)
+│   ├── orders_log.txt                 (created/appended at runtime)
+│   ├── test_core.py                   (file loading, validation, bill math, log format)
+│   ├── test_edge_cases.py             (~72 edge cases with exact error-message checks)
+│   ├── SPRINT_PLAN.md                 (6-sprint build plan + iteration checklists)
 │   ├── assets/
-│   │   ├── pizza-hero.jpg
-│   │   └── menu/                      (generated pizza images)
-│   └── scripts/
-│       ├── generate_menu_assets.py
-│       └── download_pizza_photos.py
+│   │   └── menu/                      (pizza images served by Gradio)
+│   └── changelog/
+│       └── CHANGELOG.md               (v1.0.0 — 2026-06-27)
 └── db/                                (Stage 3 prep — schema drafted)
     ├── master schema & data_entry.sql
     ├── transactions.sql
@@ -72,7 +74,7 @@ Slicematic/
 ## Running the MVP
 
 ```bash
-cd gradio-MVP
+cd GRADIO-MVP-2
 pip install -r requirements.txt
 python app.py
 ```
@@ -87,7 +89,7 @@ The app launches on `http://localhost:7860` by default.
 |------|-------|
 | GST rate | 18% (applied after discount) |
 | Bulk discount | 10% when total qty ≥ 5 |
-| Max quantity per line | 10 |
+| Max quantity per order | 10 |
 | Customer name | Alphabets + spaces, 2–40 chars |
 | Phone | Exactly 10 digits, starts with 6/7/8/9 |
 | Payment modes | Cash, Card, UPI |
@@ -101,7 +103,7 @@ Delivered a Product Requirements Document covering:
 - 21 functional requirements for the ordering flow
 - Business economics: AOV Rs.850, contribution margin 69.3%, break-even 12 orders/day
 - Complete pricing model with GST and discount rules
-- Edge-case specifications (8 mandatory rejection scenarios)
+- Edge-case specifications (11 mandatory rejection scenarios)
 
 ---
 
