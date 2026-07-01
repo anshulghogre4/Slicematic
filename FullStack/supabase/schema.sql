@@ -100,9 +100,12 @@ end $$;
 
 alter table slicematic.orders add column if not exists razorpay_order_id text;
 alter table slicematic.orders add column if not exists razorpay_payment_id text;
+alter table slicematic.orders add column if not exists cashfree_order_id text;
+alter table slicematic.orders add column if not exists cashfree_payment_id text;
 alter table slicematic.orders add column if not exists payment_status text not null default 'confirmed'
   check (payment_status in ('paid', 'confirmed', 'failed'));
 create index if not exists idx_orders_razorpay_order_id on slicematic.orders(razorpay_order_id);
+create index if not exists idx_orders_cashfree_order_id on slicematic.orders(cashfree_order_id);
 
 create table if not exists slicematic.order_item (
   order_item_id uuid primary key default gen_random_uuid(),

@@ -78,6 +78,8 @@ export type OrderPayload = {
 export type PaymentMeta = {
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
+  cashfreeOrderId?: string;
+  cashfreePaymentId?: string;
   paymentStatus?: "paid" | "confirmed" | "failed";
 };
 
@@ -92,6 +94,8 @@ export type SavedOrder = {
   status: string;
   razorpayOrderId?: string;
   razorpayPaymentId?: string;
+  cashfreeOrderId?: string;
+  cashfreePaymentId?: string;
   paymentStatus?: "paid" | "confirmed" | "failed";
   subtotal: number;
   discount: number;

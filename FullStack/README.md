@@ -123,7 +123,7 @@ Card and UPI payments use Razorpay's `checkout.js` modal in test mode. Cash orde
 
 **Test credentials (Razorpay test mode):**
 
-- Test card: `4111 1111 1111 1111`, any CVV, any future expiry
+- Test card: `4100 2800 0000 1007`, any CVV, any future expiry
 - Test UPI: `success@razorpay`
 
 **Guest vs member:**

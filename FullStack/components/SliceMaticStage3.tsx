@@ -175,6 +175,19 @@ export default function SliceMaticStage3() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
 
+    // Cashfree redirects back with ?order_id=<our_order_id> after payment.
+    const cfReturnOrderId = params.get("order_id");
+    const cfPending = localStorage.getItem("cf_pending");
+    if (cfReturnOrderId && cfPending) {
+      const pending = JSON.parse(cfPending) as { orderId: string; amountPaise: number; payload: unknown };
+      localStorage.removeItem("cf_pending");
+      window.history.replaceState({}, "", window.location.pathname);
+      setPlacingOrder(true);
+      setPaymentStatusMessage("Verifying UPI payment…");
+      void verifyCashfreeAndFinish(pending.orderId, pending.amountPaise, pending.payload);
+      return;
+    }
+
     const isRecovery = params.get("reset") === "true" || window.location.hash.includes("type=recovery");
     const isCustomerRecovery = params.get("customerReset") === "true";
     if (isCustomerRecovery) {
@@ -411,6 +424,11 @@ export default function SliceMaticStage3() {
     });
   }
 
+  async function loadCashfreeSDK() {
+    const { load } = await import("@cashfreepayments/cashfree-js");
+    return load({ mode: "sandbox" as "sandbox" | "production" });
+  }
+
   async function placeOrder() {
     if (!ensureCustomerReady()) return;
     if (!cart.length) {
@@ -424,6 +442,10 @@ export default function SliceMaticStage3() {
     }
     if (paymentMode === "Cash") {
       await placeCashOrder();
+      return;
+    }
+    if (paymentMode === "UPI") {
+      await placeUpiOrder();
       return;
     }
     await placeOnlineOrder();
@@ -458,6 +480,81 @@ export default function SliceMaticStage3() {
       showToast(paymentConfirmation(result.order.paymentMode));
     } catch {
       showToast("Could not place order. Please retry.");
+    } finally {
+      setPlacingOrder(false);
+    }
+  }
+
+  async function placeUpiOrder() {
+    setPlacingOrder(true);
+    setPaymentStatusMessage("");
+    const orderPayload = {
+      customer,
+      lines: cart,
+      paymentMode,
+      customerMode: customerLoggedIn ? "member" : "guest",
+      customerAccountEmail: customerLoggedIn ? customerSessionEmail : null,
+      pricingConfig,
+      recommendationId: recommendation?.recommendationId ?? null
+    };
+    try {
+      const createRes = await fetch("/api/payments/cashfree/create-order", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(orderPayload)
+      });
+      const created = await createRes.json();
+      if (!created.ok) {
+        const message = Object.values(created.errors ?? { payment: "Could not start UPI payment." })[0] as string;
+        setPaymentStatusMessage(message);
+        showToast(message);
+        setPlacingOrder(false);
+        return;
+      }
+
+      localStorage.setItem("cf_pending", JSON.stringify({
+        orderId: created.cfOrderId,
+        amountPaise: created.amountPaise,
+        payload: orderPayload,
+      }));
+
+      const cashfree = await loadCashfreeSDK();
+      // redirectTarget "_self" = full-page redirect in the same tab.
+      // After payment, Cashfree redirects to return_url?order_id=<orderId>.
+      // The useEffect on mount detects that param and calls verify.
+      cashfree.checkout({
+        paymentSessionId: created.paymentSessionId,
+        redirectTarget: "_self",
+      });
+      // Don't await — for redirect flow the promise never resolves (page navigates away).
+      // If it does resolve (user somehow dismissed), cleanup below won't run because
+      // we've already navigated. The useEffect handles verification on return.
+    } catch {
+      setPaymentStatusMessage("Could not start UPI payment. Please retry.");
+      showToast("Could not start UPI payment. Please retry.");
+      setPlacingOrder(false);
+    }
+  }
+
+  async function verifyCashfreeAndFinish(cfOrderId: string, amountPaise: number, orderPayload: unknown) {
+    try {
+      const verifyRes = await fetch("/api/payments/cashfree/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cfOrderId, amountPaise, payload: orderPayload })
+      });
+      const result = await verifyRes.json();
+      if (!result.ok) {
+        setPaymentStatusMessage(Object.values(result.errors ?? { payment: "UPI payment verification failed." })[0] as string);
+        return;
+      }
+      setLastOrder(result.order);
+      setCart([]);
+      setStep("tracking");
+      refreshAdminSummary();
+      showToast(paymentConfirmation(result.order.paymentMode));
+    } catch {
+      setPaymentStatusMessage("Could not confirm UPI payment. Please retry.");
     } finally {
       setPlacingOrder(false);
     }

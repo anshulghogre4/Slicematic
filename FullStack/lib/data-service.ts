@@ -107,6 +107,8 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
     status: "Placed",
     razorpayOrderId: paymentMeta.razorpayOrderId,
     razorpayPaymentId: paymentMeta.razorpayPaymentId,
+    cashfreeOrderId: paymentMeta.cashfreeOrderId,
+    cashfreePaymentId: paymentMeta.cashfreePaymentId,
     paymentStatus: paymentMeta.paymentStatus ?? "confirmed",
     subtotal: totals.subtotal,
     discount: totals.discount,
@@ -166,6 +168,8 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
       customer_note: payload.customer.note ?? null,
       razorpay_order_id: paymentMeta.razorpayOrderId ?? null,
       razorpay_payment_id: paymentMeta.razorpayPaymentId ?? null,
+      cashfree_order_id: paymentMeta.cashfreeOrderId ?? null,
+      cashfree_payment_id: paymentMeta.cashfreePaymentId ?? null,
       payment_status: paymentMeta.paymentStatus ?? "confirmed"
     });
 
