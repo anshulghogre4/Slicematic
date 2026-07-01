@@ -1,5 +1,10 @@
 # Razorpay Payment Integration Analysis — SliceMatic
 
+> **Status:** This document was the original planning reference (written for FastAPI+Gradio).
+> The actual implementation uses **Next.js** (in `FullStack/`) with two gateways:
+> **Razorpay for Card** and **Cashfree for UPI**. See `docs/superpowers/specs/2026-07-01-razorpay-payment-integration-design.md`
+> for the implemented design spec and `FullStack/STAGE3_BUILD_REPORT.md` for the build report.
+
 > **Stack:** FastAPI (Python) backend · Gradio (Python) frontend · Supabase PostgreSQL  
 > **Mode:** Test / Sandbox (no real transactions)  
 > **Payment Methods:** Cash (COD), Card, UPI  
