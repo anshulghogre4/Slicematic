@@ -2,7 +2,7 @@ import { randomUUID } from "crypto";
 import { calculateBill, getLineUnitPrice, sanitizePricingConfig } from "./pricing";
 import { buildSeedSummary, seedMenu, seedOrders } from "./seed-data";
 import { getSupabaseServerClient } from "./supabase";
-import { AdminSummary, CartLine, MenuItem, MenuPayload, OrderPayload, SavedOrder } from "./types";
+import { AdminSummary, CartLine, MenuItem, MenuPayload, OrderPayload, PaymentMeta, SavedOrder } from "./types";
 
 function enrichPizza(row: Record<string, unknown>, fallback: MenuItem): MenuItem {
   return {
@@ -89,7 +89,7 @@ export async function loadMenu(): Promise<MenuPayload> {
   }
 }
 
-export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
+export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta = {}): Promise<SavedOrder> {
   const menu = await loadMenu();
   const pricingConfig = sanitizePricingConfig(payload.pricingConfig);
   const totals = calculateBill(payload.lines, menu, pricingConfig);
@@ -105,6 +105,9 @@ export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
     deliveryZone: payload.customer.deliveryZone,
     paymentMode: payload.paymentMode,
     status: "Placed",
+    razorpayOrderId: paymentMeta.razorpayOrderId,
+    razorpayPaymentId: paymentMeta.razorpayPaymentId,
+    paymentStatus: paymentMeta.paymentStatus ?? "confirmed",
     subtotal: totals.subtotal,
     discount: totals.discount,
     gst: totals.gst,
@@ -160,7 +163,10 @@ export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
       coupon_code: totals.discount > 0 ? "GROUP-SAVER" : null,
       delivery_address: payload.customer.address,
       delivery_zone: payload.customer.deliveryZone ?? null,
-      customer_note: payload.customer.note ?? null
+      customer_note: payload.customer.note ?? null,
+      razorpay_order_id: paymentMeta.razorpayOrderId ?? null,
+      razorpay_payment_id: paymentMeta.razorpayPaymentId ?? null,
+      payment_status: paymentMeta.paymentStatus ?? "confirmed"
     });
 
     for (const line of payload.lines) {

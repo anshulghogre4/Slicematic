@@ -105,6 +105,32 @@ Email: customer@slicematic.in
 Password: slice-customer
 ```
 
+## Payments (Razorpay test mode)
+
+Card and UPI payments use Razorpay's `checkout.js` modal in test mode. Cash orders follow the existing direct path.
+
+**How it works:**
+
+1. Customer selects Card or UPI and clicks "Pay & place order".
+2. The server creates a Razorpay order (`POST /api/payments/create-order`) after recomputing the bill server-side.
+3. The Razorpay checkout modal opens in the browser.
+4. After payment, the server verifies the HMAC-SHA256 signature (`POST /api/payments/verify`) and only then saves the order to Supabase.
+5. Cash orders skip Razorpay entirely and save immediately via `/api/orders`.
+
+**Server-only keys:** `RAZORPAY_KEY_SECRET` never leaves the server. `RAZORPAY_KEY_ID` is sent to the browser only as needed by `checkout.js`.
+
+**When keys are missing:** Card/UPI returns a friendly "Online payment is not configured" message (HTTP 503). The app does not crash.
+
+**Test credentials (Razorpay test mode):**
+
+- Test card: `4111 1111 1111 1111`, any CVV, any future expiry
+- Test UPI: `success@razorpay`
+
+**Guest vs member:**
+
+- Guest checkout: UPI or Card only (no Cash).
+- Logged-in member: Cash, Card, or UPI.
+
 ## Business Owner Controls
 
 The admin overview includes an owner action board, not only passive metrics:
@@ -156,9 +182,11 @@ OPENROUTER_API_KEY=
 OPENROUTER_MODEL=openai/gpt-oss-20b
 NEXT_PUBLIC_DEMO_ADMIN_EMAIL=admin@slicematic.in
 NEXT_PUBLIC_DEMO_ADMIN_PASSWORD=slicematic-demo
+RAZORPAY_KEY_ID=rzp_test_...
+RAZORPAY_KEY_SECRET=...
 ```
 
-Keep `SUPABASE_SERVICE_ROLE_KEY` only in server environments such as Vercel project settings. Never expose it in browser code.
+Keep `SUPABASE_SERVICE_ROLE_KEY` and `RAZORPAY_KEY_SECRET` only in server environments such as Vercel project settings. Never expose them in browser code.
 
 ## Supabase Setup
 
