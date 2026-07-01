@@ -180,10 +180,63 @@ Important backend files:
 - `lib/supabase.ts`
 - `lib/seed-data.ts`
 - `lib/types.ts`
+- `lib/razorpay.ts`
+- `lib/cashfree.ts`
 - `app/api/menu/route.ts`
 - `app/api/orders/route.ts`
 - `app/api/admin/orders/route.ts`
 - `app/api/recommend/route.ts`
+- `app/api/payments/create-order/route.ts`
+- `app/api/payments/verify/route.ts`
+- `app/api/payments/cashfree/create-order/route.ts`
+- `app/api/payments/cashfree/verify/route.ts`
+
+## Payment Gateway Integration
+
+Two payment gateways are integrated for test-mode payment processing:
+
+### Razorpay — Card Payments
+
+- Server library: `lib/razorpay.ts` (order creation via REST API, HMAC-SHA256 signature verification using `crypto.timingSafeEqual`, paise conversion).
+- API routes: `POST /api/payments/create-order` (validates order, creates Razorpay order, returns `razorpayOrderId` + `keyId` + prefill data) and `POST /api/payments/verify` (verifies signature, cross-checks amount server-side, saves order).
+- Frontend: Lazily loads `checkout.razorpay.com/v1/checkout.js`, opens the Razorpay modal in-page. Success handler posts to `/verify`. Modal dismiss shows friendly cancellation message.
+- Security: `RAZORPAY_KEY_SECRET` is server-only. Amount recomputed server-side in both routes. Signature compared with `timingSafeEqual` to prevent timing attacks.
+- Unit tests: `lib/razorpay.test.ts` — 9 Vitest tests covering `toPaise`, `verifySignature`, and `hasRazorpayEnv`.
+- Test card: `5500 6700 0000 1002` (Mastercard), any 3-digit CVV, any future expiry.
+
+### Cashfree — UPI Payments
+
+- Server library: `lib/cashfree.ts` (order creation via Cashfree REST API, payment verification via GET payment status API).
+- API routes: `POST /api/payments/cashfree/create-order` (validates order, creates Cashfree order with `payment_methods: "upi"` and `return_url`, returns `paymentSessionId`) and `POST /api/payments/cashfree/verify` (checks Cashfree payment status, cross-checks amount, saves order).
+- Frontend: Dynamically imports `@cashfreepayments/cashfree-js`, calls `cashfree.checkout()` with `redirectTarget: "_self"`. Browser navigates to Cashfree's hosted payment page. After payment, Cashfree redirects back to `return_url?order_id=<our_order_id>`. A `useEffect` on mount detects the `order_id` query param + localStorage pending data to trigger verification.
+- Type declarations: `types/cashfree.d.ts` (the npm package ships no types).
+- Security: `CASHFREE_SECRET_KEY` is server-only. Amount recomputed server-side. Payment status verified via Cashfree's server-to-server API (not client-reported).
+- Test UPI VPA: `testsuccess@gocash` (success), `testfailure@gocash` (failure).
+
+### Why Two Gateways
+
+Razorpay's test mode does not support UPI payment simulation for all accounts. Cashfree's sandbox provides reliable UPI test VPAs. The split is:
+
+| Payment Mode | Gateway | Mechanism |
+|---|---|---|
+| Cash | None | Direct save via `POST /api/orders` |
+| Card | Razorpay | JS modal (same page, callback fires in-place) |
+| UPI | Cashfree | Full-page redirect to Cashfree → redirect back → verify |
+
+### Database Columns Added
+
+```sql
+-- Razorpay
+razorpay_order_id text
+razorpay_payment_id text
+payment_status text (paid / confirmed / failed)
+
+-- Cashfree
+cashfree_order_id text
+cashfree_payment_id text
+```
+
+Both `saveOrder` (in `lib/data-service.ts`) and `supabase/schema.sql` support these columns.
 
 ## Supabase Schema
 
@@ -349,6 +402,10 @@ Verified API behavior:
 - Invalid quantity returns controlled error.
 - Invalid pizza ID returns controlled error.
 - Duplicate toppings return controlled error.
+- Razorpay Card payment: create-order → modal → verify → order saved → tracking page.
+- Cashfree UPI payment: create-order → redirect to Cashfree → payment → redirect back → verify → order saved → tracking page.
+- Missing payment keys return HTTP 503 with friendly message.
+- Vitest: 9/9 tests passing (toPaise, verifySignature, hasRazorpayEnv).
 
 Verified browser behavior:
 
@@ -410,10 +467,19 @@ Verified browser behavior:
 - `lib/seed-data.ts`
 - `lib/supabase.ts`
 - `lib/data-service.ts`
+- `lib/razorpay.ts`
+- `lib/razorpay.test.ts`
+- `lib/cashfree.ts`
+- `types/cashfree.d.ts`
+- `vitest.config.ts`
 - `app/api/menu/route.ts`
 - `app/api/orders/route.ts`
 - `app/api/admin/orders/route.ts`
 - `app/api/admin/menu/route.ts`
+- `app/api/payments/create-order/route.ts`
+- `app/api/payments/verify/route.ts`
+- `app/api/payments/cashfree/create-order/route.ts`
+- `app/api/payments/cashfree/verify/route.ts`
 - `app/api/ai/cart-insight/route.ts`
 - `app/api/ai/menu-copy/route.ts`
 - `app/api/ai/ops-briefing/route.ts`
@@ -473,4 +539,9 @@ These require project credentials or deployment access:
 - Show `app/api/recommend/route.ts` for feature-engineered OpenRouter recommendation.
 - Show `components/SliceMaticStage3.tsx` for gated customer flow and admin dashboard.
 - Show `scripts/forecast_model.py` for scikit-learn demand forecast.
+- Show `lib/razorpay.ts` for HMAC-SHA256 signature verification and server-side amount recomputation.
+- Show `lib/cashfree.ts` for UPI order creation and server-side payment status verification.
+- Demonstrate Card payment with test card `5500 6700 0000 1002` → Razorpay modal → tracking page.
+- Demonstrate UPI payment with test VPA `testsuccess@gocash` → Cashfree redirect → tracking page.
+- Demonstrate Cash order → direct save → tracking page.
 - Demonstrate changing `BULK_DISCOUNT_QTY` from `5` to `3`, rebuilding, and showing discount behavior.

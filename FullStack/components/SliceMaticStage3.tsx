@@ -120,6 +120,8 @@ export default function SliceMaticStage3() {
   const [selectedPizza, setSelectedPizza] = useState<MenuItem | null>(null);
   const [builder, setBuilder] = useState({ baseId: seedMenu.bases[0].id, sizeId: seedMenu.sizes[0].id, toppingIds: [] as number[], quantity: 1 });
   const [paymentMode, setPaymentMode] = useState<PaymentMode>("UPI");
+  const [placingOrder, setPlacingOrder] = useState(false);
+  const [paymentStatusMessage, setPaymentStatusMessage] = useState("");
   const [lastOrder, setLastOrder] = useState<SavedOrder | null>(null);
   const [toast, setToast] = useState("");
   const [workspace, setWorkspace] = useState<Workspace>("customer");
@@ -172,6 +174,20 @@ export default function SliceMaticStage3() {
   useEffect(() => {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
+
+    // Cashfree redirects back with ?order_id=<our_order_id> after payment.
+    const cfReturnOrderId = params.get("order_id");
+    const cfPending = localStorage.getItem("cf_pending");
+    if (cfReturnOrderId && cfPending) {
+      const pending = JSON.parse(cfPending) as { orderId: string; amountPaise: number; payload: unknown };
+      localStorage.removeItem("cf_pending");
+      window.history.replaceState({}, "", window.location.pathname);
+      setPlacingOrder(true);
+      setPaymentStatusMessage("Verifying UPI payment…");
+      void verifyCashfreeAndFinish(pending.orderId, pending.amountPaise, pending.payload);
+      return;
+    }
+
     const isRecovery = params.get("reset") === "true" || window.location.hash.includes("type=recovery");
     const isCustomerRecovery = params.get("customerReset") === "true";
     if (isCustomerRecovery) {
@@ -383,6 +399,36 @@ export default function SliceMaticStage3() {
     setCart((current) => current.filter((line) => line.id !== id));
   }
 
+  function loadRazorpayScript(): Promise<void> {
+    return new Promise((resolve, reject) => {
+      if (typeof window === "undefined") {
+        reject(new Error("no window"));
+        return;
+      }
+      if ((window as unknown as { Razorpay?: unknown }).Razorpay) {
+        resolve();
+        return;
+      }
+      const existing = document.getElementById("razorpay-checkout-js");
+      if (existing) {
+        existing.addEventListener("load", () => resolve());
+        existing.addEventListener("error", () => reject(new Error("load failed")));
+        return;
+      }
+      const script = document.createElement("script");
+      script.id = "razorpay-checkout-js";
+      script.src = "https://checkout.razorpay.com/v1/checkout.js";
+      script.onload = () => resolve();
+      script.onerror = () => reject(new Error("load failed"));
+      document.body.appendChild(script);
+    });
+  }
+
+  async function loadCashfreeSDK() {
+    const { load } = await import("@cashfreepayments/cashfree-js");
+    return load({ mode: "sandbox" as "sandbox" | "production" });
+  }
+
   async function placeOrder() {
     if (!ensureCustomerReady()) return;
     if (!cart.length) {
@@ -394,29 +440,224 @@ export default function SliceMaticStage3() {
       showToast("Guest checkout is online payment only. Sign in to use Cash.");
       return;
     }
-    const response = await fetch("/api/orders", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({
-        customer,
-        lines: cart,
-        paymentMode,
-        customerMode: customerLoggedIn ? "member" : "guest",
-        customerAccountEmail: customerLoggedIn ? customerSessionEmail : null,
-        pricingConfig,
-        recommendationId: recommendation?.recommendationId ?? null
-      })
-    });
-    const result = await response.json();
-    if (!result.ok) {
-      showToast(Object.values(result.errors ?? { server: "Could not place order." })[0] as string);
+    if (paymentMode === "Cash") {
+      await placeCashOrder();
       return;
     }
-    setLastOrder(result.order);
-    setCart([]);
-    setStep("tracking");
-    refreshAdminSummary();
-    showToast(paymentConfirmation(result.order.paymentMode));
+    if (paymentMode === "UPI") {
+      await placeUpiOrder();
+      return;
+    }
+    await placeOnlineOrder();
+  }
+
+  async function placeCashOrder() {
+    setPlacingOrder(true);
+    setPaymentStatusMessage("");
+    try {
+      const response = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          customer,
+          lines: cart,
+          paymentMode,
+          customerMode: customerLoggedIn ? "member" : "guest",
+          customerAccountEmail: customerLoggedIn ? customerSessionEmail : null,
+          pricingConfig,
+          recommendationId: recommendation?.recommendationId ?? null
+        })
+      });
+      const result = await response.json();
+      if (!result.ok) {
+        showToast(Object.values(result.errors ?? { server: "Could not place order." })[0] as string);
+        return;
+      }
+      setLastOrder(result.order);
+      setCart([]);
+      setStep("tracking");
+      refreshAdminSummary();
+      showToast(paymentConfirmation(result.order.paymentMode));
+    } catch {
+      showToast("Could not place order. Please retry.");
+    } finally {
+      setPlacingOrder(false);
+    }
+  }
+
+  async function placeUpiOrder() {
+    setPlacingOrder(true);
+    setPaymentStatusMessage("");
+    const orderPayload = {
+      customer,
+      lines: cart,
+      paymentMode,
+      customerMode: customerLoggedIn ? "member" : "guest",
+      customerAccountEmail: customerLoggedIn ? customerSessionEmail : null,
+      pricingConfig,
+      recommendationId: recommendation?.recommendationId ?? null
+    };
+    try {
+      const createRes = await fetch("/api/payments/cashfree/create-order", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(orderPayload)
+      });
+      const created = await createRes.json();
+      if (!created.ok) {
+        const message = Object.values(created.errors ?? { payment: "Could not start UPI payment." })[0] as string;
+        setPaymentStatusMessage(message);
+        showToast(message);
+        setPlacingOrder(false);
+        return;
+      }
+
+      localStorage.setItem("cf_pending", JSON.stringify({
+        orderId: created.cfOrderId,
+        amountPaise: created.amountPaise,
+        payload: orderPayload,
+      }));
+
+      const cashfree = await loadCashfreeSDK();
+      // redirectTarget "_self" = full-page redirect in the same tab.
+      // After payment, Cashfree redirects to return_url?order_id=<orderId>.
+      // The useEffect on mount detects that param and calls verify.
+      cashfree.checkout({
+        paymentSessionId: created.paymentSessionId,
+        redirectTarget: "_self",
+      });
+      // Don't await — for redirect flow the promise never resolves (page navigates away).
+      // If it does resolve (user somehow dismissed), cleanup below won't run because
+      // we've already navigated. The useEffect handles verification on return.
+    } catch {
+      setPaymentStatusMessage("Could not start UPI payment. Please retry.");
+      showToast("Could not start UPI payment. Please retry.");
+      setPlacingOrder(false);
+    }
+  }
+
+  async function verifyCashfreeAndFinish(cfOrderId: string, amountPaise: number, orderPayload: unknown) {
+    try {
+      const verifyRes = await fetch("/api/payments/cashfree/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ cfOrderId, amountPaise, payload: orderPayload })
+      });
+      const result = await verifyRes.json();
+      if (!result.ok) {
+        setPaymentStatusMessage(Object.values(result.errors ?? { payment: "UPI payment verification failed." })[0] as string);
+        return;
+      }
+      setLastOrder(result.order);
+      setCart([]);
+      setStep("tracking");
+      refreshAdminSummary();
+      showToast(paymentConfirmation(result.order.paymentMode));
+    } catch {
+      setPaymentStatusMessage("Could not confirm UPI payment. Please retry.");
+    } finally {
+      setPlacingOrder(false);
+    }
+  }
+
+  async function placeOnlineOrder() {
+    setPlacingOrder(true);
+    setPaymentStatusMessage("");
+    const orderPayload = {
+      customer,
+      lines: cart,
+      paymentMode,
+      customerMode: customerLoggedIn ? "member" : "guest",
+      customerAccountEmail: customerLoggedIn ? customerSessionEmail : null,
+      pricingConfig,
+      recommendationId: recommendation?.recommendationId ?? null
+    };
+    try {
+      const createRes = await fetch("/api/payments/create-order", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify(orderPayload)
+      });
+      const created = await createRes.json();
+      if (!created.ok) {
+        const message = Object.values(created.errors ?? { payment: "Could not start payment." })[0] as string;
+        setPaymentStatusMessage(message);
+        showToast(message);
+        setPlacingOrder(false);
+        return;
+      }
+
+      await loadRazorpayScript();
+      const RazorpayCtor = (window as unknown as { Razorpay?: new (options: unknown) => { open: () => void; on: (event: string, handler: () => void) => void } }).Razorpay;
+      if (!RazorpayCtor) {
+        showToast("Payment module failed to load. Please retry.");
+        setPlacingOrder(false);
+        return;
+      }
+
+      const rzp = new RazorpayCtor({
+        key: created.keyId,
+        amount: String(created.amountPaise),
+        currency: "INR",
+        name: brand.name,
+        description: "SliceMatic pizza order",
+        order_id: created.razorpayOrderId,
+        prefill: { name: created.prefillName, contact: created.prefillPhone },
+        theme: { color: "#d33f2f" },
+        handler: (response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string }) => {
+          void verifyAndFinish(response, created.amountPaise, orderPayload);
+        },
+        modal: {
+          ondismiss: () => {
+            setPlacingOrder(false);
+            setPaymentStatusMessage("Payment cancelled — no order was placed.");
+          }
+        }
+      });
+      rzp.on("payment.failed", () => {
+        setPlacingOrder(false);
+        setPaymentStatusMessage("Payment failed — no order was placed. You can retry.");
+      });
+      rzp.open();
+    } catch {
+      setPaymentStatusMessage("Could not start payment. Please retry.");
+      showToast("Could not start payment. Please retry.");
+      setPlacingOrder(false);
+    }
+  }
+
+  async function verifyAndFinish(
+    response: { razorpay_order_id: string; razorpay_payment_id: string; razorpay_signature: string },
+    amountPaise: number,
+    orderPayload: unknown
+  ) {
+    try {
+      const verifyRes = await fetch("/api/payments/verify", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          razorpay_order_id: response.razorpay_order_id,
+          razorpay_payment_id: response.razorpay_payment_id,
+          razorpay_signature: response.razorpay_signature,
+          amountPaise,
+          payload: orderPayload
+        })
+      });
+      const result = await verifyRes.json();
+      if (!result.ok) {
+        setPaymentStatusMessage(Object.values(result.errors ?? { payment: "Payment verification failed." })[0] as string);
+        return;
+      }
+      setLastOrder(result.order);
+      setCart([]);
+      setStep("tracking");
+      refreshAdminSummary();
+      showToast(paymentConfirmation(result.order.paymentMode));
+    } catch {
+      setPaymentStatusMessage("Payment captured but confirmation failed. Please contact support with your payment id.");
+    } finally {
+      setPlacingOrder(false);
+    }
   }
 
   function getSupabaseAuthClient() {
@@ -1323,466 +1564,469 @@ export default function SliceMaticStage3() {
       {workspace === "account" && renderCustomerAccount()}
 
       {workspace === "customer" && (
-      <>
-      {step !== "checkout" && step !== "tracking" && (
-      <section className="hero-shell" id="customer-app">
-        <aside className="status-rail">
-          <div className="rail-card open">
-            <span />
-            <div><strong>{brand.openStatus}</strong><small>{brand.deliveryPromise}</small></div>
-          </div>
-          <div className="rail-card">
-            <p className="eyebrow">Operating signals</p>
-            <ul>
-              <li><Check /> Live menu control</li>
-              <li><Check /> Verified billing rules</li>
-              <li><Check /> AI pairings</li>
-              <li><Check /> Demand forecast</li>
-            </ul>
-          </div>
-          <div className="rail-card metric">
-            <ReceiptText /><strong>{Math.round(pricingConfig.gstRate * 100)}%</strong><span>GST after discount</span>
-            <BadgePercent /><strong>{Math.round(pricingConfig.bulkDiscountRate * 100)}%</strong><span>off on {pricingConfig.bulkDiscountQty}+ pizzas</span>
-            <Gauge /><strong>{pricingConfig.maxOrderQty}</strong><span>max pizzas/order</span>
-          </div>
-        </aside>
-
-        <section className="order-stage">
-          <div className="hero-card">
-            <div>
-              <p className="eyebrow">Elite delivery OS</p>
-              <h1>{brand.hero}</h1>
-              <p>{brand.subhero}</p>
-              <div className="hero-actions">
-                <button type="button" onClick={() => setStep("intake")}><Flame /> Start order</button>
-                <button type="button" onClick={() => openAdmin("overview")}><ShieldCheck /> Admin dashboard</button>
-              </div>
-            </div>
-            <img src="/assets/pizza-hero.jpg" alt="Fresh pizza" />
-          </div>
-
-          <div className="customer-promise-strip">
-            <article><Check /><strong>Live price before pay</strong><span>{brand.customerPromise}</span></article>
-            <article><ShieldCheck /><strong>{customerLoggedIn ? "Member payment choice" : "Guest risk control"}</strong><span>{customerLoggedIn || pricingConfig.guestCashAllowed ? "Cash, Card, and UPI are available." : "UPI/Card only keeps delivery failures lower."}</span></article>
-            <article><Sparkles /><strong>Smarter repeat orders</strong><span>{customerLoggedIn ? "Saved profile and favourite rebuild are ready." : "Sign in to unlock saved profile and favourites."}</span></article>
-          </div>
-
-          <div className="flow-tabs">
-            {["intake", "recommendation", "menu", "checkout", "tracking"].map((item) => (
-              <button key={item} className={step === item ? "active" : ""} onClick={() => goToStep(item as Step)} type="button">
-                {item}
-              </button>
-            ))}
-          </div>
-
-          {step === "intake" && (
-            <section className="glass-panel intake-grid">
-              <div>
-                <p className="eyebrow">Customer intake</p>
-                <h2>Validated contact details before AI recommendation.</h2>
-                <p className="muted">Stage 2 rules are preserved: name is alphabets/spaces only, phone must be Indian mobile format, and every failure gets a specific message.</p>
-              </div>
-              <div className="form-grid">
-                <label>Name<input value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} placeholder="Aarav Sharma" />{customerErrors.name && <em>{customerErrors.name}</em>}</label>
-                <label>Phone<input value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} placeholder="9876543210" />{customerErrors.phone && <em>{customerErrors.phone}</em>}</label>
-                <label>Delivery radius<select value={customer.deliveryZone ?? ""} onChange={(event) => setCustomer({ ...customer, deliveryZone: event.target.value as CustomerDetails["deliveryZone"] })}><option value="">Choose radius</option><option value="0-2">0-2 km priority zone</option><option value="2-4">2-4 km launch radius</option><option value="4-6">4-6 km expansion waitlist</option></select>{customerErrors.deliveryZone && <em>{customerErrors.deliveryZone}</em>}</label>
-                <label className="wide">Delivery address<textarea value={customer.address} onChange={(event) => setCustomer({ ...customer, address: event.target.value })} placeholder="Flat, landmark, street, New Ashok Nagar" />{customerErrors.address && <em>{customerErrors.address}</em>}</label>
-                <label className="wide">Delivery note<input value={customer.note ?? ""} onChange={(event) => setCustomer({ ...customer, note: event.target.value })} placeholder="Ring bell once, leave with security..." /></label>
-                <button className="primary wide" type="button" onClick={submitCustomer}><Brain /> Get AI recommendation</button>
-              </div>
-            </section>
-          )}
-
-          {step === "recommendation" && (
-            <section className="glass-panel ai-recommendation" id="ai">
-              <div>
-                <p className="eyebrow">OpenRouter recommendation</p>
-                <h2>{recommendation ? `${recommendation.pizzaName} + ${recommendation.toppingName}` : "Reading order history..."}</h2>
-                <p>{recommendation?.reason ?? "The backend queries Supabase history, sends a compact profile to OpenRouter, validates menu IDs, and logs the recommendation event."}</p>
-                {recommendation && <small>{recommendation.source === "openrouter" ? "OpenRouter response" : "Demo fallback"} / confidence {Math.round(recommendation.confidence * 100)}% / {recommendation.customerTier} customer</small>}
-              </div>
-              <div className="recommendation-actions">
-                <button className="primary" type="button" disabled={!recommendation} onClick={() => {
-                  const pizza = menu.pizzas.find((item) => item.id === recommendation?.pizzaId);
-                  if (pizza) openBuilder(pizza, true);
-                }}><Sparkles /> Build this combo</button>
-                <button type="button" onClick={() => goToStep("menu")}><Utensils /> Browse menu</button>
-              </div>
-            </section>
-          )}
-
-          {step === "menu" && (
-          <section className="menu-section">
-            <div className="section-head">
-              <div><p className="eyebrow">Menu loaded from DB</p><h2>Signature pizzas</h2></div>
-              <div className="category-row">
-                {["All", "Veg", "Chicken", "Cheese", "Spicy"].map((item) => (
-                  <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)} type="button">{item}</button>
-                ))}
-              </div>
-            </div>
-            <div className="menu-grid">
-              {filteredPizzas.map((pizza) => (
-                <article className="pizza-card" key={pizza.id}>
-                  <div className="pizza-media">
-                    <img src={pizza.image} alt={pizza.name} />
-                    <span><Sparkles /> {pizza.badge}</span>
-                    <b><Star /> 4.{pizza.id}</b>
-                  </div>
-                  <div className="pizza-body">
-                    <div><h3>{pizza.name}</h3><strong>{money(pizza.price)}</strong></div>
-                    <p>{pizza.description}</p>
-                    <div className="chips"><span><ChefHat /> Fresh</span><span>{pizza.prepMinutes} min</span>{pizza.tags?.slice(0, 2).map((tag) => <span key={tag}>{tag}</span>)}</div>
-                  </div>
-                  <div className="pizza-actions">
-                    <button className="primary" onClick={() => openBuilder(pizza)} type="button"><SlidersHorizontal /> Customize</button>
-                    <button onClick={() => openBuilder(pizza)} type="button" aria-label={`Add ${pizza.name}`}><Plus /></button>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </section>
-          )}
-        </section>
-
-        <aside className="cart-panel">
-          <div className="cart-head"><div><p className="eyebrow">Your order</p><h2>Cart</h2></div><ShoppingBag /></div>
-          <div className={customerLoggedIn ? "order-mode member" : "order-mode guest"}>
-            <div><UserRound /><strong>{customerOrderMode}</strong></div>
-            <span>{customerLoggedIn ? `Logged in as ${customerSessionEmail}` : "No account session. Online payment only."}</span>
-            {!customerLoggedIn && <button type="button" onClick={openAccount}>Sign in for Cash</button>}
-          </div>
-          {cart.length ? cart.map(renderLine) : <div className="empty-cart">Your cart is waiting.<br /><span>Build a pizza to see live totals.</span></div>}
-          <div className="summary">
-            <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
-            <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
-            <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
-            <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
-            <div className="total"><span>Total</span><b>{moneyExact(totals.finalTotal)}</b></div>
-          </div>
-          <div className="ai-cart-card">
-            <div><Brain /><strong>AI cart strategist</strong></div>
-            {cartInsight ? (
-              <>
-                <h3>{cartInsight.headline}</h3>
-                <p>{cartInsight.message}</p>
-                <small>{cartInsight.expectedImpact} / confidence {Math.round(cartInsight.confidence * 100)}%</small>
-                <button type="button" onClick={applyCartInsight}>{cartInsight.nextAction}</button>
-              </>
-            ) : (
-              <>
-                <p>Get a margin-aware pairing, discount cue, or checkout reassurance based on this cart.</p>
-                <button type="button" onClick={getCartInsight} disabled={cartInsightLoading}><Sparkles /> {cartInsightLoading ? "Reading cart" : "Ask AI"}</button>
-              </>
-            )}
-          </div>
-          <button className="primary" disabled={!cart.length} onClick={() => goToStep("checkout")} type="button">Continue to checkout <Send /></button>
-        </aside>
-      </section>
-      )}
-
-      {step === "checkout" && (
-        <section className="checkout-page" id="checkout">
-          <div className="checkout-page-head">
-            <div>
-              <p className="eyebrow">Checkout</p>
-              <h1>Confirm payment and bill</h1>
-              <p>Review the basket, payment rules, and live bill before the kitchen accepts the order.</p>
-            </div>
-            <button type="button" onClick={() => goToStep("menu")}><ArrowLeft /> Back to cart</button>
-          </div>
-
-          <div className="checkout-layout">
-            <section className="checkout-review-card">
-              <div className="cart-head"><div><p className="eyebrow">Order review</p><h2>Basket</h2></div><ShoppingBag /></div>
-              <div className={customerLoggedIn ? "order-mode member" : "order-mode guest"}>
-                <div><UserRound /><strong>{customerOrderMode}</strong></div>
-                <span>{customerLoggedIn ? `Logged in as ${customerSessionEmail}` : "Guest checkout. UPI/Card required unless owner enables guest cash."}</span>
-              </div>
-              {cart.length ? cart.map(renderLine) : <div className="empty-cart">Your cart is empty.<br /><span>Go back to menu and build a pizza.</span></div>}
-              <div className="summary">
-                <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
-                <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
-                <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
-                <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
-                <div className="total"><span>Total payable</span><b>{moneyExact(totals.finalTotal)}</b></div>
-              </div>
-            </section>
-
-            <section className="checkout-payment-card">
-              <div className="checkout-head">
-                <div><p className="eyebrow">Payment</p><h2>Select payment mode</h2></div>
-                <div className={customerLoggedIn ? "checkout-policy member" : "checkout-policy guest"}>
-                  <strong>{customerOrderMode}</strong>
-                  <span>{customerPaymentPolicy}</span>
+        <>
+          {step !== "checkout" && step !== "tracking" && (
+            <section className="hero-shell" id="customer-app">
+              <aside className="status-rail">
+                <div className="rail-card open">
+                  <span />
+                  <div><strong>{brand.openStatus}</strong><small>{brand.deliveryPromise}</small></div>
                 </div>
+                <div className="rail-card">
+                  <p className="eyebrow">Operating signals</p>
+                  <ul>
+                    <li><Check /> Live menu control</li>
+                    <li><Check /> Verified billing rules</li>
+                    <li><Check /> AI pairings</li>
+                    <li><Check /> Demand forecast</li>
+                  </ul>
+                </div>
+                <div className="rail-card metric">
+                  <ReceiptText /><strong>{Math.round(pricingConfig.gstRate * 100)}%</strong><span>GST after discount</span>
+                  <BadgePercent /><strong>{Math.round(pricingConfig.bulkDiscountRate * 100)}%</strong><span>off on {pricingConfig.bulkDiscountQty}+ pizzas</span>
+                  <Gauge /><strong>{pricingConfig.maxOrderQty}</strong><span>max pizzas/order</span>
+                </div>
+              </aside>
+
+              <section className="order-stage">
+                <div className="hero-card">
+                  <div>
+                    <p className="eyebrow">Elite delivery OS</p>
+                    <h1>{brand.hero}</h1>
+                    <p>{brand.subhero}</p>
+                    <div className="hero-actions">
+                      <button type="button" onClick={() => setStep("intake")}><Flame /> Start order</button>
+                      <button type="button" onClick={() => openAdmin("overview")}><ShieldCheck /> Admin dashboard</button>
+                    </div>
+                  </div>
+                  <img src="/assets/pizza-hero.jpg" alt="Fresh pizza" />
+                </div>
+
+                <div className="customer-promise-strip">
+                  <article><Check /><strong>Live price before pay</strong><span>{brand.customerPromise}</span></article>
+                  <article><ShieldCheck /><strong>{customerLoggedIn ? "Member payment choice" : "Guest risk control"}</strong><span>{customerLoggedIn || pricingConfig.guestCashAllowed ? "Cash, Card, and UPI are available." : "UPI/Card only keeps delivery failures lower."}</span></article>
+                  <article><Sparkles /><strong>Smarter repeat orders</strong><span>{customerLoggedIn ? "Saved profile and favourite rebuild are ready." : "Sign in to unlock saved profile and favourites."}</span></article>
+                </div>
+
+                <div className="flow-tabs">
+                  {["intake", "recommendation", "menu", "checkout", "tracking"].map((item) => (
+                    <button key={item} className={step === item ? "active" : ""} onClick={() => goToStep(item as Step)} type="button">
+                      {item}
+                    </button>
+                  ))}
+                </div>
+
+                {step === "intake" && (
+                  <section className="glass-panel intake-grid">
+                    <div>
+                      <p className="eyebrow">Customer intake</p>
+                      <h2>Validated contact details before AI recommendation.</h2>
+                      <p className="muted">Stage 2 rules are preserved: name is alphabets/spaces only, phone must be Indian mobile format, and every failure gets a specific message.</p>
+                    </div>
+                    <div className="form-grid">
+                      <label>Name<input value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} placeholder="Aarav Sharma" />{customerErrors.name && <em>{customerErrors.name}</em>}</label>
+                      <label>Phone<input value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} placeholder="9876543210" />{customerErrors.phone && <em>{customerErrors.phone}</em>}</label>
+                      <label>Delivery radius<select value={customer.deliveryZone ?? ""} onChange={(event) => setCustomer({ ...customer, deliveryZone: event.target.value as CustomerDetails["deliveryZone"] })}><option value="">Choose radius</option><option value="0-2">0-2 km priority zone</option><option value="2-4">2-4 km launch radius</option><option value="4-6">4-6 km expansion waitlist</option></select>{customerErrors.deliveryZone && <em>{customerErrors.deliveryZone}</em>}</label>
+                      <label className="wide">Delivery address<textarea value={customer.address} onChange={(event) => setCustomer({ ...customer, address: event.target.value })} placeholder="Flat, landmark, street, New Ashok Nagar" />{customerErrors.address && <em>{customerErrors.address}</em>}</label>
+                      <label className="wide">Delivery note<input value={customer.note ?? ""} onChange={(event) => setCustomer({ ...customer, note: event.target.value })} placeholder="Ring bell once, leave with security..." /></label>
+                      <button className="primary wide" type="button" onClick={submitCustomer}><Brain /> Get AI recommendation</button>
+                    </div>
+                  </section>
+                )}
+
+                {step === "recommendation" && (
+                  <section className="glass-panel ai-recommendation" id="ai">
+                    <div>
+                      <p className="eyebrow">OpenRouter recommendation</p>
+                      <h2>{recommendation ? `${recommendation.pizzaName} + ${recommendation.toppingName}` : "Reading order history..."}</h2>
+                      <p>{recommendation?.reason ?? "The backend queries Supabase history, sends a compact profile to OpenRouter, validates menu IDs, and logs the recommendation event."}</p>
+                      {recommendation && <small>{recommendation.source === "openrouter" ? "OpenRouter response" : "Demo fallback"} / confidence {Math.round(recommendation.confidence * 100)}% / {recommendation.customerTier} customer</small>}
+                    </div>
+                    <div className="recommendation-actions">
+                      <button className="primary" type="button" disabled={!recommendation} onClick={() => {
+                        const pizza = menu.pizzas.find((item) => item.id === recommendation?.pizzaId);
+                        if (pizza) openBuilder(pizza, true);
+                      }}><Sparkles /> Build this combo</button>
+                      <button type="button" onClick={() => goToStep("menu")}><Utensils /> Browse menu</button>
+                    </div>
+                  </section>
+                )}
+
+                {step === "menu" && (
+                  <section className="menu-section">
+                    <div className="section-head">
+                      <div><p className="eyebrow">Menu loaded from DB</p><h2>Signature pizzas</h2></div>
+                      <div className="category-row">
+                        {["All", "Veg", "Chicken", "Cheese", "Spicy"].map((item) => (
+                          <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)} type="button">{item}</button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="menu-grid">
+                      {filteredPizzas.map((pizza) => (
+                        <article className="pizza-card" key={pizza.id}>
+                          <div className="pizza-media">
+                            <img src={pizza.image} alt={pizza.name} />
+                            <span><Sparkles /> {pizza.badge}</span>
+                            <b><Star /> 4.{pizza.id}</b>
+                          </div>
+                          <div className="pizza-body">
+                            <div><h3>{pizza.name}</h3><strong>{money(pizza.price)}</strong></div>
+                            <p>{pizza.description}</p>
+                            <div className="chips"><span><ChefHat /> Fresh</span><span>{pizza.prepMinutes} min</span>{pizza.tags?.slice(0, 2).map((tag) => <span key={tag}>{tag}</span>)}</div>
+                          </div>
+                          <div className="pizza-actions">
+                            <button className="primary" onClick={() => openBuilder(pizza)} type="button"><SlidersHorizontal /> Customize</button>
+                            <button onClick={() => openBuilder(pizza)} type="button" aria-label={`Add ${pizza.name}`}><Plus /></button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  </section>
+                )}
+              </section>
+
+              <aside className="cart-panel">
+                <div className="cart-head"><div><p className="eyebrow">Your order</p><h2>Cart</h2></div><ShoppingBag /></div>
+                <div className={customerLoggedIn ? "order-mode member" : "order-mode guest"}>
+                  <div><UserRound /><strong>{customerOrderMode}</strong></div>
+                  <span>{customerLoggedIn ? `Logged in as ${customerSessionEmail}` : "No account session. Online payment only."}</span>
+                  {!customerLoggedIn && <button type="button" onClick={openAccount}>Sign in for Cash</button>}
+                </div>
+                {cart.length ? cart.map(renderLine) : <div className="empty-cart">Your cart is waiting.<br /><span>Build a pizza to see live totals.</span></div>}
+                <div className="summary">
+                  <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
+                  <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
+                  <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
+                  <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
+                  <div className="total"><span>Total</span><b>{moneyExact(totals.finalTotal)}</b></div>
+                </div>
+                <div className="ai-cart-card">
+                  <div><Brain /><strong>AI cart strategist</strong></div>
+                  {cartInsight ? (
+                    <>
+                      <h3>{cartInsight.headline}</h3>
+                      <p>{cartInsight.message}</p>
+                      <small>{cartInsight.expectedImpact} / confidence {Math.round(cartInsight.confidence * 100)}%</small>
+                      <button type="button" onClick={applyCartInsight}>{cartInsight.nextAction}</button>
+                    </>
+                  ) : (
+                    <>
+                      <p>Get a margin-aware pairing, discount cue, or checkout reassurance based on this cart.</p>
+                      <button type="button" onClick={getCartInsight} disabled={cartInsightLoading}><Sparkles /> {cartInsightLoading ? "Reading cart" : "Ask AI"}</button>
+                    </>
+                  )}
+                </div>
+                <button className="primary" disabled={!cart.length} onClick={() => goToStep("checkout")} type="button">Continue to checkout <Send /></button>
+              </aside>
+            </section>
+          )}
+
+          {step === "checkout" && (
+            <section className="checkout-page" id="checkout">
+              <div className="checkout-page-head">
+                <div>
+                  <p className="eyebrow">Checkout</p>
+                  <h1>Confirm payment and bill</h1>
+                  <p>Review the basket, payment rules, and live bill before the kitchen accepts the order.</p>
+                </div>
+                <button type="button" onClick={() => goToStep("menu")}><ArrowLeft /> Back to cart</button>
               </div>
-              <div className="payment-grid">
-                {paymentModes.map((payment) => {
-                  const disabledForGuest = !customerLoggedIn && !pricingConfig.guestCashAllowed && payment.mode === "Cash";
-                  return (
-                  <button key={payment.mode} className={paymentMode === payment.mode ? "active" : ""} disabled={disabledForGuest} onClick={() => disabledForGuest ? showToast("Cash is available after customer login.") : setPaymentMode(payment.mode)} type="button">
-                    {payment.icon}<strong>{payment.mode}</strong><span>{disabledForGuest ? "Login required. Guests use UPI or Card only." : payment.copy}</span>
+
+              <div className="checkout-layout">
+                <section className="checkout-review-card">
+                  <div className="cart-head"><div><p className="eyebrow">Order review</p><h2>Basket</h2></div><ShoppingBag /></div>
+                  <div className={customerLoggedIn ? "order-mode member" : "order-mode guest"}>
+                    <div><UserRound /><strong>{customerOrderMode}</strong></div>
+                    <span>{customerLoggedIn ? `Logged in as ${customerSessionEmail}` : "Guest checkout. UPI/Card required unless owner enables guest cash."}</span>
+                  </div>
+                  {cart.length ? cart.map(renderLine) : <div className="empty-cart">Your cart is empty.<br /><span>Go back to menu and build a pizza.</span></div>}
+                  <div className="summary">
+                    <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
+                    <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
+                    <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
+                    <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
+                    <div className="total"><span>Total payable</span><b>{moneyExact(totals.finalTotal)}</b></div>
+                  </div>
+                </section>
+
+                <section className="checkout-payment-card">
+                  <div className="checkout-head">
+                    <div><p className="eyebrow">Payment</p><h2>Select payment mode</h2></div>
+                    <div className={customerLoggedIn ? "checkout-policy member" : "checkout-policy guest"}>
+                      <strong>{customerOrderMode}</strong>
+                      <span>{customerPaymentPolicy}</span>
+                    </div>
+                  </div>
+                  <div className="payment-grid">
+                    {paymentModes.map((payment) => {
+                      const disabledForGuest = !customerLoggedIn && !pricingConfig.guestCashAllowed && payment.mode === "Cash";
+                      return (
+                        <button key={payment.mode} className={paymentMode === payment.mode ? "active" : ""} disabled={disabledForGuest} onClick={() => disabledForGuest ? showToast("Cash is available after customer login.") : setPaymentMode(payment.mode)} type="button">
+                          {payment.icon}<strong>{payment.mode}</strong><span>{disabledForGuest ? "Login required. Guests use UPI or Card only." : payment.copy}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <button className="primary" disabled={!cart.length || placingOrder} aria-busy={placingOrder} onClick={placeOrder} type="button">
+                    <Send /> {placingOrder ? "Processing payment…" : paymentMode === "Cash" ? "Place order" : "Pay & place order"}
                   </button>
-                  );
-                })}
+                  {paymentStatusMessage && <p className="payment-status" role="status" aria-live="polite">{paymentStatusMessage}</p>}
+                </section>
               </div>
-              <button className="primary" disabled={!cart.length} onClick={placeOrder} type="button"><Send /> Place order</button>
             </section>
-          </div>
-        </section>
-      )}
+          )}
 
-      {step === "tracking" && lastOrder && (
-        <section className="tracking-page" id="tracking">
-        <div className="tracking-page-head">
-          <div>
-            <p className="eyebrow">Order journey</p>
-            <h1>Track your SliceMatic order</h1>
-            <p>The cart is closed now. The customer sees fulfilment status, rider progress, and final bill on a dedicated page.</p>
-          </div>
-          <button type="button" onClick={() => goToStep("menu")}><Utensils /> New order</button>
-        </div>
-        <section className="tracking-grid">
-          <div className="map-card"><div className="route-line" /><span className="pin store">S</span><span className="pin home">H</span><div className="rider-card">Ravi assigned<br /><small>Arrives in 34 min</small></div></div>
-          <div className="tracking-card">
-            <p className="eyebrow">Live tracking</p><h2>Order {lastOrder.id.slice(0, 8)} confirmed</h2>
-            <div className="payment-confirmation">{paymentConfirmation(lastOrder.paymentMode)}</div>
-            {["Order accepted", "In the oven", "Quality check", "Out for delivery", "At doorstep"].map((item, index) => (
-              <div className="timeline-item" key={item}><span className={index < 2 ? "done" : ""}>{index < 2 ? <Check /> : index + 1}</span><div><strong>{item}</strong><small>{index === 1 ? "Kitchen is baking selected crust and toppings." : "Tracked in the order lifecycle."}</small></div></div>
-            ))}
-          </div>
-          <div className="tracking-card final-bill">
-            <p className="eyebrow">Final bill</p><h2>{moneyExact(lastOrder.finalTotal)}</h2>
-            <div className="bill-lines">
-              {lastOrder.lines.map((line, index) => (
-                <div key={`${line.pizzaName}-${index}`}>
-                  <span>{line.quantity} x {line.baseName} / {line.pizzaName} / {line.sizeName}</span>
-                  <b>{moneyExact(line.lineTotal)}</b>
-                  <small>{line.toppings.length ? line.toppings.join(", ") : "No extra toppings"}</small>
+          {step === "tracking" && lastOrder && (
+            <section className="tracking-page" id="tracking">
+              <div className="tracking-page-head">
+                <div>
+                  <p className="eyebrow">Order journey</p>
+                  <h1>Track your SliceMatic order</h1>
+                  <p>The cart is closed now. The customer sees fulfilment status, rider progress, and final bill on a dedicated page.</p>
                 </div>
-              ))}
-            </div>
-            <div className="summary">
-              <div><span>Subtotal</span><b>{moneyExact(lastOrder.subtotal)}</b></div>
-              <div><span>Quantity discount</span><b>- {moneyExact(lastOrder.discount)}</b></div>
-              <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{moneyExact(lastOrder.gst)}</b></div>
-              <div><span>Payment mode</span><b>{lastOrder.paymentMode}</b></div>
-              <div className="total"><span>Final payable</span><b>{moneyExact(lastOrder.finalTotal)}</b></div>
-            </div>
-            <small>Delivery zone {lastOrder.deliveryZone ?? customer.deliveryZone} km / {lastOrder.address ?? customer.address}</small>
-          </div>
-        </section>
-        </section>
-      )}
-      </>
+                <button type="button" onClick={() => goToStep("menu")}><Utensils /> New order</button>
+              </div>
+              <section className="tracking-grid">
+                <div className="map-card"><div className="route-line" /><span className="pin store">S</span><span className="pin home">H</span><div className="rider-card">Ravi assigned<br /><small>Arrives in 34 min</small></div></div>
+                <div className="tracking-card">
+                  <p className="eyebrow">Live tracking</p><h2>Order {lastOrder.id.slice(0, 8)} confirmed</h2>
+                  <div className="payment-confirmation">{paymentConfirmation(lastOrder.paymentMode)}</div>
+                  {["Order accepted", "In the oven", "Quality check", "Out for delivery", "At doorstep"].map((item, index) => (
+                    <div className="timeline-item" key={item}><span className={index < 2 ? "done" : ""}>{index < 2 ? <Check /> : index + 1}</span><div><strong>{item}</strong><small>{index === 1 ? "Kitchen is baking selected crust and toppings." : "Tracked in the order lifecycle."}</small></div></div>
+                  ))}
+                </div>
+                <div className="tracking-card final-bill">
+                  <p className="eyebrow">Final bill</p><h2>{moneyExact(lastOrder.finalTotal)}</h2>
+                  <div className="bill-lines">
+                    {lastOrder.lines.map((line, index) => (
+                      <div key={`${line.pizzaName}-${index}`}>
+                        <span>{line.quantity} x {line.baseName} / {line.pizzaName} / {line.sizeName}</span>
+                        <b>{moneyExact(line.lineTotal)}</b>
+                        <small>{line.toppings.length ? line.toppings.join(", ") : "No extra toppings"}</small>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="summary">
+                    <div><span>Subtotal</span><b>{moneyExact(lastOrder.subtotal)}</b></div>
+                    <div><span>Quantity discount</span><b>- {moneyExact(lastOrder.discount)}</b></div>
+                    <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{moneyExact(lastOrder.gst)}</b></div>
+                    <div><span>Payment mode</span><b>{lastOrder.paymentMode}</b></div>
+                    <div className="total"><span>Final payable</span><b>{moneyExact(lastOrder.finalTotal)}</b></div>
+                  </div>
+                  <small>Delivery zone {lastOrder.deliveryZone ?? customer.deliveryZone} km / {lastOrder.address ?? customer.address}</small>
+                </div>
+              </section>
+            </section>
+          )}
+        </>
       )}
 
       {workspace === "admin" && (
-      <section className="admin-section" id="admin">
-        <div className="admin-hero">
-          <div><p className="eyebrow">Admin + analytics</p><h2>{brand.opsPromise}</h2></div>
-          <div className="admin-hero-actions">
-            {adminLoggedIn ? (
-              <>
-                <div className="session-pill"><ShieldCheck /><span>{adminSessionEmail || "Admin session"}</span></div>
-                <button className="primary" type="button" onClick={downloadCsv}><Download /> Export CSV</button>
-                <button className="danger-action" type="button" onClick={adminLogout}><LogOut /> Logout</button>
-              </>
-            ) : (
-              <div className="secure-pill"><Lock /><span>Login required</span></div>
-            )}
-          </div>
-        </div>
-        {!adminLoggedIn ? renderAdminAuth() : (
-          <>
-            <div className="admin-tabs">
-              {(["overview", "orders", "forecast", "menu", "ai", "settings"] as AdminTab[]).map((tab) => <button key={tab} className={adminTab === tab ? "active" : ""} onClick={() => setAdminTab(tab)} type="button">{tab}</button>)}
+        <section className="admin-section" id="admin">
+          <div className="admin-hero">
+            <div><p className="eyebrow">Admin + analytics</p><h2>{brand.opsPromise}</h2></div>
+            <div className="admin-hero-actions">
+              {adminLoggedIn ? (
+                <>
+                  <div className="session-pill"><ShieldCheck /><span>{adminSessionEmail || "Admin session"}</span></div>
+                  <button className="primary" type="button" onClick={downloadCsv}><Download /> Export CSV</button>
+                  <button className="danger-action" type="button" onClick={adminLogout}><LogOut /> Logout</button>
+                </>
+              ) : (
+                <div className="secure-pill"><Lock /><span>Login required</span></div>
+              )}
             </div>
-            {adminTab === "overview" && <AdminOverview summary={adminSummary} opsBriefing={opsBriefing} opsLoading={opsLoading} onRefreshOps={() => loadOpsBriefing()} />}
-            {adminTab === "orders" && (
-              <section className="admin-card">
-                <div className="filters"><input type="date" value={adminDateFilter} onChange={(event) => setAdminDateFilter(event.target.value)} /><select value={adminPaymentFilter} onChange={(event) => setAdminPaymentFilter(event.target.value)}><option>All</option><option>UPI</option><option>Card</option><option>Cash</option></select></div>
-                <OrderTable orders={filteredOrders} />
-              </section>
-            )}
-            {adminTab === "forecast" && <ForecastPanel summary={adminSummary} />}
-            {adminTab === "menu" && (
-              <section className="admin-card menu-editor">
-                <div className="admin-page-head">
-                  <div>
-                    <p className="eyebrow">Menu operations</p>
-                    <h3>Manage the live menu catalogue.</h3>
+          </div>
+          {!adminLoggedIn ? renderAdminAuth() : (
+            <>
+              <div className="admin-tabs">
+                {(["overview", "orders", "forecast", "menu", "ai", "settings"] as AdminTab[]).map((tab) => <button key={tab} className={adminTab === tab ? "active" : ""} onClick={() => setAdminTab(tab)} type="button">{tab}</button>)}
+              </div>
+              {adminTab === "overview" && <AdminOverview summary={adminSummary} opsBriefing={opsBriefing} opsLoading={opsLoading} onRefreshOps={() => loadOpsBriefing()} />}
+              {adminTab === "orders" && (
+                <section className="admin-card">
+                  <div className="filters"><input type="date" value={adminDateFilter} onChange={(event) => setAdminDateFilter(event.target.value)} /><select value={adminPaymentFilter} onChange={(event) => setAdminPaymentFilter(event.target.value)}><option>All</option><option>UPI</option><option>Card</option><option>Cash</option></select></div>
+                  <OrderTable orders={filteredOrders} />
+                </section>
+              )}
+              {adminTab === "forecast" && <ForecastPanel summary={adminSummary} />}
+              {adminTab === "menu" && (
+                <section className="admin-card menu-editor">
+                  <div className="admin-page-head">
+                    <div>
+                      <p className="eyebrow">Menu operations</p>
+                      <h3>Manage the live menu catalogue.</h3>
+                    </div>
+                    <span>{menu.pizzas.length} pizzas / {menu.bases.length} bases / {menu.toppings.length} toppings</span>
                   </div>
-                  <span>{menu.pizzas.length} pizzas / {menu.bases.length} bases / {menu.toppings.length} toppings</span>
-                </div>
-                <div className="sub-tabs">
-                  {[
-                    ["create", "Create item"],
-                    ["pizzas", "Pizzas"],
-                    ["bases", "Bases"],
-                    ["toppings", "Toppings"]
-                  ].map(([page, label]) => (
-                    <button key={page} className={menuAdminPage === page ? "active" : ""} onClick={() => setMenuAdminPage(page as MenuAdminPage)} type="button">{label}</button>
-                  ))}
-                </div>
-                {menuAdminPage === "create" && (
-                <div className="menu-create-studio wide">
-                  <div>
-                    <p className="eyebrow">Menu lifecycle</p>
-                    <h3>Add a new pizza, crust, or topping</h3>
-                    <p>New items become available to the customer journey immediately. With Supabase configured, this creates a real database menu record.</p>
-                  </div>
-                  <div className="segment-control">
-                    {(["pizzas", "bases", "toppings"] as MenuSection[]).map((section) => (
-                      <button className={menuDraftSection === section ? "active" : ""} key={section} onClick={() => setMenuDraftSection(section)} type="button">{section}</button>
+                  <div className="sub-tabs">
+                    {[
+                      ["create", "Create item"],
+                      ["pizzas", "Pizzas"],
+                      ["bases", "Bases"],
+                      ["toppings", "Toppings"]
+                    ].map(([page, label]) => (
+                      <button key={page} className={menuAdminPage === page ? "active" : ""} onClick={() => setMenuAdminPage(page as MenuAdminPage)} type="button">{label}</button>
                     ))}
                   </div>
-                  <div className="draft-grid">
-                    <label>Code<input value={menuDraft.code} onChange={(event) => setMenuDraft({ ...menuDraft, code: event.target.value })} placeholder={menuDraftSection === "pizzas" ? "P9" : menuDraftSection === "bases" ? "B6" : "T11"} /></label>
-                    <label>Name<input value={menuDraft.name} onChange={(event) => setMenuDraft({ ...menuDraft, name: event.target.value })} placeholder={menuDraftSection === "pizzas" ? "Truffle Mushroom" : menuDraftSection === "bases" ? "Sourdough Crust" : "Smoked Paprika"} /></label>
-                    <label>Price<input type="number" min={0} value={menuDraft.price} onChange={(event) => setMenuDraft({ ...menuDraft, price: event.target.value })} placeholder={menuDraftSection === "pizzas" ? "389" : menuDraftSection === "bases" ? "199" : "49"} /></label>
-                    {menuDraftSection === "pizzas" && (
-                      <>
-                        <label>Badge<input value={menuDraft.badge} onChange={(event) => setMenuDraft({ ...menuDraft, badge: event.target.value })} placeholder="Chef special" /></label>
-                        <label>Prep minutes<input type="number" min={5} max={90} value={menuDraft.prepMinutes} onChange={(event) => setMenuDraft({ ...menuDraft, prepMinutes: event.target.value })} /></label>
-                        <label>Tags<input value={menuDraft.tags} onChange={(event) => setMenuDraft({ ...menuDraft, tags: event.target.value })} placeholder="Veg, Cheese, Signature" /></label>
-                        <div className="wide image-upload-studio">
-                          <div className="image-preview-frame">
-                            <img src={menuDraft.image || "/assets/pizza-hero.jpg"} alt="New pizza preview" />
-                          </div>
-                          <div className="image-upload-controls">
-                            <label>Pizza image
-                              <span className="upload-dropzone">
-                                <Upload />
-                                <strong>{menuImageUploading ? "Uploading image" : "Upload image"}</strong>
-                                <small>JPG, PNG, WEBP, or GIF. Preview auto-fits the card.</small>
-                                <input type="file" accept="image/*" onChange={(event) => uploadMenuImage(event.target.files?.[0] ?? null)} />
-                              </span>
-                            </label>
-                            <label>Image URL<input value={menuDraft.image} onChange={(event) => setMenuDraft({ ...menuDraft, image: event.target.value })} placeholder="/uploads/menu/truffle-mushroom.webp" /></label>
-                          </div>
-                        </div>
-                      </>
-                    )}
-                    {menuDraftSection !== "toppings" && (
-                      <label className="wide">Description<textarea value={menuDraft.description} onChange={(event) => setMenuDraft({ ...menuDraft, description: event.target.value })} placeholder={defaultDraftDescription(menuDraftSection)} /></label>
-                    )}
-                    <button className="ai-secondary wide" disabled={menuCopyLoading} onClick={generateMenuCopy} type="button"><Sparkles /> {menuCopyLoading ? "Generating menu copy" : "AI polish copy"}</button>
-                    <button className="primary wide" disabled={menuSaving} onClick={addMenuItem} type="button"><Plus /> {menuSaving ? "Saving item" : `Add to ${menuDraftSection}`}</button>
-                  </div>
-                </div>
-                )}
-                {menuAdminPage === "pizzas" && (
-                <>
-                <div className="menu-editor-section wide"><p className="eyebrow">Pizza catalogue</p><span>Customer-facing pizzas with price, availability, and image preview.</span></div>
-                {menu.pizzas.map((pizza) => (
-                  <article key={pizza.id}>
-                    <img src={pizza.image} alt="" />
-                    <input value={pizza.name} onChange={(event) => updatePizza(pizza.id, "name", event.target.value)} />
-                    <input type="number" min={0} value={pizza.price} onChange={(event) => updatePizza(pizza.id, "price", Number(event.target.value))} />
-                    <label><input type="checkbox" checked={pizza.available} onChange={(event) => updatePizza(pizza.id, "available", event.target.checked)} /> Available</label>
-                  </article>
-                ))}
-                </>
-                )}
-                {menuAdminPage === "bases" && (
-                <>
-                <div className="menu-editor-section wide"><p className="eyebrow">Bases</p><span>Crust options available in the pizza builder.</span></div>
-                {menu.bases.map((base) => (
-                  <article className="compact" key={base.id}>
-                    <strong>{base.code}</strong>
-                    <input value={base.name} onChange={(event) => updateMenuItem("bases", base.id, "name", event.target.value)} />
-                    <input type="number" min={0} value={base.price} onChange={(event) => updateMenuItem("bases", base.id, "price", Number(event.target.value))} />
-                    <label><input type="checkbox" checked={base.available} onChange={(event) => updateMenuItem("bases", base.id, "available", event.target.checked)} /> Available</label>
-                  </article>
-                ))}
-                </>
-                )}
-                {menuAdminPage === "toppings" && (
-                <>
-                <div className="menu-editor-section wide"><p className="eyebrow">Toppings</p><span>Add-ons that change basket value and personalization quality.</span></div>
-                {menu.toppings.map((topping) => (
-                  <article className="compact" key={topping.id}>
-                    <strong>{topping.code}</strong>
-                    <input value={topping.name} onChange={(event) => updateMenuItem("toppings", topping.id, "name", event.target.value)} />
-                    <input type="number" min={0} value={topping.price} onChange={(event) => updateMenuItem("toppings", topping.id, "price", Number(event.target.value))} />
-                    <label><input type="checkbox" checked={topping.available} onChange={(event) => updateMenuItem("toppings", topping.id, "available", event.target.checked)} /> Available</label>
-                  </article>
-                ))}
-                </>
-                )}
-              </section>
-            )}
-            {adminTab === "ai" && <AIPanel />}
-            {adminTab === "settings" && (
-              <section className="admin-card settings-console">
-                <div className="settings-head">
-                  <div>
-                    <p className="eyebrow">Owner configuration</p>
-                    <h3>Control the customer app, financial rules, delivery policy, and risk settings.</h3>
-                  </div>
-                  <button type="button" onClick={() => showToast("Settings applied to the live app preview.")}><Check /> Apply live preview</button>
-                </div>
-
-                <div className="sub-tabs">
-                  {[
-                    ["brand", "Brand"],
-                    ["financials", "Financials"],
-                    ["delivery", "Delivery & risk"]
-                  ].map(([page, label]) => (
-                    <button key={page} className={settingsPage === page ? "active" : ""} onClick={() => setSettingsPage(page as SettingsPage)} type="button">{label}</button>
-                  ))}
-                </div>
-
-                {settingsPage === "brand" && (
-                <div className="settings-group">
-                  <div><p className="eyebrow">Brand and outlet</p><span>Everything here is visible to customers.</span></div>
-                  <div className="settings-grid">
-                    <label>Brand<input value={brand.name} onChange={(event) => setBrand({ ...brand, name: event.target.value })} /></label>
-                    <label>Outlet<input value={brand.outlet} onChange={(event) => setBrand({ ...brand, outlet: event.target.value })} /></label>
-                    <label>Open status<input value={brand.openStatus} onChange={(event) => setBrand({ ...brand, openStatus: event.target.value })} /></label>
-                    <label>Delivery promise<input value={brand.deliveryPromise} onChange={(event) => setBrand({ ...brand, deliveryPromise: event.target.value })} /></label>
-                    <label className="wide">Hero headline<textarea value={brand.hero} onChange={(event) => setBrand({ ...brand, hero: event.target.value })} /></label>
-                    <label className="wide">Hero copy<textarea value={brand.subhero} onChange={(event) => setBrand({ ...brand, subhero: event.target.value })} /></label>
-                    <label className="wide">Customer promise strip<input value={brand.customerPromise} onChange={(event) => setBrand({ ...brand, customerPromise: event.target.value })} /></label>
-                    <label className="wide">Operations promise<input value={brand.opsPromise} onChange={(event) => setBrand({ ...brand, opsPromise: event.target.value })} /></label>
-                  </div>
-                </div>
-                )}
-
-                {settingsPage === "financials" && (
-                <div className="settings-group">
-                  <div><p className="eyebrow">Financial rules</p><span>These values drive live cart totals and the order API.</span></div>
-                  <div className="settings-grid">
-                    <label>GST %<input type="number" min={0} max={100} value={Math.round(pricingConfig.gstRate * 100)} onChange={(event) => updatePercent("gstRate", event.target.value)} /></label>
-                    <label>Discount %<input type="number" min={0} max={100} value={Math.round(pricingConfig.bulkDiscountRate * 100)} onChange={(event) => updatePercent("bulkDiscountRate", event.target.value)} /></label>
-                    <label>Discount quantity<input type="number" min={1} value={pricingConfig.bulkDiscountQty} onChange={(event) => updatePositiveNumber("bulkDiscountQty", event.target.value)} /></label>
-                    <label>Max pizzas/order<input type="number" min={1} value={pricingConfig.maxOrderQty} onChange={(event) => updatePositiveNumber("maxOrderQty", event.target.value)} /></label>
-                    <label>Delivery fee<input type="number" min={0} value={pricingConfig.deliveryFee} onChange={(event) => updatePositiveNumber("deliveryFee", event.target.value)} /></label>
-                    <label>Free delivery above<input type="number" min={0} value={pricingConfig.freeDeliveryMin} onChange={(event) => updatePositiveNumber("freeDeliveryMin", event.target.value)} /></label>
-                  </div>
-                </div>
-                )}
-
-                {settingsPage === "delivery" && (
-                <div className="settings-group">
-                  <div><p className="eyebrow">Delivery and payment risk</p><span>Use stricter controls for guest orders and delivery radius expansion.</span></div>
-                  <div className="settings-grid">
-                    <label>Active delivery radius<select value={pricingConfig.activeDeliveryZone} onChange={(event) => updatePricing("activeDeliveryZone", event.target.value as PricingConfig["activeDeliveryZone"])}><option value="0-2">0-2 km</option><option value="2-4">0-4 km</option><option value="4-6">0-6 km</option></select></label>
-                    <label className="toggle-row"><input type="checkbox" checked={pricingConfig.guestCashAllowed} onChange={(event) => updatePricing("guestCashAllowed", event.target.checked)} /> Allow Cash for guest checkout</label>
-                    <div className="settings-preview wide">
-                      <strong>Live policy preview</strong>
-                      <span>GST {Math.round(pricingConfig.gstRate * 100)}%, {Math.round(pricingConfig.bulkDiscountRate * 100)}% off at {pricingConfig.bulkDiscountQty}+ pizzas, max {pricingConfig.maxOrderQty} pizzas/order, delivery fee {money(pricingConfig.deliveryFee)}, guest Cash {pricingConfig.guestCashAllowed ? "allowed" : "blocked"}.</span>
+                  {menuAdminPage === "create" && (
+                    <div className="menu-create-studio wide">
+                      <div>
+                        <p className="eyebrow">Menu lifecycle</p>
+                        <h3>Add a new pizza, crust, or topping</h3>
+                        <p>New items become available to the customer journey immediately. With Supabase configured, this creates a real database menu record.</p>
+                      </div>
+                      <div className="segment-control">
+                        {(["pizzas", "bases", "toppings"] as MenuSection[]).map((section) => (
+                          <button className={menuDraftSection === section ? "active" : ""} key={section} onClick={() => setMenuDraftSection(section)} type="button">{section}</button>
+                        ))}
+                      </div>
+                      <div className="draft-grid">
+                        <label>Code<input value={menuDraft.code} onChange={(event) => setMenuDraft({ ...menuDraft, code: event.target.value })} placeholder={menuDraftSection === "pizzas" ? "P9" : menuDraftSection === "bases" ? "B6" : "T11"} /></label>
+                        <label>Name<input value={menuDraft.name} onChange={(event) => setMenuDraft({ ...menuDraft, name: event.target.value })} placeholder={menuDraftSection === "pizzas" ? "Truffle Mushroom" : menuDraftSection === "bases" ? "Sourdough Crust" : "Smoked Paprika"} /></label>
+                        <label>Price<input type="number" min={0} value={menuDraft.price} onChange={(event) => setMenuDraft({ ...menuDraft, price: event.target.value })} placeholder={menuDraftSection === "pizzas" ? "389" : menuDraftSection === "bases" ? "199" : "49"} /></label>
+                        {menuDraftSection === "pizzas" && (
+                          <>
+                            <label>Badge<input value={menuDraft.badge} onChange={(event) => setMenuDraft({ ...menuDraft, badge: event.target.value })} placeholder="Chef special" /></label>
+                            <label>Prep minutes<input type="number" min={5} max={90} value={menuDraft.prepMinutes} onChange={(event) => setMenuDraft({ ...menuDraft, prepMinutes: event.target.value })} /></label>
+                            <label>Tags<input value={menuDraft.tags} onChange={(event) => setMenuDraft({ ...menuDraft, tags: event.target.value })} placeholder="Veg, Cheese, Signature" /></label>
+                            <div className="wide image-upload-studio">
+                              <div className="image-preview-frame">
+                                <img src={menuDraft.image || "/assets/pizza-hero.jpg"} alt="New pizza preview" />
+                              </div>
+                              <div className="image-upload-controls">
+                                <label>Pizza image
+                                  <span className="upload-dropzone">
+                                    <Upload />
+                                    <strong>{menuImageUploading ? "Uploading image" : "Upload image"}</strong>
+                                    <small>JPG, PNG, WEBP, or GIF. Preview auto-fits the card.</small>
+                                    <input type="file" accept="image/*" onChange={(event) => uploadMenuImage(event.target.files?.[0] ?? null)} />
+                                  </span>
+                                </label>
+                                <label>Image URL<input value={menuDraft.image} onChange={(event) => setMenuDraft({ ...menuDraft, image: event.target.value })} placeholder="/uploads/menu/truffle-mushroom.webp" /></label>
+                              </div>
+                            </div>
+                          </>
+                        )}
+                        {menuDraftSection !== "toppings" && (
+                          <label className="wide">Description<textarea value={menuDraft.description} onChange={(event) => setMenuDraft({ ...menuDraft, description: event.target.value })} placeholder={defaultDraftDescription(menuDraftSection)} /></label>
+                        )}
+                        <button className="ai-secondary wide" disabled={menuCopyLoading} onClick={generateMenuCopy} type="button"><Sparkles /> {menuCopyLoading ? "Generating menu copy" : "AI polish copy"}</button>
+                        <button className="primary wide" disabled={menuSaving} onClick={addMenuItem} type="button"><Plus /> {menuSaving ? "Saving item" : `Add to ${menuDraftSection}`}</button>
+                      </div>
                     </div>
+                  )}
+                  {menuAdminPage === "pizzas" && (
+                    <>
+                      <div className="menu-editor-section wide"><p className="eyebrow">Pizza catalogue</p><span>Customer-facing pizzas with price, availability, and image preview.</span></div>
+                      {menu.pizzas.map((pizza) => (
+                        <article key={pizza.id}>
+                          <img src={pizza.image} alt="" />
+                          <input value={pizza.name} onChange={(event) => updatePizza(pizza.id, "name", event.target.value)} />
+                          <input type="number" min={0} value={pizza.price} onChange={(event) => updatePizza(pizza.id, "price", Number(event.target.value))} />
+                          <label><input type="checkbox" checked={pizza.available} onChange={(event) => updatePizza(pizza.id, "available", event.target.checked)} /> Available</label>
+                        </article>
+                      ))}
+                    </>
+                  )}
+                  {menuAdminPage === "bases" && (
+                    <>
+                      <div className="menu-editor-section wide"><p className="eyebrow">Bases</p><span>Crust options available in the pizza builder.</span></div>
+                      {menu.bases.map((base) => (
+                        <article className="compact" key={base.id}>
+                          <strong>{base.code}</strong>
+                          <input value={base.name} onChange={(event) => updateMenuItem("bases", base.id, "name", event.target.value)} />
+                          <input type="number" min={0} value={base.price} onChange={(event) => updateMenuItem("bases", base.id, "price", Number(event.target.value))} />
+                          <label><input type="checkbox" checked={base.available} onChange={(event) => updateMenuItem("bases", base.id, "available", event.target.checked)} /> Available</label>
+                        </article>
+                      ))}
+                    </>
+                  )}
+                  {menuAdminPage === "toppings" && (
+                    <>
+                      <div className="menu-editor-section wide"><p className="eyebrow">Toppings</p><span>Add-ons that change basket value and personalization quality.</span></div>
+                      {menu.toppings.map((topping) => (
+                        <article className="compact" key={topping.id}>
+                          <strong>{topping.code}</strong>
+                          <input value={topping.name} onChange={(event) => updateMenuItem("toppings", topping.id, "name", event.target.value)} />
+                          <input type="number" min={0} value={topping.price} onChange={(event) => updateMenuItem("toppings", topping.id, "price", Number(event.target.value))} />
+                          <label><input type="checkbox" checked={topping.available} onChange={(event) => updateMenuItem("toppings", topping.id, "available", event.target.checked)} /> Available</label>
+                        </article>
+                      ))}
+                    </>
+                  )}
+                </section>
+              )}
+              {adminTab === "ai" && <AIPanel />}
+              {adminTab === "settings" && (
+                <section className="admin-card settings-console">
+                  <div className="settings-head">
+                    <div>
+                      <p className="eyebrow">Owner configuration</p>
+                      <h3>Control the customer app, financial rules, delivery policy, and risk settings.</h3>
+                    </div>
+                    <button type="button" onClick={() => showToast("Settings applied to the live app preview.")}><Check /> Apply live preview</button>
                   </div>
-                </div>
-                )}
-              </section>
-            )}
-          </>
-        )}
-      </section>
+
+                  <div className="sub-tabs">
+                    {[
+                      ["brand", "Brand"],
+                      ["financials", "Financials"],
+                      ["delivery", "Delivery & risk"]
+                    ].map(([page, label]) => (
+                      <button key={page} className={settingsPage === page ? "active" : ""} onClick={() => setSettingsPage(page as SettingsPage)} type="button">{label}</button>
+                    ))}
+                  </div>
+
+                  {settingsPage === "brand" && (
+                    <div className="settings-group">
+                      <div><p className="eyebrow">Brand and outlet</p><span>Everything here is visible to customers.</span></div>
+                      <div className="settings-grid">
+                        <label>Brand<input value={brand.name} onChange={(event) => setBrand({ ...brand, name: event.target.value })} /></label>
+                        <label>Outlet<input value={brand.outlet} onChange={(event) => setBrand({ ...brand, outlet: event.target.value })} /></label>
+                        <label>Open status<input value={brand.openStatus} onChange={(event) => setBrand({ ...brand, openStatus: event.target.value })} /></label>
+                        <label>Delivery promise<input value={brand.deliveryPromise} onChange={(event) => setBrand({ ...brand, deliveryPromise: event.target.value })} /></label>
+                        <label className="wide">Hero headline<textarea value={brand.hero} onChange={(event) => setBrand({ ...brand, hero: event.target.value })} /></label>
+                        <label className="wide">Hero copy<textarea value={brand.subhero} onChange={(event) => setBrand({ ...brand, subhero: event.target.value })} /></label>
+                        <label className="wide">Customer promise strip<input value={brand.customerPromise} onChange={(event) => setBrand({ ...brand, customerPromise: event.target.value })} /></label>
+                        <label className="wide">Operations promise<input value={brand.opsPromise} onChange={(event) => setBrand({ ...brand, opsPromise: event.target.value })} /></label>
+                      </div>
+                    </div>
+                  )}
+
+                  {settingsPage === "financials" && (
+                    <div className="settings-group">
+                      <div><p className="eyebrow">Financial rules</p><span>These values drive live cart totals and the order API.</span></div>
+                      <div className="settings-grid">
+                        <label>GST %<input type="number" min={0} max={100} value={Math.round(pricingConfig.gstRate * 100)} onChange={(event) => updatePercent("gstRate", event.target.value)} /></label>
+                        <label>Discount %<input type="number" min={0} max={100} value={Math.round(pricingConfig.bulkDiscountRate * 100)} onChange={(event) => updatePercent("bulkDiscountRate", event.target.value)} /></label>
+                        <label>Discount quantity<input type="number" min={1} value={pricingConfig.bulkDiscountQty} onChange={(event) => updatePositiveNumber("bulkDiscountQty", event.target.value)} /></label>
+                        <label>Max pizzas/order<input type="number" min={1} value={pricingConfig.maxOrderQty} onChange={(event) => updatePositiveNumber("maxOrderQty", event.target.value)} /></label>
+                        <label>Delivery fee<input type="number" min={0} value={pricingConfig.deliveryFee} onChange={(event) => updatePositiveNumber("deliveryFee", event.target.value)} /></label>
+                        <label>Free delivery above<input type="number" min={0} value={pricingConfig.freeDeliveryMin} onChange={(event) => updatePositiveNumber("freeDeliveryMin", event.target.value)} /></label>
+                      </div>
+                    </div>
+                  )}
+
+                  {settingsPage === "delivery" && (
+                    <div className="settings-group">
+                      <div><p className="eyebrow">Delivery and payment risk</p><span>Use stricter controls for guest orders and delivery radius expansion.</span></div>
+                      <div className="settings-grid">
+                        <label>Active delivery radius<select value={pricingConfig.activeDeliveryZone} onChange={(event) => updatePricing("activeDeliveryZone", event.target.value as PricingConfig["activeDeliveryZone"])}><option value="0-2">0-2 km</option><option value="2-4">0-4 km</option><option value="4-6">0-6 km</option></select></label>
+                        <label className="toggle-row"><input type="checkbox" checked={pricingConfig.guestCashAllowed} onChange={(event) => updatePricing("guestCashAllowed", event.target.checked)} /> Allow Cash for guest checkout</label>
+                        <div className="settings-preview wide">
+                          <strong>Live policy preview</strong>
+                          <span>GST {Math.round(pricingConfig.gstRate * 100)}%, {Math.round(pricingConfig.bulkDiscountRate * 100)}% off at {pricingConfig.bulkDiscountQty}+ pizzas, max {pricingConfig.maxOrderQty} pizzas/order, delivery fee {money(pricingConfig.deliveryFee)}, guest Cash {pricingConfig.guestCashAllowed ? "allowed" : "blocked"}.</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </section>
+              )}
+            </>
+          )}
+        </section>
       )}
 
       {selectedPizza && (

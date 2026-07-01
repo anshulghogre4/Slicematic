@@ -75,6 +75,14 @@ export type OrderPayload = {
   recommendationId?: string | null;
 };
 
+export type PaymentMeta = {
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  cashfreeOrderId?: string;
+  cashfreePaymentId?: string;
+  paymentStatus?: "paid" | "confirmed" | "failed";
+};
+
 export type SavedOrder = {
   id: string;
   createdAt: string;
@@ -84,6 +92,11 @@ export type SavedOrder = {
   deliveryZone?: string;
   paymentMode: PaymentMode;
   status: string;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  cashfreeOrderId?: string;
+  cashfreePaymentId?: string;
+  paymentStatus?: "paid" | "confirmed" | "failed";
   subtotal: number;
   discount: number;
   gst: number;
