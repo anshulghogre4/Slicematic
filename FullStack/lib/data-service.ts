@@ -136,7 +136,7 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
     const effectiveCustomerId = existingCustomer.data?.customer_id ?? customerId;
 
     if (!existingCustomer.data) {
-      await supabase.schema("slicematic").from("customer").insert({
+      const { error: customerError } = await supabase.schema("slicematic").from("customer").insert({
         customer_id: effectiveCustomerId,
         first_name: firstName,
         last_name: lastName,
@@ -148,9 +148,13 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
         preferred_contact_channel: "Phone",
         marketing_opt_in: false
       });
+      if (customerError) {
+        console.error("Customer insert error:", customerError);
+        throw new Error("Customer insert failed: " + customerError.message);
+      }
     }
 
-    await supabase.schema("slicematic").from("orders").insert({
+    const { error: orderError } = await supabase.schema("slicematic").from("orders").insert({
       order_id: uuidOrderId,
       customer_id: effectiveCustomerId,
       order_datetime: now,
@@ -172,13 +176,17 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
       cashfree_payment_id: paymentMeta.cashfreePaymentId ?? null,
       payment_status: paymentMeta.paymentStatus ?? "confirmed"
     });
+    if (orderError) {
+      console.error("Order insert error:", orderError);
+      throw new Error("Order insert failed: " + orderError.message);
+    }
 
     for (const line of payload.lines) {
       const orderItemId = randomUUID();
       const pizza = menu.pizzas.find((item) => item.id === line.pizzaId);
       const base = menu.bases.find((item) => item.id === line.baseId);
       const unitPrice = getLineUnitPrice(line, menu);
-      await supabase.schema("slicematic").from("order_item").insert({
+      const { error: lineError } = await supabase.schema("slicematic").from("order_item").insert({
         order_item_id: orderItemId,
         order_id: uuidOrderId,
         pizza_type_id: line.pizzaId,
@@ -189,6 +197,10 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
         pizza_price: pizza?.price ?? 0,
         line_total: unitPrice * line.quantity
       });
+      if (lineError) {
+        console.error("Order line insert error:", lineError);
+        throw new Error("Order line insert failed: " + lineError.message);
+      }
       const toppingRows = line.toppingIds.map((toppingId) => {
         const topping = menu.toppings.find((item) => item.id === toppingId);
         return {
@@ -198,7 +210,11 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
         };
       });
       if (toppingRows.length) {
-        await supabase.schema("slicematic").from("order_item_topping").insert(toppingRows);
+        const { error: toppingError } = await supabase.schema("slicematic").from("order_item_topping").insert(toppingRows);
+        if (toppingError) {
+          console.error("Topping insert error:", toppingError);
+          throw new Error("Topping insert failed: " + toppingError.message);
+        }
       }
     }
 
@@ -211,7 +227,8 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
     }
 
     return { ...savedOrder, id: uuidOrderId };
-  } catch {
+  } catch (err) {
+    console.error("saveOrder caught an error:", err);
     return savedOrder;
   }
 }

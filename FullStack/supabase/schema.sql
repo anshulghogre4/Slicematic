@@ -290,3 +290,12 @@ create policy "authenticated admin read orders" on slicematic.orders for select 
 create policy "authenticated admin read order items" on slicematic.order_item for select to authenticated using (true);
 create policy "authenticated admin read order toppings" on slicematic.order_item_topping for select to authenticated using (true);
 create policy "authenticated admin read recommendations" on slicematic.recommendation_event for select to authenticated using (true);
+
+-- API Role Permissions for Custom Schema
+grant usage on schema slicematic to anon, authenticated, service_role;
+grant all privileges on all tables in schema slicematic to anon, authenticated, service_role;
+grant all privileges on all routines in schema slicematic to anon, authenticated, service_role;
+grant all privileges on all sequences in schema slicematic to anon, authenticated, service_role;
+alter default privileges in schema slicematic grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema slicematic grant all on routines to anon, authenticated, service_role;
+alter default privileges in schema slicematic grant all on sequences to anon, authenticated, service_role;
