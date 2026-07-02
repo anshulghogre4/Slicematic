@@ -3,42 +3,7 @@ import re
 import os
 import tempfile
 
-def load_menu_file(filepath):
-    """Mirror of app.py's loader — items with bad name/price kept as unavailable."""
-    items = []
-    seen = set()
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split(";")
-                if len(parts) != 3:
-                    continue
-                item_id, name, price_str = [p.strip() for p in parts]
-                if not name:
-                    items.append((item_id, "Unnamed", 0.0))
-                    continue
-                if not price_str:
-                    items.append((item_id, name, 0.0))
-                    continue
-                try:
-                    price = float(price_str)
-                except ValueError:
-                    items.append((item_id, name, 0.0))
-                    continue
-                if price < 0:
-                    items.append((item_id, name, 0.0))
-                    continue
-                row_key = (item_id, name, price)
-                if row_key in seen:
-                    continue
-                seen.add(row_key)
-                items.append((item_id, name, price))
-    except Exception:
-        pass
-    return items
+# Text menu file loader checks have been removed since data is strictly DB-backed.
 
 def validate_name(raw):
     name = (raw or "").strip()
@@ -104,15 +69,29 @@ def compute_bill(bases, pizzas, toppings, bi, pi, ti, qty):
 
 
 def run_tests():
-    # 1. Test local files loading (keeps core bill math assertions working)
-    bases = load_menu_file("Types_of_Base.txt")
-    pizzas = load_menu_file("Types_of_Pizza.txt")
-    toppings = load_menu_file("Types_of_Toppings.txt")
-
-    assert len(bases) in (5, 6), f"Expected 5 or 6 bases from files, got {len(bases)}"
-    assert len(pizzas) in (8, 9), f"Expected 8 or 9 pizzas from files, got {len(pizzas)}"
-    assert len(toppings) in (10, 16, 17), f"Expected 10, 16, or 17 toppings from files, got {len(toppings)}"
-    print(f"File loading: PASS ({len(bases)} bases, {len(pizzas)} pizzas, {len(toppings)} toppings)")
+    # 1. Define dummy in-memory menus to run core math and validation checks independently of files
+    bases = [
+        ("B1", "Thin Crust", 149.0),
+        ("B2", "Thick Crust", 179.0),
+        ("B3", "Cheese Burst", 229.0),
+        ("B4", "Whole Wheat", 159.0),
+        ("B5", "Multigrain", 169.0)
+    ]
+    pizzas = [
+        ("P1", "Margherita", 299.0),
+        ("P2", "Chicago Deep Dish", 349.0),
+        ("P3", "Greek Mediterranean", 329.0),
+        ("P4", "California Veggie", 339.0),
+        ("P5", "Farm House", 319.0),
+        ("P6", "Pepperoni Classic", 0.0),
+        ("P7", "BBQ Chicken", 379.0),
+        ("P8", "Paneer Tikka", 349.0)
+    ]
+    toppings = [
+        ("T1", "Extra Cheese", 69.0),
+        ("T2", "Onion", 29.0),
+        ("T3", "Green Capsicum", 39.0)
+    ]
 
     # 2. Test database loading (verifies PostgreSQL configuration)
     try:
@@ -184,36 +163,8 @@ def run_tests():
     assert idx == 2 and err == ""
     print("Unavailable item validation: PASS")
 
-    # ─── Loader: empty/bad names and prices kept as unavailable ───
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".txt", delete=False, encoding="utf-8") as tmp:
-        tmp.write("X1;Good;100\n")
-        tmp.write("X2;Empty;\n")
-        tmp.write("X3;Bad;abc\n")
-        tmp.write("X4;Negative;-50\n")
-        tmp.write("X5;Zero;0\n")
-        tmp.write("X6;Also Good;200\n")
-        tmp.write("X7;;150\n")
-        tmp.write("X8;  ;300\n")
-        tmp_path = tmp.name
-    try:
-        loaded = load_menu_file(tmp_path)
-        assert len(loaded) == 8, f"Expected 8 items, got {len(loaded)}"
-        assert loaded[0] == ("X1", "Good", 100.0)
-        assert loaded[1][2] == 0.0, f"Empty price should be 0, got {loaded[1][2]}"
-        assert loaded[2][2] == 0.0, f"Bad price should be 0, got {loaded[2][2]}"
-        assert loaded[3][2] == 0.0, f"Negative price should be 0, got {loaded[3][2]}"
-        assert loaded[4][2] == 0.0, f"Zero price should stay 0, got {loaded[4][2]}"
-        assert loaded[5] == ("X6", "Also Good", 200.0)
-        assert loaded[6][1] == "Unnamed" and loaded[6][2] == 0.0, f"Empty name should be Unnamed+unavailable, got {loaded[6]}"
-        assert loaded[7][1] == "Unnamed" and loaded[7][2] == 0.0, f"Blank name should be Unnamed+unavailable, got {loaded[7]}"
-    finally:
-        os.unlink(tmp_path)
-    print("Loader (unavailable items): PASS")
-
     # ─── Bill: Cheese Burst + BBQ Chicken + Extra Cheese, qty=5 ───
     # b[2]=Cheese Burst(229), p[6]=BBQ Chicken(379), t[0]=Extra Cheese(69)
-    # Patch bases[2] because in Types_of_Base.txt B3 name is empty and thus loaded as price 0
-    bases[2] = ("B3", "Cheese Burst", 229.0)
     bill = compute_bill(bases, pizzas, toppings, 2, 6, 0, 5)
     assert bill["unit_price"] == 677.0, f"unit_price={bill['unit_price']}"
     assert bill["subtotal"] == 3385.0, f"subtotal={bill['subtotal']}"

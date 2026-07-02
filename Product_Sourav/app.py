@@ -27,12 +27,6 @@ DISCOUNT_THRESHOLD = 5
 MAX_QTY = 10
 MIN_QTY = 1
 PAYMENT_MODES = ["Cash", "Card", "UPI"]
-LOG_FILE = "orders_log.txt"
-LOG_HEADER = "MARKER|TIMESTAMP|CUSTOMER_NAME|PHONE|BASE_ID|BASE_NAME|BASE_PRICE|PIZZA_ID|PIZZA_NAME|PIZZA_PRICE|TOPPING_IDS|TOPPING_NAMES|TOPPING_TOTAL_PRICE|QUANTITY|UNIT_PRICE|SUBTOTAL|DISCOUNT|GST|FINAL_TOTAL|PAYMENT_MODE"
-BASE_FILE = "Types_of_Base.txt"
-PIZZA_FILE = "Types_of_Pizza.txt"
-TOPPING_FILE = "Types_of_Toppings.txt"
-
 DB_PARAMS = {
     "host": "aws-1-ap-northeast-1.pooler.supabase.com",
     "port": 5432,
@@ -95,80 +89,7 @@ def _is_null_like(value: str) -> bool:
     return v.lower() in NULL_LIKE
 
 
-def load_menu_file(filepath):
-    """Load menu items from a semicolon-delimited file. Returns list of (id, name, price) tuples.
-
-    Items are marked unavailable (price=0, name='Unnamed' where needed) when:
-      - ID field is empty or a null-like sentinel (NA, NaN, None, Null, N/A, '')
-      - Name field is empty or a null-like sentinel
-      - Price field is empty, non-numeric, NaN, infinite, zero, or negative
-      - Quoted-empty strings such as '' or "" in any field are treated as missing
-
-    Unavailable items are KEPT in the list so display numbering stays consistent.
-    Exact duplicate rows are skipped with a [WARN] log.
-    """
-    items = []
-    seen = set()  # tracks (item_id, name, price) tuples to catch exact duplicate rows
-    try:
-        with open(filepath, "r", encoding="utf-8") as f:
-            for line_num, line in enumerate(f, 1):
-                line = line.strip()
-                if not line:
-                    continue
-                parts = line.split(";")
-                if len(parts) != 3:
-                    print(f"[WARN] {filepath}:{line_num} — expected 3 fields, got {len(parts)}, skipping")
-                    continue
-
-                item_id_raw, name_raw, price_str_raw = [p.strip() for p in parts]
-
-                # ── ID check ─────────────────────────────────────────────────
-                item_id = item_id_raw.strip("'\"")
-                if _is_null_like(item_id_raw):
-                    print(f"[WARN] {filepath}:{line_num} — null-like ID '{item_id_raw}', marking unavailable")
-                    items.append((item_id or "?", "Unnamed", 0.0))
-                    continue
-
-                # ── Name check ───────────────────────────────────────────────
-                name = name_raw.strip("'\"")
-                if _is_null_like(name_raw):
-                    print(f"[WARN] {filepath}:{line_num} — null-like name '{name_raw}' for '{item_id}', marking unavailable")
-                    items.append((item_id, "Unnamed", 0.0))
-                    continue
-
-                # ── Price check ──────────────────────────────────────────────
-                price_str = price_str_raw.strip("'\"")
-                if _is_null_like(price_str_raw):
-                    print(f"[WARN] {filepath}:{line_num} — null-like price '{price_str_raw}' for '{name}', marking unavailable")
-                    items.append((item_id, name, 0.0))
-                    continue
-                try:
-                    price = float(price_str)
-                except ValueError:
-                    print(f"[WARN] {filepath}:{line_num} — non-numeric price '{price_str_raw}' for '{name}', marking unavailable")
-                    items.append((item_id, name, 0.0))
-                    continue
-                if math.isnan(price) or math.isinf(price):
-                    print(f"[WARN] {filepath}:{line_num} — NaN/Inf price for '{name}', marking unavailable")
-                    items.append((item_id, name, 0.0))
-                    continue
-                if price < 0:
-                    print(f"[WARN] {filepath}:{line_num} — negative price {price} for '{name}', marking unavailable")
-                    items.append((item_id, name, 0.0))
-                    continue
-
-                # ── Duplicate check ──────────────────────────────────────────
-                row_key = (item_id, name, price)
-                if row_key in seen:
-                    print(f"[WARN] {filepath}:{line_num} — exact duplicate row '{item_id};{name};{price_str_raw}', skipping")
-                    continue
-                seen.add(row_key)
-                items.append((item_id, name, price))
-    except FileNotFoundError:
-        print(f"[ERROR] File not found: {filepath}")
-    except Exception as e:
-        print(f"[ERROR] Could not read {filepath}: {e}")
-    return items
+# Menu items are strictly loaded from database at startup.
 
 
 def load_menu_from_db():
@@ -233,22 +154,20 @@ def load_menu_from_db():
         
     return bases, pizzas, toppings
 
-# Load at startup — try database first, fallback to files
+# Load at startup — strictly load from PostgreSQL database
 try:
     print("[INFO] Attempting to load menu from PostgreSQL database...")
     bases, pizzas, toppings = load_menu_from_db()
     print(f"[INFO] Loaded from DB: {len(bases)} bases, {len(pizzas)} pizzas, {len(toppings)} toppings.")
+    SYSTEM_READY = (
+        any(p > 0 for _, _, p in bases)
+        and any(p > 0 for _, _, p in pizzas)
+        and any(p > 0 for _, _, p in toppings)
+    )
 except Exception as db_err:
-    print(f"[WARN] Failed to load menu from DB: {db_err}. Falling back to text files.")
-    bases = load_menu_file(BASE_FILE)
-    pizzas = load_menu_file(PIZZA_FILE)
-    toppings = load_menu_file(TOPPING_FILE)
-
-SYSTEM_READY = (
-    any(p > 0 for _, _, p in bases)
-    and any(p > 0 for _, _, p in pizzas)
-    and any(p > 0 for _, _, p in toppings)
-)
+    print(f"[ERROR] Failed to load menu from DB: {db_err}")
+    bases, pizzas, toppings = [], [], []
+    SYSTEM_READY = False
 
 
 # ═══════════════════════════════════════════════════════════
@@ -857,10 +776,10 @@ def err(msg):
 
 def initial_state():
     return {
-        "stage": 1,
+        "stage": 2,
         "name": "",
         "phone": "",
-        "timestamp": "",
+        "timestamp": datetime.now(IST).isoformat(),
         "cart": [],
         "payment_mode": "",
         "email": "",
@@ -916,7 +835,7 @@ with gr.Blocks(title="SliceMatic") as app:
     state = gr.State(initial_state())
     
     with gr.Row():
-        with gr.Column(scale=1, min_width=250, elem_classes=["sm-sidebar-col"], visible=False) as sidebar_col:
+        with gr.Column(scale=1, min_width=250, elem_classes=["sm-sidebar-col"], visible=True) as sidebar_col:
             gr.HTML(
                 '<div style="display:flex;align-items:center;gap:10px;padding:16px 8px;margin-bottom:24px;">'
                 '<span style="font-size:28px;">🍕</span>'
@@ -928,18 +847,18 @@ with gr.Blocks(title="SliceMatic") as app:
         with gr.Column(scale=4, elem_classes=["sm-main-col"]):
 
             if not SYSTEM_READY:
-                # ──── SYSTEM UNAVAILABLE — show which files are missing ────
+                # ──── SYSTEM UNAVAILABLE — show which tables are missing ────
                 missing_lines = []
                 for fname, items, label in [
-                    (BASE_FILE, bases, "bases"),
-                    (PIZZA_FILE, pizzas, "pizzas"),
-                    (TOPPING_FILE, toppings, "toppings"),
+                    ("pizza_bases", bases, "bases"),
+                    ("pizza_types", pizzas, "pizzas"),
+                    ("toppings", toppings, "toppings"),
                 ]:
                     if not items:
                         missing_lines.append(
                             f'<div style="font-size:14px;margin:6px 0;color:#dc2626;">'
                             f'<span style="font-weight:700;">✗</span> '
-                            f'<strong>{html_escape(fname)}</strong> — file missing or empty</div>'
+                            f'<strong>{html_escape(fname)}</strong> — table missing or empty</div>'
                         )
                     else:
                         missing_lines.append(
@@ -965,12 +884,12 @@ with gr.Blocks(title="SliceMatic") as app:
                 # ════════════════════════════════════════════════════
                 # STAGE 1 — System Ready (no step indicator per design)
                 # ════════════════════════════════════════════════════
-                with gr.Group(visible=True) as stage1:
+                with gr.Group(visible=False) as stage1:
                     init_lines = []
                     for fname, items, label in [
-                        (BASE_FILE, bases, "bases"),
-                        (PIZZA_FILE, pizzas, "pizzas"),
-                        (TOPPING_FILE, toppings, "toppings"),
+                        ("pizza_bases", bases, "bases"),
+                        ("pizza_types", pizzas, "pizzas"),
+                        ("toppings", toppings, "toppings"),
                     ]:
                         available = sum(1 for _, _, p in items if p > 0)
                         total = len(items)
@@ -999,7 +918,7 @@ with gr.Blocks(title="SliceMatic") as app:
                 # ════════════════════════════════════════════════════
                 # STAGE 2 — Customer Intake (Step 1 of 5 per design)
                 # ════════════════════════════════════════════════════
-                with gr.Column(visible=False, elem_classes=["sm-card"]) as stage2:
+                with gr.Column(visible=True, elem_classes=["sm-card"]) as stage2:
                     gr.HTML(
                         '<div style="text-align:center;margin:24px 0 8px;">'
                         '<h1 class="sm-headline">Let\'s get started</h1>'
@@ -1373,16 +1292,6 @@ with gr.Blocks(title="SliceMatic") as app:
                     # Save order to PostgreSQL database
                     bill = compute_bill(st.get("cart", []))
                     write_ok = save_order_to_db(st, bill)
-                    if not write_ok:
-                        # Fallback to local file backup if database fails
-                        try:
-                            needs_header = not os.path.exists(LOG_FILE) or os.path.getsize(LOG_FILE) == 0
-                            with open(LOG_FILE, "a", encoding="utf-8") as f:
-                                if needs_header:
-                                    f.write(LOG_HEADER + "\n\n")
-                                f.write(order_line + "\n\n")
-                        except Exception:
-                            pass
 
                     bill_html = render_bill_html(st, show_payment=True)
                     safe_name = html_escape(st["name"])
@@ -1466,8 +1375,8 @@ with gr.Blocks(title="SliceMatic") as app:
                 return (
                     initial_state(),
                     render_sidebar(1),                               # sidebar
-                    gr.update(visible=True),                         # stage1
-                    gr.update(visible=False),                        # stage2
+                    gr.update(visible=False),                        # stage1
+                    gr.update(visible=True),                         # stage2
                     gr.update(visible=False),                        # stage3
                     gr.update(visible=False),                        # stage4
                     gr.update(visible=False),                        # stage5
@@ -1492,7 +1401,7 @@ with gr.Blocks(title="SliceMatic") as app:
                     gr.update(visible=True),                          # pay_section
                     gr.update(visible=False),                         # receipt_section
                     "",                                              # receipt_display
-                    gr.update(visible=False),                         # sidebar_col
+                    gr.update(visible=True),                          # sidebar_col
                     # Reset first-timer inputs
                     gr.update(value=""),                              # email_input
                     "",                                              # email_err_display
