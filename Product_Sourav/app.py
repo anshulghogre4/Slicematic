@@ -1,4 +1,4 @@
-import gradio as gr
+import streamlit as st
 import os
 import math
 from datetime import datetime
@@ -743,26 +743,28 @@ def render_sidebar(step):
         (5, "Receipt", "✅"),
     ]
     
-    html = f"""
-    <div class="sm-sidebar">
-        <div class="sm-step-text" style="font-size:14px; font-weight:700; margin-left:12px;">Step {step} of 5</div>
-        <div class="sm-subtitle" style="font-size:12px; margin-left:12px; margin-bottom:24px;">{
-            {1: "Tell us who you are",
-             2: "Pick your base, pizza & toppings",
-             3: "Review your order total",
-             4: "Choose how to pay",
-             5: "Order confirmed!"}[step]
-        }</div>
-        <div style="display:flex; flex-direction:column; gap:8px;">
-    """
+    subtitle = {
+        1: "Tell us who you are",
+        2: "Pick your base, pizza & toppings",
+        3: "Review your order total",
+        4: "Choose how to pay",
+        5: "Order confirmed!"
+    }[step]
+    
+    html = (
+        f'<div class="sm-sidebar">'
+        f'<div class="sm-step-text" style="font-size:14px; font-weight:700; margin-left:12px;">Step {step} of 5</div>'
+        f'<div class="sm-subtitle" style="font-size:12px; margin-left:12px; margin-bottom:24px;">{subtitle}</div>'
+        f'<div style="display:flex; flex-direction:column; gap:8px;">'
+    )
     
     for s_num, s_name, s_icon in steps:
         active_class = "sm-sidebar-active" if s_num == step else ""
-        html += f"""
-            <div class="sm-sidebar-item {active_class}">
-                <span style="margin-right:12px; font-size:16px;">{s_icon}</span> {s_name}
-            </div>
-        """
+        html += (
+            f'<div class="sm-sidebar-item {active_class}">'
+            f'<span style="margin-right:12px; font-size:16px;">{s_icon}</span> {s_name}'
+            f'</div>'
+        )
         
     html += "</div></div>"
     return html
@@ -772,6 +774,42 @@ def err(msg):
     if not msg:
         return ""
     return f"<p class='sm-error-text' style='font-size:13px; margin:4px 0; color:#dc2626 !important;'>* {html_escape(msg)}</p>"
+
+
+def get_base_gallery_items():
+    items = []
+    for i, (bid, name, price) in enumerate(bases, 1):
+        img_path = ""
+        for ext in ("png", "jpg", "jpeg", "webp"):
+            p = MENU_IMAGE_DIR / f"{bid}.{ext}"
+            if p.exists():
+                img_path = str(p)
+                break
+        if not img_path:
+            p = MENU_IMAGE_DIR / "B1.png"
+            if p.exists():
+                img_path = str(p)
+        status = f"₹{price:.2f}" if price > 0 else "Unavailable"
+        items.append((img_path, f"{i}. {name} ({status})"))
+    return items
+
+
+def get_pizza_gallery_items():
+    items = []
+    for i, (pid, name, price) in enumerate(pizzas, 1):
+        img_path = ""
+        for ext in ("png", "jpg", "jpeg", "webp"):
+            p = MENU_IMAGE_DIR / f"{pid}.{ext}"
+            if p.exists():
+                img_path = str(p)
+                break
+        if not img_path:
+            p = MENU_IMAGE_DIR / "P1.jpg"
+            if p.exists():
+                img_path = str(p)
+        status = f"₹{price:.2f}" if price > 0 else "Unavailable"
+        items.append((img_path, f"{i}. {name} ({status})"))
+    return items
 
 
 def initial_state():
@@ -813,490 +851,428 @@ def check_customer_exists(phone):
 
 
 # ═══════════════════════════════════════════════════════════
-# GRADIO APPLICATION
+# STREAMLIT APPLICATION
 # ═══════════════════════════════════════════════════════════
-HEAD_JS = """
-<script>
-document.addEventListener('click', function(e) {
-    let btn = e.target.closest('.sm-dev-log-copy');
-    if (btn) {
-        let text = btn.getAttribute('data-log');
-        navigator.clipboard.writeText(text);
-        let oldHtml = btn.innerHTML;
-        btn.innerHTML = '<span style="color:#4ade80; font-size:12px; margin-left:4px;">✓ Copied</span>';
-        setTimeout(() => { btn.innerHTML = oldHtml; }, 2000);
-    }
-});
-</script>
-"""
+import streamlit as st
+DESIGN_CSS = ""
 
-with gr.Blocks(title="SliceMatic") as app:
+# Initialize Session State
+if "state" not in st.session_state:
+    st.session_state["state"] = initial_state()
+if "selected_base_idx" not in st.session_state:
+    st.session_state["selected_base_idx"] = None
+if "selected_pizzas" not in st.session_state:
+    st.session_state["selected_pizzas"] = {}
+if "selected_toppings" not in st.session_state:
+    st.session_state["selected_toppings"] = []
+if "order_quantity" not in st.session_state:
+    st.session_state["order_quantity"] = 1
+if "show_first_timer" not in st.session_state:
+    st.session_state["show_first_timer"] = False
+if "receipt_html" not in st.session_state:
+    st.session_state["receipt_html"] = ""
 
-    state = gr.State(initial_state())
+# Text input state persistence keys
+state = st.session_state["state"]
+if "name_input" not in st.session_state:
+    st.session_state["name_input"] = state["name"]
+if "phone_input" not in st.session_state:
+    st.session_state["phone_input"] = state["phone"]
+if "email_input" not in st.session_state:
+    st.session_state["email_input"] = state["email"]
+if "birth_date_input" not in st.session_state:
+    st.session_state["birth_date_input"] = state["birth_date"] or ""
+if "city_input" not in st.session_state:
+    st.session_state["city_input"] = state["city"]
+if "state_input" not in st.session_state:
+    st.session_state["state_input"] = state["state"]
+if "country_input" not in st.session_state:
+    st.session_state["country_input"] = state["country"]
+
+# Page Config
+st.set_page_config(page_title="SliceMatic", page_icon="🍕", layout="wide")
+
+# Styling system css injection
+st.html(f"<style>{DESIGN_CSS}</style>")
+
+state = st.session_state["state"]
+
+# Sidebar column
+with st.sidebar:
+    st.markdown(
+        '<div style="display:flex;align-items:center;gap:10px;padding:16px 8px;margin-bottom:24px;">'
+        '<span style="font-size:28px;">🍕</span>'
+        '<span class="sm-logo-text" style="font-size:22px;font-weight:700;color:#0F172A;">SliceMatic</span>'
+        '</div>',
+        unsafe_allow_html=True
+    )
     
-    with gr.Row():
-        with gr.Column(scale=1, min_width=250, elem_classes=["sm-sidebar-col"], visible=True) as sidebar_col:
-            gr.HTML(
-                '<div style="display:flex;align-items:center;gap:10px;padding:16px 8px;margin-bottom:24px;">'
-                '<span style="font-size:28px;">🍕</span>'
-                '<span class="sm-logo-text" style="font-size:22px;font-weight:700;">SliceMatic</span>'
-                '</div>'
+    step = 1
+    if state["stage"] == 2:
+        step = 1
+    elif state["stage"] == 3:
+        step = 2
+    elif state["stage"] == 4:
+        step = 3
+    elif state["stage"] == 5:
+        step = 4
+    elif state["stage"] >= 6:
+        step = 5
+        
+    st.markdown(render_sidebar(step), unsafe_allow_html=True)
+
+# Main Stage Router
+if not SYSTEM_READY:
+    missing_lines = []
+    for fname, items, label in [
+        ("pizza_bases", bases, "bases"),
+        ("pizza_types", pizzas, "pizzas"),
+        ("toppings", toppings, "toppings"),
+    ]:
+        if not items:
+            missing_lines.append(
+                f'<div style="font-size:14px;margin:6px 0;color:#dc2626;">'
+                f'<span style="font-weight:700;">✗</span> '
+                f'<strong>{html_escape(fname)}</strong> — table missing or empty</div>'
             )
-            sidebar_display = gr.HTML(render_sidebar(1))
+        else:
+            missing_lines.append(
+                f'<div style="font-size:14px;margin:6px 0;color:#24963F;">'
+                f'<span style="font-weight:700;">✓</span> '
+                f'<strong>{html_escape(fname)}</strong> — {len(items)} {label} loaded</div>'
+            )
+    
+    st.markdown(
+        '<div style="text-align:center; padding:80px 20px;">'
+        '  <div style="width:96px; height:96px; background:#fee2e2; border-radius:50%;'
+        '              margin:0 auto 32px; display:flex; align-items:center;'
+        '              justify-content:center; font-size:44px;">⚠️</div>'
+        '  <h1 class="sm-headline" style="font-size:28px; line-height:1.2;">'
+        '    SliceMatic could not start</h1>'
+        '  <p class="sm-subtitle" style="margin-bottom:24px;">One or more menu files are missing or empty.</p>'
+        '  <div class="sm-card" style="max-width:480px;margin:0 auto;text-align:left;padding:20px;">'
+        + "".join(missing_lines) +
+        '  </div>'
+        '</div>',
+        unsafe_allow_html=True
+    )
+    st.stop()
+
+else:
+    # ── Stage 2: Customer details intake ──
+    if state["stage"] == 2:
+        st.html(
+            '<div style="text-align:center;margin:24px 0 8px;">'
+            '<h1 class="sm-headline">Let\'s get started</h1>'
+            '<p class="sm-subtitle">We need a few details to process your order.</p>'
+            '</div>'
+        )
+        
+        _, center_col, _ = st.columns([1, 2, 1])
+        with center_col:
+            st.text_input("Your Name", placeholder="e.g. Aman Sharma", key="name_input")
+            st.text_input("Mobile Number (+91)", placeholder="10-digit number", key="phone_input")
             
-        with gr.Column(scale=4, elem_classes=["sm-main-col"]):
-
-            if not SYSTEM_READY:
-                # ──── SYSTEM UNAVAILABLE — show which tables are missing ────
-                missing_lines = []
-                for fname, items, label in [
-                    ("pizza_bases", bases, "bases"),
-                    ("pizza_types", pizzas, "pizzas"),
-                    ("toppings", toppings, "toppings"),
-                ]:
-                    if not items:
-                        missing_lines.append(
-                            f'<div style="font-size:14px;margin:6px 0;color:#dc2626;">'
-                            f'<span style="font-weight:700;">✗</span> '
-                            f'<strong>{html_escape(fname)}</strong> — table missing or empty</div>'
-                        )
-                    else:
-                        missing_lines.append(
-                            f'<div style="font-size:14px;margin:6px 0;color:#24963F;">'
-                            f'<span style="font-weight:700;">✓</span> '
-                            f'<strong>{html_escape(fname)}</strong> — {len(items)} {label} loaded</div>'
-                        )
-                gr.HTML(
-                    '<div style="text-align:center; padding:80px 20px;">'
-                    '  <div style="width:96px; height:96px; background:#fee2e2; border-radius:50%;'
-                    '              margin:0 auto 32px; display:flex; align-items:center;'
-                    '              justify-content:center; font-size:44px;">⚠️</div>'
-                    '  <h1 class="sm-headline" style="font-size:28px; line-height:1.2;">'
-                    '    SliceMatic could not start</h1>'
-                    '  <p class="sm-subtitle" style="margin-bottom:24px;">One or more menu files are missing or empty.</p>'
-                    '  <div class="sm-card" style="max-width:480px;margin:0 auto;text-align:left;padding:20px;">'
-                    + "".join(missing_lines) +
-                    '  </div>'
-                    '</div>'
-                )
-
+            if st.session_state["show_first_timer"]:
+                st.html("<div style='margin:16px 0 8px; border-left:4px solid #b7102a; padding-left:8px;'><h3 style='margin:0;font-weight:600;'>First-time Customer Details</h3><p style='margin:0;font-size:12px;color:#64748b;'>Welcome to SliceMatic! Since this is your first order, please help us complete your profile.</p></div>")
+                
+                st.text_input("Email Address", placeholder="e.g. yourname@domain.com", key="email_input")
+                st.text_input("Birth Date (YYYY-MM-DD)", placeholder="e.g. 1995-06-15", key="birth_date_input")
+                
+                g_idx = None if not state["gender"] else ["Male", "Female", "Other"].index(state["gender"])
+                gender_val = st.radio("Gender", options=["Male", "Female", "Other"], index=g_idx)
+                st.text_input("City", placeholder="e.g. Bangalore", key="city_input")
+                st.text_input("State", placeholder="e.g. Karnataka", key="state_input")
+                st.text_input("Country", placeholder="e.g. India", key="country_input")
+                
+                channel_choices = ["Email", "SMS", "Phone"]
+                c_idx = channel_choices.index(state["preferred_contact_channel"]) if state["preferred_contact_channel"] else 0
+                channel_val = st.selectbox("Preferred Contact Channel", options=channel_choices, index=c_idx)
+                opt_in_val = st.checkbox("I would like to receive marketing communications", value=state["marketing_opt_in"])
+                
+                if st.button("Submit Profile & Continue →", type="primary", use_container_width=True):
+                    name, ne = validate_name(st.session_state["name_input"])
+                    phone, pe = validate_phone(st.session_state["phone_input"])
+                    email, ee = validate_email(st.session_state["email_input"])
+                    birth_date, de = validate_date(st.session_state["birth_date_input"])
+                    
+                    has_error = False
+                    if not name:
+                        st.error(ne)
+                        has_error = True
+                    if not phone:
+                        st.error(pe)
+                        has_error = True
+                    if st.session_state["email_input"] and email is None:
+                        st.error(ee)
+                        has_error = True
+                    if st.session_state["birth_date_input"] and birth_date is None:
+                        st.error(de)
+                        has_error = True
+                        
+                    if not has_error:
+                        state["name"] = name
+                        state["phone"] = phone
+                        state["email"] = email
+                        state["birth_date"] = birth_date
+                        state["gender"] = gender_val
+                        state["city"] = st.session_state["city_input"]
+                        state["state"] = st.session_state["state_input"]
+                        state["country"] = st.session_state["country_input"]
+                        state["preferred_contact_channel"] = channel_val
+                        state["marketing_opt_in"] = opt_in_val
+                        state["stage"] = 3
+                        st.session_state["show_first_timer"] = False
+                        st.rerun()
             else:
-                # ════════════════════════════════════════════════════
-                # STAGE 1 — System Ready (no step indicator per design)
-                # ════════════════════════════════════════════════════
-                with gr.Group(visible=False) as stage1:
-                    init_lines = []
-                    for fname, items, label in [
-                        ("pizza_bases", bases, "bases"),
-                        ("pizza_types", pizzas, "pizzas"),
-                        ("toppings", toppings, "toppings"),
-                    ]:
-                        available = sum(1 for _, _, p in items if p > 0)
-                        total = len(items)
-                        if available == total:
-                            status = f'{total} {label} loaded'
-                        else:
-                            status = f'{available}/{total} {label} available'
-                        init_lines.append(
-                            f'<div class="sm-primary-text" style="font-size:14px;margin:6px 0;">'
-                            f'<span style="color:#24963F;font-weight:700;">✓</span> '
-                            f'<strong>{html_escape(fname)}</strong> — {status}</div>'
-                        )
-                    gr.HTML(
-                        '<div class="sm-card" style="max-width:720px;text-align:center;margin: 0 auto;">'
-                        '<div style="width:80px;height:80px;background:#dcf5e0;border-radius:50%;'
-                        'margin:8px auto 20px;display:flex;align-items:center;justify-content:center;'
-                        'font-size:40px;color:#24963F;">✓</div>'
-                        '<h2 class="sm-primary-text" style="font-size:24px;font-weight:700;margin:0 0 6px;">All systems ready.</h2>'
-                        '<p class="sm-subtitle">Menu files loaded successfully.</p>'
-                        '<div style="text-align:left;margin:16px 0 8px;">'
-                        + "".join(init_lines) +
-                        '</div></div>'
-                    )
-                    start_btn = gr.Button("Start Ordering →", variant="primary", size="lg", elem_classes=["sm-start-btn"])
-
-                # ════════════════════════════════════════════════════
-                # STAGE 2 — Customer Intake (Step 1 of 5 per design)
-                # ════════════════════════════════════════════════════
-                with gr.Column(visible=True, elem_classes=["sm-card"]) as stage2:
-                    gr.HTML(
-                        '<div style="text-align:center;margin:24px 0 8px;">'
-                        '<h1 class="sm-headline">Let\'s get started</h1>'
-                        '<p class="sm-subtitle">We need a few details to process your order.</p>'
-                        '</div>'
-                    )
-                    with gr.Column(elem_classes=["narrow-container"]):
-                        name_input = gr.Textbox(
-                            label="Your Name", placeholder="e.g. Aman Sharma", max_lines=1,
-                        )
-                        name_err_display = gr.HTML("")
-                        phone_input = gr.Textbox(
-                            label="Mobile Number (+91)", placeholder="10-digit number", max_lines=1,
-                        )
-                        phone_err_display = gr.HTML("")
+                if st.button("Continue →", type="primary", use_container_width=True):
+                    name, ne = validate_name(st.session_state["name_input"])
+                    phone, pe = validate_phone(st.session_state["phone_input"])
+                    
+                    has_error = False
+                    if not name:
+                        st.error(ne)
+                        has_error = True
+                    if not phone:
+                        st.error(pe)
+                        has_error = True
                         
-                        # First-timer profile details container (initially hidden)
-                        with gr.Column(visible=False) as first_timer_group:
-                            gr.HTML("<div style='margin:16px 0 8px; border-left:4px solid #b7102a; padding-left:8px;'><h3 style='margin:0;font-weight:600;'>First-time Customer Details</h3><p style='margin:0;font-size:12px;color:#64748b;'>Welcome to SliceMatic! Since this is your first order, please help us complete your profile.</p></div>")
-                            email_input = gr.Textbox(label="Email Address", placeholder="e.g. yourname@domain.com", max_lines=1)
-                            email_err_display = gr.HTML("")
-                            birth_date_input = gr.Textbox(label="Birth Date (YYYY-MM-DD)", placeholder="e.g. 1995-06-15", max_lines=1)
-                            birth_date_err_display = gr.HTML("")
-                            gender_input = gr.Radio(choices=["Male", "Female", "Other"], label="Gender", value=None)
-                            city_input = gr.Textbox(label="City", placeholder="e.g. Bangalore", max_lines=1)
-                            state_input = gr.Textbox(label="State", placeholder="e.g. Karnataka", max_lines=1)
-                            country_input = gr.Textbox(label="Country", placeholder="e.g. India", max_lines=1)
-                            channel_input = gr.Dropdown(choices=["Email", "SMS", "Phone"], label="Preferred Contact Channel", value="Email")
-                            opt_in_input = gr.Checkbox(label="I would like to receive marketing communications", value=True)
-                            
-                        intake_btn = gr.Button("Continue →", variant="primary", size="lg")
-                        register_btn = gr.Button("Submit Profile & Continue →", variant="primary", size="lg", visible=False)
-
-                # ════════════════════════════════════════════════════
-                # STAGE 3 — Quantity + Menu Selection
-                # ════════════════════════════════════════════════════
-                with gr.Column(visible=False, elem_classes=["sm-card"]) as stage3:
-                    gr.HTML('<h1 class="sm-headline" style="text-align:center;">Build Your Order</h1>')
-
-                    # Menu items — full width, no side column
-                    base_menu_md = gr.HTML(render_base_cards(bases))
-                    with gr.Column(elem_classes=["narrow-container"]):
-                        base_input = gr.Textbox(label="Enter base number", placeholder="e.g. 1", max_lines=1)
-                        base_err_display = gr.HTML("")
-
-                    pizza_menu_md = gr.HTML(render_pizza_cards(pizzas))
-                    with gr.Column(elem_classes=["narrow-container"]):
-                        pizza_input = gr.Textbox(label="Enter pizza number", placeholder="e.g. 1", max_lines=1)
-                        pizza_err_display = gr.HTML("")
-
-                    topping_choices = [f"{i}. {name} (+₹{price:.2f})" for i, (_, name, price) in enumerate(toppings, 1) if price > 0]
-                    topping_input = gr.CheckboxGroup(
-                        choices=topping_choices, label="Choose your toppings", value=[], elem_classes=["sm-topping-checkboxes"]
-                    )
-                    topping_err_display = gr.HTML("")
-
-                    gr.HTML('<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;">')
-
-                    # Quantity + Add to cart
-                    with gr.Column(elem_classes=["narrow-container"]):
-                        qty_input = gr.Number(label="Quantity for this pizza", value=1, precision=0)
-
-                        with gr.Row(elem_classes=["sm-action-buttons"]):
-                            add_cart_btn = gr.Button("Add to cart", variant="primary")
-                            clear_build_btn = gr.Button("Clear selection", variant="secondary")
-
-                        add_cart_err = gr.HTML("")
-                        add_cart_msg = gr.HTML("")
-
-                    gr.HTML('<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;">')
-
-                    # Cart — full width below menu
-                    gr.HTML('<h2 class="sm-headline" style="font-size:20px; border-left: 4px solid #b7102a; padding-left: 8px;">Your Cart</h2>')
-
-                    @gr.render(inputs=state)
-                    def render_cart_section(st):
-                        cart = st.get("cart", [])
-                        if not cart:
-                            gr.HTML(
-                                '<div style="padding:20px; border:1px dashed #cbd5e1; border-radius:8px;'
-                                ' text-align:center; color:#64748b;">Your cart is empty<br>'
-                                '<span style="font-size:12px;">Add a pizza combination to begin.</span></div>'
-                            )
-                            return
-                        for i, item in enumerate(cart):
-                            with gr.Row(elem_classes=["sm-cart-row"]):
-                                gr.HTML(_render_cart_item_html(item))
-                                del_btn = gr.Button("✕", variant="secondary", size="sm", scale=0, min_width=40, elem_classes=["sm-cart-remove-btn"])
-                                def remove_item(st_val, idx=i):
-                                    c = st_val.get("cart", [])
-                                    if 0 <= idx < len(c):
-                                        c.pop(idx)
-                                        st_val["cart"] = c
-                                    return st_val, gr.update(interactive=len(c) > 0)
-                                del_btn.click(remove_item, [state], [state, menu_btn])
-                        gr.HTML(_render_cart_totals_html(cart))
-
-                    with gr.Row(elem_classes=["sm-action-buttons"]):
-                        clear_cart_btn = gr.Button("Clear cart", variant="secondary")
-                        menu_btn = gr.Button("Continue to Bill →", variant="primary", interactive=False)
-
-                # ════════════════════════════════════════════════════
-                # STAGE 4 — Bill Review (design step 3)
-                # ════════════════════════════════════════════════════
-                with gr.Column(visible=False, elem_classes=["sm-card"]) as stage4:
-                    back_to_menu_btn = gr.Button("← Back", variant="secondary", size="sm", elem_classes=["sm-back-btn"], scale=0, min_width=80)
-                    gr.HTML('<h1 class="sm-headline" style="text-align:center;">Your Order</h1>')
-                    bill_display = gr.HTML("")
-                    with gr.Column(elem_classes=["narrow-container"]):
-                        bill_btn = gr.Button("Proceed to Payment →", variant="primary", size="lg")
-
-                # ════════════════════════════════════════════════════
-                # STAGE 5 — Payment (design step 4) + Receipt (design step 5)
-                # ════════════════════════════════════════════════════
-                with gr.Column(visible=False, elem_classes=["sm-card"]) as stage5:
-
-                    with gr.Column(visible=True) as pay_section:
-                        back_to_bill_btn = gr.Button("← Back", variant="secondary", size="sm", elem_classes=["sm-back-btn"], scale=0, min_width=80)
-                        gr.HTML('<h1 class="sm-headline" style="text-align:center;">How would you like to pay?</h1>')
-                        with gr.Column(elem_classes=["narrow-container"]):
-                            pay_radio = gr.Radio(
-                                choices=PAYMENT_MODES, label="Payment Mode", value=None,
-                            )
-                            pay_err_display = gr.HTML("")
-                            pay_msg_display = gr.HTML("")
-                            pay_btn = gr.Button("Confirm Order", variant="primary", size="lg")
-
-                    with gr.Column(visible=False) as receipt_section:
-                        receipt_display = gr.HTML("")
-                        new_btn = gr.Button("🏠 New Order", variant="secondary", size="lg")
-
-        # ════════════════════════════════════════════════════
-        # EVENT HANDLERS (only wired when system is ready)
-        # ════════════════════════════════════════════════════
-        if SYSTEM_READY:
-
-            # ── Stage 1 → Stage 2 ──────────────────────────────
-            def on_start(st):
-                st["stage"] = 2
-                st["timestamp"] = datetime.now(IST).isoformat()
-                return st, render_sidebar(1), gr.update(visible=False), gr.update(visible=True), gr.update(visible=True)
-
-            start_btn.click(on_start, [state], [state, sidebar_display, stage1, stage2, sidebar_col])
-
-            # ── Stage 2 → Stage 3 or Profile Intake ──────────────
-            def on_intake(st, name_raw, phone_raw):
-                try:
-                    name, ne = validate_name(name_raw)
-                    phone, pe = validate_phone(phone_raw)
-                    if name is not None and phone is not None:
-                        st["name"] = name
-                        st["phone"] = phone
-                        
-                        # Check customer table
+                    if not has_error:
+                        state["name"] = name
+                        state["phone"] = phone
                         exists, db_name = check_customer_exists(phone)
                         if exists:
-                            # Reused customer: proceed straight to Stage 3
-                            st["stage"] = 3
-                            return (
-                                st, render_sidebar(2), err(ne), err(pe),
-                                gr.update(visible=False), gr.update(visible=True),
-                                gr.update(visible=False), gr.update(visible=False), gr.update(visible=False)
-                            )
+                            state["stage"] = 3
+                            st.rerun()
                         else:
-                            # First-timer: show additional profile registration fields
-                            return (
-                                st, gr.update(), err(ne), err(pe),
-                                gr.update(), gr.update(),
-                                gr.update(visible=True), gr.update(visible=True), gr.update(visible=False)
-                            )
+                            st.session_state["show_first_timer"] = True
+                            st.rerun()
+
+    # ── Stage 3: Build Order & Cart ──
+    elif state["stage"] == 3:
+        st.html('<h1 class="sm-headline" style="text-align:center;">Build Your Order</h1>')
+        
+        # 1. Base selection
+        st.html('<div class="sm-primary-text" style="font-weight:600;margin:16px 0 4px;">Choose your base</div>')
+        base_cols = st.columns(3)
+        for idx, (bid, name, price) in enumerate(bases):
+            col = base_cols[idx % 3]
+            with col:
+                with st.container(border=True):
+                    img_path = MENU_IMAGE_DIR / f"{bid}.png"
+                    if not img_path.exists():
+                        img_path = MENU_IMAGE_DIR / "B1.png"
+                    st.image(str(img_path), width=150)
+                    st.markdown(f"<div style='font-weight:600; text-align:center; font-size:14px; padding:4px 8px 0 8px;'>{name}</div>", unsafe_allow_html=True)
+                    price_str = f"₹{price:.2f}" if price > 0 else "Unavailable"
+                    st.markdown(f"<div style='color:#b7102a; font-weight:700; text-align:center; font-size:12px; margin-bottom:8px; padding:0 8px;'>{price_str}</div>", unsafe_allow_html=True)
+                    
+                    if price > 0:
+                        if st.session_state["selected_base_idx"] == idx:
+                            st.button("✓ Selected", key=f"base_sel_{idx}", type="primary", use_container_width=True)
+                        else:
+                            if st.button("Select", key=f"base_sel_{idx}", use_container_width=True):
+                                st.session_state["selected_base_idx"] = idx
+                                st.rerun()
+                    else:
+                        st.button("Unavailable", key=f"base_sel_{idx}", disabled=True, use_container_width=True)
+
+        sel_base_idx = st.session_state["selected_base_idx"]
+        if sel_base_idx is not None:
+            name, price = bases[sel_base_idx][1], bases[sel_base_idx][2]
+            st.html(f"<div style='padding:8px 12px; background:#dcf5e0; border-left:4px solid #22c55e; border-radius:6px; font-weight:600; color:#15803d; margin:12px 0;'>Selected Base: {name} (₹{price:.2f})</div>")
+        else:
+            st.html("<div style='padding:8px 12px; background:#f1f5f9; border-radius:6px; font-weight:600; color:#334155; margin:12px 0;'>Selected Base: None</div>")
+
+        # 2. Pizza selection
+        st.html('<div class="sm-primary-text" style="font-weight:600;margin:16px 0 4px;">Choose your pizza</div>')
+        
+        if "selected_pizzas" not in st.session_state:
+            st.session_state["selected_pizzas"] = {}
+        selected_pizzas = st.session_state["selected_pizzas"]
+        
+        pizza_cols = st.columns(3)
+        for idx, (pid, name, price) in enumerate(pizzas):
+            col = pizza_cols[idx % 3]
+            with col:
+                with st.container(border=True):
+                    img_path = MENU_IMAGE_DIR / f"{pid}.jpg"
+                    if not img_path.exists():
+                        img_path = MENU_IMAGE_DIR / "P1.jpg"
+                    st.image(str(img_path), width=150)
+                    st.markdown(f"<div style='font-weight:600; text-align:center; font-size:14px; padding:4px 8px 0 8px;'>{name}</div>", unsafe_allow_html=True)
+                    price_str = f"₹{price:.2f}" if price > 0 else "Unavailable"
+                    st.markdown(f"<div style='color:#b7102a; font-weight:700; text-align:center; font-size:12px; margin-bottom:8px; padding:0 8px;'>{price_str}</div>", unsafe_allow_html=True)
+                    
+                    if price > 0:
+                        is_selected = idx in selected_pizzas
+                        if is_selected:
+                            qty = selected_pizzas[idx]
                             
-                    return st, gr.update(), err(ne), err(pe), gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
-                except Exception as e:
-                    print(f"Error in on_intake: {e}")
-                    return (
-                        st, gr.update(), err("An unexpected error occurred."), err(""),
-                        gr.update(), gr.update(), gr.update(), gr.update(), gr.update()
-                    )
+                            # Row with decrement, count, increment
+                            col1, col2, col3 = st.columns([1, 2, 1])
+                            with col1:
+                                if st.button("—", key=f"p_dec_{idx}", use_container_width=True):
+                                    selected_pizzas[idx] -= 1
+                                    if selected_pizzas[idx] <= 0:
+                                        del selected_pizzas[idx]
+                                    st.rerun()
+                            with col2:
+                                st.markdown(f"<div style='text-align:center; font-weight:700; font-size:12px; margin-top:6px;'>Qty: {qty}</div>", unsafe_allow_html=True)
+                            with col3:
+                                if st.button("+", key=f"p_inc_{idx}", use_container_width=True):
+                                    selected_pizzas[idx] += 1
+                                    st.rerun()
+                        else:
+                            if st.button("Select", key=f"p_sel_{idx}", use_container_width=True):
+                                selected_pizzas[idx] = 1
+                                st.rerun()
+                    else:
+                        st.button("Unavailable", key=f"p_sel_{idx}", disabled=True, use_container_width=True)
 
-            intake_btn.click(
-                on_intake,
-                [state, name_input, phone_input],
-                [state, sidebar_display, name_err_display, phone_err_display, stage2, stage3, first_timer_group, register_btn, intake_btn],
-            )
+        if selected_pizzas:
+            sel_pizza_names = [f"{pizzas[p_idx][1]} (x{qty})" for p_idx, qty in selected_pizzas.items()]
+            pizza_summary = ", ".join(sel_pizza_names)
+            st.html(f"<div style='padding:8px 12px; background:#dcf5e0; border-left:4px solid #22c55e; border-radius:6px; font-weight:600; color:#15803d; margin:12px 0;'>Selected Pizzas: {pizza_summary}</div>")
+        else:
+            st.html("<div style='padding:8px 12px; background:#f1f5f9; border-radius:6px; font-weight:600; color:#334155; margin:12px 0;'>Selected Pizzas: None</div>")
 
-            def on_register(st, email_raw, birth_date_raw, gender, city, state, country, channel, opt_in):
-                try:
-                    email, ee = validate_email(email_raw)
-                    birth_date, de = validate_date(birth_date_raw)
+        # 3. Toppings Checklist
+        st.html('<div class="sm-primary-text" style="font-weight:600;margin:16px 0 4px;">Choose your toppings</div>')
+        topping_choices = [f"{i}. {name} (+₹{price:.2f})" for i, (_, name, price) in enumerate(toppings, 1) if price > 0]
+        
+        selected_toppings_list = st.multiselect("Toppings", options=topping_choices, default=st.session_state["selected_toppings"], label_visibility="collapsed")
+        st.session_state["selected_toppings"] = selected_toppings_list
+
+        st.html('<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;">')
+
+        # 4. Action buttons
+        _, action_col, _ = st.columns([1, 2, 1])
+        with action_col:
+            btn_cols = st.columns(2)
+            with btn_cols[0]:
+                if st.button("Add to cart", type="primary", use_container_width=True):
+                    bi = st.session_state["selected_base_idx"]
                     
-                    if (email_raw and email is None) or (birth_date_raw and birth_date is None):
-                        return (
-                            st, gr.update(), err(ee), err(de),
-                            gr.update(), gr.update()
-                        )
+                    has_error = False
+                    if bi is None:
+                        st.error("Please select a base.")
+                        has_error = True
+                    if not selected_pizzas:
+                        st.error("Please select at least one pizza.")
+                        has_error = True
+                    if not selected_toppings_list:
+                        st.error("Please select at least one topping.")
+                        has_error = True
                         
-                    # Save registration fields into state
-                    st["email"] = email
-                    st["birth_date"] = birth_date
-                    st["gender"] = gender
-                    st["city"] = city
-                    st["state"] = state
-                    st["country"] = country
-                    st["preferred_contact_channel"] = channel
-                    st["marketing_opt_in"] = opt_in
+                    if not has_error:
+                        ti = []
+                        for selected in selected_toppings_list:
+                            t_idx = int(selected.split(".")[0]) - 1
+                            ti.append(t_idx)
+                            
+                        cart = state.get("cart", [])
+                        total_qty_in_cart = sum(item["quantity"] for item in cart)
+                        total_qty_to_add = sum(qty for qty in selected_pizzas.values())
+                        
+                        if total_qty_in_cart + total_qty_to_add > 10:
+                            st.error(f"Cannot add {total_qty_to_add} pizzas. Maximum order capacity is 10. Cart has {total_qty_in_cart}.")
+                        else:
+                            for p_idx, p_qty in selected_pizzas.items():
+                                cart.append({
+                                    "base_idx": bi,
+                                    "pizza_idx": p_idx,
+                                    "topping_idx": ti,
+                                    "quantity": p_qty
+                                })
+                            state["cart"] = cart
+                            
+                            st.session_state["selected_base_idx"] = None
+                            st.session_state["selected_pizzas"] = {}
+                            st.session_state["selected_toppings"] = []
+                            st.success("✓ Added to cart")
+                            st.rerun()
+                            
+            with btn_cols[1]:
+                if st.button("Clear selection", use_container_width=True):
+                    st.session_state["selected_base_idx"] = None
+                    st.session_state["selected_pizzas"] = {}
+                    st.session_state["selected_toppings"] = []
+                    st.rerun()
+
+        st.html('<hr style="border:none;border-top:1px solid #e2e8f0;margin:16px 0;">')
+
+        # 5. Cart section
+        st.html('<h2 class="sm-headline" style="font-size:20px; border-left: 4px solid #b7102a; padding-left: 8px;">Your Cart</h2>')
+        cart = state.get("cart", [])
+        if not cart:
+            st.html('<div style="padding:20px; border:1px dashed #cbd5e1; border-radius:8px; text-align:center; color:#64748b;">Your cart is empty<br><span style="font-size:12px;">Add a pizza combination to begin.</span></div>')
+        else:
+            for idx, item in enumerate(cart):
+                with st.container(border=True):
+                    cols = st.columns([4, 1])
+                    with cols[0]:
+                        st.html(_render_cart_item_html(item))
+                    with cols[1]:
+                        if st.button("Remove", key=f"del_cart_{idx}", use_container_width=True):
+                            cart.pop(idx)
+                            state["cart"] = cart
+                            st.rerun()
+                
+            st.html(_render_cart_totals_html(cart))
+            
+            _, checkout_col, _ = st.columns([1, 2, 1])
+            with checkout_col:
+                if st.button("Checkout → Proceed to Bill Summary", type="primary", use_container_width=True):
+                    state["stage"] = 4
+                    st.rerun()
+
+    # ── Stage 4: Bill Summary ──
+    elif state["stage"] == 4:
+        st.html('<h1 class="sm-headline" style="text-align:center;">Review Your Order</h1>')
+        
+        _, center_col, _ = st.columns([1, 2, 1])
+        with center_col:
+            st.html(render_bill_html(state))
+            
+            btn_cols = st.columns(2)
+            with btn_cols[0]:
+                if st.button("← Back to Menu", use_container_width=True):
+                    state["stage"] = 3
+                    st.rerun()
+            with btn_cols[1]:
+                if st.button("Proceed to Payment →", type="primary", use_container_width=True):
+                    state["stage"] = 5
+                    st.rerun()
+
+    # ── Stage 5: Payment Selection ──
+    elif state["stage"] == 5:
+        st.html('<h1 class="sm-headline" style="text-align:center;">Payment</h1>')
+        
+        _, center_col, _ = st.columns([1, 2, 1])
+        with center_col:
+            st.html("<h3 style='margin:0 0 12px;font-weight:600;'>Choose Payment Mode</h3>")
+            pay_mode = st.radio("Payment Mode", options=["Cash", "Card", "UPI"], index=["Cash", "Card", "UPI"].index(state["payment_mode"]) if state["payment_mode"] else 0, label_visibility="collapsed")
+            state["payment_mode"] = pay_mode
+            
+            st.html(f"<p class='sm-pay-info'>ℹ {html_escape(PAYMENT_MESSAGES[pay_mode])}</p>")
+            
+            btn_cols = st.columns(2)
+            with btn_cols[0]:
+                if st.button("← Back to Bill", use_container_width=True):
+                    state["stage"] = 4
+                    st.rerun()
+            with btn_cols[1]:
+                if st.button("Confirm Order ✓", type="primary", use_container_width=True):
+                    bill = compute_bill(state.get("cart", []))
+                    write_ok = save_order_to_db(state, bill)
                     
-                    st["stage"] = 3
-                    return (
-                        st, render_sidebar(2), "", "",
-                        gr.update(visible=False), gr.update(visible=True)
-                    )
-                except Exception as e:
-                    print(f"Error in on_register: {e}")
-                    return (
-                        st, gr.update(), err("An unexpected error occurred. Please try again."), "",
-                        gr.update(), gr.update()
-                    )
-
-            register_btn.click(
-                on_register,
-                [state, email_input, birth_date_input, gender_input, city_input, state_input, country_input, channel_input, opt_in_input],
-                [state, sidebar_display, email_err_display, birth_date_err_display, stage2, stage3]
-            )
-
-            # ── Stage 3: Build Order & Cart ───────────────────────────
-            def on_add_cart(st, b_raw, p_raw, t_selected, qty_raw):
-                try:
-                    bi, be = validate_selection(b_raw, bases)
-                    pi, pe = validate_selection(p_raw, pizzas)
-                    ti, te = validate_toppings_checkbox(t_selected, toppings)
-
-                    if bi is None or pi is None or (not ti and "select at least one" in te):
-                        return (
-                            st, err(be), err(pe), err(te), err(""),
-                            "", gr.update(),
-                            gr.update(), gr.update(), gr.update(), gr.update()
-                        )
-
-                    qty, qe = validate_quantity(qty_raw)
-                    if qty is None:
-                        return (
-                            st, err(""), err(""), err(""), err(qe),
-                            "", gr.update(),
-                            gr.update(), gr.update(), gr.update(), gr.update()
-                        )
-
-                    cart = st.get("cart", [])
-                    total_qty = sum(item["quantity"] for item in cart)
-                    if total_qty + qty > 10:
-                        return (
-                            st, err(""), err(""), err(""), err(f"Cannot add {qty} pizzas. Maximum order is 10. Cart has {total_qty}."),
-                            "", gr.update(),
-                            gr.update(), gr.update(), gr.update(), gr.update()
-                        )
-
-                    cart.append({
-                        "base_idx": bi,
-                        "pizza_idx": pi,
-                        "topping_idx": ti,
-                        "quantity": qty
-                    })
-                    st["cart"] = cart
-
-                    return (
-                        st, err(""), err(""), err(""), err(""),
-                        f"<p class='sm-success-msg'>✓ Added to cart</p>", gr.update(interactive=True),
-                        gr.update(value=""), gr.update(value=""), gr.update(value=[]), gr.update(value=1)
-                    )
-                except Exception as e:
-                    return (
-                        st, err("An unexpected error occurred."), err(""), err(""), err(""),
-                        "", gr.update(),
-                        gr.update(), gr.update(), gr.update(), gr.update()
-                    )
-
-            add_cart_btn.click(
-                on_add_cart,
-                [state, base_input, pizza_input, topping_input, qty_input],
-                [state, base_err_display, pizza_err_display, topping_err_display, add_cart_err, add_cart_msg, menu_btn,
-                 base_input, pizza_input, topping_input, qty_input]
-            )
-
-            def on_clear_build():
-                return "", "", [], 1, "", "", "", "", ""
-        
-            clear_build_btn.click(
-                on_clear_build,
-                [],
-                [base_input, pizza_input, topping_input, qty_input, base_err_display, pizza_err_display, topping_err_display, add_cart_err, add_cart_msg]
-            )
-        
-            def on_clear_cart(st):
-                st["cart"] = []
-                return st, gr.update(interactive=False)
-
-            clear_cart_btn.click(
-                on_clear_cart, [state], [state, menu_btn]
-            )
-
-
-            # ── Stage 3 → Stage 4 ─────────────────────────────
-            def on_menu_continue(st):
-                try:
-                    cart = st.get("cart", [])
-                    if not cart:
-                        return st, render_sidebar(2), gr.update(), gr.update(), ""
-
-                    st["stage"] = 4
-                    html = render_bill_html(st)
-                    return (
-                        st, render_sidebar(3),
-                        gr.update(visible=False), gr.update(visible=True), html,
-                    )
-                except Exception:
-                    return st, render_sidebar(2), gr.update(), gr.update(), ""
-
-            menu_btn.click(
-                on_menu_continue,
-                [state],
-                [
-                    state, sidebar_display,
-                    stage3, stage4, bill_display,
-                ],
-            )
-
-            # ── Stage 4 → Stage 5 ─────────────────────────────
-            def on_proceed(st):
-                st["stage"] = 5
-                return st, render_sidebar(4), gr.update(visible=False), gr.update(visible=True)
-
-            bill_btn.click(on_proceed, [state], [state, sidebar_display, stage4, stage5])
-
-            # ── Back: Stage 4 → Stage 3 (Bill → Menu) ────────
-            def on_back_to_menu(st):
-                st["stage"] = 3
-                return st, render_sidebar(2), gr.update(visible=False), gr.update(visible=True)
-
-            back_to_menu_btn.click(on_back_to_menu, [state], [state, sidebar_display, stage4, stage3])
-
-            # ── Back: Stage 5 → Stage 4 (Payment → Bill) ─────
-            def on_back_to_bill(st):
-                st["stage"] = 4
-                return st, render_sidebar(3), gr.update(visible=False), gr.update(visible=True)
-
-            back_to_bill_btn.click(on_back_to_bill, [state], [state, sidebar_display, stage5, stage4])
-
-            # ── Stage 5: Payment selection change ──────────────
-            def on_pay_select(selection):
-                if selection in PAYMENT_MODES:
-                    return (
-                        "",
-                        f"<p class='sm-pay-info'>ℹ {html_escape(PAYMENT_MESSAGES[selection])}</p>",
-                    )
-                return err("Please select a valid payment mode: Cash, Card, or UPI."), ""
-
-            pay_radio.change(on_pay_select, [pay_radio], [pay_err_display, pay_msg_display])
-
-            # ── Stage 5: Confirm Order + Persistence ──────────
-            def on_confirm_order(st, selection):
-                try:
-                    if selection is None or selection not in PAYMENT_MODES:
-                        return (
-                            st, render_sidebar(4),
-                            err("Please select a valid payment mode: Cash, Card, or UPI."),
-                            "", gr.update(), gr.update(), "",
-                        )
-
-                    st["payment_mode"] = selection
-                    order_line = build_order_line(st)
-
-                    # Save order to PostgreSQL database
-                    bill = compute_bill(st.get("cart", []))
-                    write_ok = save_order_to_db(st, bill)
-
-                    bill_html = render_bill_html(st, show_payment=True)
-                    safe_name = html_escape(st["name"])
-                    safe_ts = html_escape(st["timestamp"])
-
+                    bill_html = render_bill_html(state, show_payment=True)
+                    safe_name = html_escape(state["name"])
+                    safe_ts = html_escape(state["timestamp"])
+                    safe_mode = html_escape(state["payment_mode"])
+                    order_line = build_order_line(state)
+                    
                     if write_ok:
                         receipt = f"""
                         <div class="sm-receipt-wrapper" style="text-align:center; font-family:Inter,system-ui,sans-serif;">
@@ -1308,6 +1284,7 @@ with gr.Blocks(title="SliceMatic") as app:
                           <div class="sm-receipt-details">
                             <p><strong>Customer:</strong> {safe_name}</p>
                             <p><strong>Order Time:</strong> {safe_ts}</p>
+                            <p><strong>Payment:</strong> {safe_mode}</p>
                           </div>
                           {bill_html}
                           <div class="sm-dev-log">
@@ -1315,15 +1292,11 @@ with gr.Blocks(title="SliceMatic") as app:
                               <div style="display:flex; align-items:center;">
                                 <span style="font-family:monospace;font-size:14px;color:#94a3b8;margin-right:6px;">>_</span> DEVELOPER TRACE LOG
                               </div>
-                              <button class="sm-dev-log-copy" data-log="{html_escape(order_line)}" title="Copy to clipboard">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                              </button>
                             </div>
                             <div class="sm-dev-log-content">{html_escape(order_line)}</div>
                           </div>
                         </div>"""
                     else:
-                        safe_mode = html_escape(st["payment_mode"])
                         receipt = f"""
                         <div class="sm-receipt-wrapper" style="text-align:center; font-family:Inter,system-ui,sans-serif;">
                           <div class="sm-error-icon">⚠️</div>
@@ -1343,440 +1316,267 @@ with gr.Blocks(title="SliceMatic") as app:
                               <div style="display:flex; align-items:center;">
                                 <span style="font-family:monospace;font-size:14px;color:#94a3b8;margin-right:6px;">>_</span> DEVELOPER TRACE LOG
                               </div>
-                              <button class="sm-dev-log-copy" data-log="{html_escape(order_line)}" title="Copy to clipboard">
-                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                              </button>
                             </div>
                             <div class="sm-dev-log-content">{html_escape(order_line)}</div>
                           </div>
                         </div>"""
+                        
+                    st.session_state["receipt_html"] = receipt
+                    state["stage"] = 6
+                    st.rerun()
 
-                    return (
-                        st, render_sidebar(5), "", "",
-                        gr.update(visible=False), gr.update(visible=True), receipt,
-                    )
-                except Exception:
-                    return (
-                        st, render_sidebar(4), err("An unexpected error occurred. Please try again."),
-                        "", gr.update(), gr.update(), "",
-                    )
+    # ── Stage 6: Receipt & Reset ──
+    elif state["stage"] == 6:
+        st.html(st.session_state.get("receipt_html", ""))
+        
+        _, center_col, _ = st.columns([1, 2, 1])
+        with center_col:
+            if st.button("Place New Order 🍕", type="primary", use_container_width=True):
+                st.session_state["state"] = {
+                    "stage": 2,
+                    "name": "",
+                    "phone": "",
+                    "timestamp": datetime.now(IST).isoformat(),
+                    "cart": [],
+                    "payment_mode": "",
+                    "email": "",
+                    "birth_date": None,
+                    "gender": "",
+                    "city": "",
+                    "state": "",
+                    "country": "",
+                    "preferred_contact_channel": "",
+                    "marketing_opt_in": True,
+                }
+                st.session_state["selected_base_idx"] = None
+                st.session_state["selected_pizzas"] = {}
+                st.session_state["selected_toppings"] = []
+                st.session_state["order_quantity"] = 1
+                st.session_state["show_first_timer"] = False
+                st.session_state["receipt_html"] = ""
+                
+                # Clear text input session keys
+                st.session_state["name_input"] = ""
+                st.session_state["phone_input"] = ""
+                st.session_state["email_input"] = ""
+                st.session_state["birth_date_input"] = ""
+                st.session_state["city_input"] = ""
+                st.session_state["state_input"] = ""
+                st.session_state["country_input"] = ""
+                st.rerun()
 
-            pay_btn.click(
-                on_confirm_order,
-                [state, pay_radio],
-                [
-                    state, sidebar_display, pay_err_display, pay_msg_display,
-                    pay_section, receipt_section, receipt_display,
-                ],
-            )
-
-            # ── New Order (reset everything) ───────────────────────────
-            def on_new_order():
-                return (
-                    initial_state(),
-                    render_sidebar(1),                               # sidebar
-                    gr.update(visible=False),                        # stage1
-                    gr.update(visible=True),                         # stage2
-                    gr.update(visible=False),                        # stage3
-                    gr.update(visible=False),                        # stage4
-                    gr.update(visible=False),                        # stage5
-                    gr.update(value=""),                              # name_input
-                    gr.update(value=""),                              # phone_input
-                    "",                                              # name_err
-                    "",                                              # phone_err
-                    gr.update(value=1),                               # qty_input
-                    "",                                              # add_cart_err
-                    "",                                              # add_cart_msg
-                    gr.update(value=""),                              # base_input
-                    gr.update(value=""),                              # pizza_input
-                    gr.update(value=[]),                              # topping_input
-                    "",                                              # base_err
-                    "",                                              # pizza_err
-                    "",                                              # topping_err
-                    gr.update(interactive=False),                     # menu_btn
-                    "",                                              # bill_display
-                    gr.update(value=None),                            # pay_radio
-                    "",                                              # pay_err
-                    "",                                              # pay_msg
-                    gr.update(visible=True),                          # pay_section
-                    gr.update(visible=False),                         # receipt_section
-                    "",                                              # receipt_display
-                    gr.update(visible=True),                          # sidebar_col
-                    # Reset first-timer inputs
-                    gr.update(value=""),                              # email_input
-                    "",                                              # email_err_display
-                    gr.update(value=""),                              # birth_date_input
-                    "",                                              # birth_date_err_display
-                    gr.update(value=None),                            # gender_input
-                    gr.update(value=""),                              # city_input
-                    gr.update(value=""),                              # state_input
-                    gr.update(value=""),                              # country_input
-                    gr.update(value="Email"),                         # channel_input
-                    gr.update(value=True),                            # opt_in_input
-                    gr.update(visible=False),                         # first_timer_group
-                    gr.update(visible=False),                         # register_btn
-                    gr.update(visible=True),                          # intake_btn
-                )
-
-            new_btn.click(
-                on_new_order,
-                [],
-                [
-                    state, sidebar_display, stage1, stage2, stage3, stage4, stage5,
-                    name_input, phone_input, name_err_display, phone_err_display,
-                    qty_input, add_cart_err, add_cart_msg,
-                    base_input, pizza_input, topping_input,
-                    base_err_display, pizza_err_display, topping_err_display,
-                    menu_btn, bill_display,
-                    pay_radio, pay_err_display, pay_msg_display,
-                    pay_section, receipt_section, receipt_display, sidebar_col,
-                    email_input, email_err_display, birth_date_input, birth_date_err_display,
-                    gender_input, city_input, state_input, country_input, channel_input, opt_in_input,
-                    first_timer_group, register_btn, intake_btn
-                ],
-            )
-
-if __name__ == "__main__":
+# Module-level stylesheet
     # Design-system stylesheet — applies Stitch tokens to native Gradio
     # components AND defines classes used by our gr.HTML blocks.
-    DESIGN_CSS = """
-    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+DESIGN_CSS = """
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
 
-    /* Reset & Surface */
-    .gradio-container, .gradio-container * {
+    /* Fonts & Core styling */
+    body, [data-testid="stAppViewContainer"], .gradio-container, .gradio-container * {
         font-family: 'Inter', system-ui, -apple-system, sans-serif !important;
+        background-color: #f8fafc !important;
+        color: #0f172a !important;
     }
-    .gradio-container {
-        background: #f8f9fa !important;
-        color: #0F172A !important;
-        max-width: 100% !important;
-        margin: auto !important;
-    }
-    body, gradio-app { background: #f8f9fa !important; color: #0F172A !important; }
-
-    /* Force light mode — override Gradio dark theme regardless of OS preference */
-    @media (prefers-color-scheme: dark) {
-        body, gradio-app, .gradio-container { background: #f8f9fa !important; color: #0F172A !important; }
-    }
-    .dark, .dark .gradio-container, .dark body,
-    [data-theme="dark"], [data-theme="dark"] .gradio-container {
-        background: #f8f9fa !important; color: #0F172A !important;
-    }
-    .dark .gradio-container h1, .dark .gradio-container h2, .dark .gradio-container h3,
-    .dark .gradio-container p, .dark .gradio-container label,
-    .dark .gradio-container span, .dark .gradio-container div {
-        color: inherit !important;
-    }
-    .dark input[type=text], .dark textarea {
-        background: #ffffff !important; color: #0F172A !important;
-        border: 1px solid #cbd5e1 !important;
-    }
-    .dark .gradio-container button.primary,
-    .dark .gradio-container .primary > button {
-        background: #b7102a !important; color: #ffffff !important;
-    }
-    .dark .sm-card, .dark .sm-card-item, .dark .sm-card-pizza, .dark .sm-pill {
-        background: #ffffff !important; color: #0F172A !important;
-    }
-    .dark .sm-sidebar-col {
-        background: #f8f9fa !important;
+    
+    /* Center main container */
+    [data-testid="stMainBlockContainer"] {
+        max-width: 1200px !important;
+        padding-top: 40px !important;
+        padding-bottom: 60px !important;
+        margin: 0 auto !important;
     }
 
     /* Headings */
-    .gradio-container h1, .gradio-container h2, .gradio-container h3,
-    .gradio-container .prose h1, .gradio-container .prose h2 {
-        color: #0F172A !important; font-weight: 700 !important; letter-spacing: -0.02em;
+    .sm-headline, h1, h2, h3 {
+        color: #0f172a !important;
+        font-weight: 700 !important;
+        letter-spacing: -0.02em !important;
     }
-    .gradio-container .prose p, .gradio-container label { color: #334155 !important; }
+    .sm-subtitle, p {
+        color: #475569 !important;
+        line-height: 1.6 !important;
+    }
 
-    /* Primary buttons */
-    .gradio-container button.primary,
-    .gradio-container .primary > button {
-        background: #b7102a !important; color: #ffffff !important;
-        border: none !important; font-weight: 600 !important;
-        border-radius: 8px !important; padding: 12px 24px !important;
+    /* Text inputs and numbers */
+    .stTextInput input, .stNumberInput input {
+        border-radius: 10px !important;
+        border: 1px solid #cbd5e1 !important;
+        padding: 10px 14px !important;
+        font-size: 15px !important;
+        background-color: #ffffff !important;
+        color: #0f172a !important;
+        transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+    }
+    .stTextInput input:focus, .stNumberInput input:focus {
+        border-color: #b7102a !important;
+        box-shadow: 0 0 0 3px rgba(183,16,42,0.12) !important;
+        outline: none !important;
+    }
+
+    /* Premium Container Card (used for Bases, Pizzas, and Cart Rows) */
+    div[data-testid="stVerticalBlockBorderWrapper"] {
+        border: 1px solid #e2e8f0 !important;
+        border-radius: 16px !important;
+        background: #ffffff !important;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.01) !important;
+        transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+        padding: 20px !important;
+    }
+    /* Target card containers specifically inside 3-column layouts of bases and pizzas */
+    div[data-testid="column"] div[data-testid="stVerticalBlockBorderWrapper"] {
+        width: 150px !important;
+        min-width: 150px !important;
+        max-width: 150px !important;
+        padding: 0px !important;
+        margin: 0 auto !important;
+        overflow: hidden !important;
+    }
+    /* Select button padding inside the card container */
+    div[data-testid="column"] div[data-testid="stVerticalBlockBorderWrapper"] .stButton {
+        padding: 0 8px 8px 8px !important;
+    }
+    /* Small square selectors for card quantity increment/decrement buttons */
+    div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stHorizontalBlock"] .stButton > button {
+        padding: 2px !important;
+        height: 28px !important;
+        font-size: 13px !important;
+        border-radius: 4px !important;
+    }
+    /* Adjust inner columns block inside the cards */
+    div[data-testid="column"] div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stHorizontalBlock"] {
+        padding: 0 8px 8px 8px !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:hover {
+        border-color: #b7102a !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 12px 24px -3px rgba(183, 16, 42, 0.08), 0 4px 12px -2px rgba(183, 16, 42, 0.03) !important;
+    }
+    div[data-testid="column"] div[data-testid="stVerticalBlockBorderWrapper"] img {
+        display: block !important;
+        margin: 0px !important;
+        border-radius: 12px 12px 0 0 !important;
+        object-fit: cover !important;
+        height: 120px !important;
+        width: 150px !important;
+        min-width: 150px !important;
+        max-width: 150px !important;
+        transition: transform 0.3s ease !important;
+    }
+    div[data-testid="stVerticalBlockBorderWrapper"]:hover img {
+        transform: scale(1.04) !important;
+    }
+
+    /* Streamlit buttons custom styling */
+    .stButton > button {
+        border-radius: 8px !important;
+        border: 1px solid #cbd5e1 !important;
+        background-color: #ffffff !important;
+        color: #334155 !important;
+        font-weight: 600 !important;
+        font-size: 14px !important;
+        padding: 8px 16px !important;
+        transition: all 0.2s ease !important;
+        width: 100% !important;
+    }
+    .stButton > button:hover {
+        border-color: #b7102a !important;
+        color: #b7102a !important;
+        background-color: #fef2f2 !important;
+    }
+    .stButton > button[kind="primary"] {
+        background-color: #b7102a !important;
+        color: #ffffff !important;
+        border: none !important;
         box-shadow: 0 4px 6px -1px rgba(183, 16, 42, 0.2) !important;
-        margin-top: 16px !important;
     }
-    .gradio-container button.primary:hover,
-    .gradio-container .primary > button:hover { background: #9b0d23 !important; }
-    .gradio-container button.primary:disabled { background: #cbd5e1 !important; color: #ffffff !important; box-shadow: none !important; }
-    .gradio-container button.secondary { border-radius: 8px !important; }
-
-    /* Back button */
-    .sm-back-btn {
-        align-self: flex-start !important;
-        max-width: fit-content !important;
-        margin: 0 !important;
-        padding: 0 !important;
-    }
-    .sm-back-btn button, .sm-back-btn > button {
-        background: transparent !important; border: 1px solid #e2e8f0 !important;
-        box-shadow: none !important; color: #64748b !important;
-        font-size: 13px !important; font-weight: 500 !important;
-        padding: 6px 14px !important; margin: 0 !important;
-        border-radius: 6px !important; cursor: pointer !important;
-        min-width: auto !important; width: auto !important;
-    }
-    .sm-back-btn button:hover, .sm-back-btn > button:hover {
-        color: #b7102a !important; border-color: #b7102a !important;
-        background: #fef2f2 !important;
+    .stButton > button[kind="primary"]:hover {
+        background-color: #9b0d23 !important;
+        box-shadow: 0 6px 12px -1px rgba(183, 16, 42, 0.3) !important;
     }
 
-    /* Gradio Theme Variable Overrides */
-    .gradio-container {
-        --background-fill-primary: transparent !important;
-        --background-fill-secondary: transparent !important;
-        --block-background-fill: transparent !important;
-        --block-label-background-fill: transparent !important;
-        --block-border-width: 0px !important;
-        --panel-background-fill: transparent !important;
+    /* Multiselect overrides */
+    div[data-baseweb="select"] {
+        border-radius: 8px !important;
+        border-color: #cbd5e1 !important;
     }
 
-    /* Form resets */
-    .gradio-container .form, .gradio-container .block {
-        background: transparent !important; border: none !important;
-        box-shadow: none !important; margin: 0 !important; padding: 0 !important;
+    /* Sidebar custom styling */
+    section[data-testid="stSidebar"] {
+        background-color: #ffffff !important;
+        border-right: 1px solid #e2e8f0 !important;
     }
-
-    /* Text inputs */
-    .gradio-container .wrap { background: transparent !important; border: none !important; box-shadow: none !important; padding: 0 !important; }
-    .gradio-container .wrap > label, .gradio-container .wrap > label span { 
-        margin-bottom: 6px !important; font-weight: 500 !important; font-size: 14px !important; 
-        color: #334155 !important; background: transparent !important; padding: 0 !important; 
-        border: none !important;
+    .sm-sidebar {
+        padding: 10px;
     }
-    
-    .gradio-container input[type=text], .gradio-container textarea {
-        background: #ffffff !important; color: #0F172A !important;
-        border: 1px solid #cbd5e1 !important; border-radius: 8px !important;
-        padding: 12px 16px !important; font-size: 16px !important;
-    }
-    .gradio-container input[type=text]:focus, .gradio-container textarea:focus {
-        border-color: #b7102a !important; outline: none !important;
-        box-shadow: 0 0 0 3px rgba(183,16,42,0.1) !important;
-    }
-
-    /* Reusable design classes */
-    body, .gradio-container { background-color: #f8fafc !important; }
-    .dark body, .dark .gradio-container { background-color: #0f172a !important; }
-    
-    .gradio-container { max-width: 100% !important; padding: 0 !important; margin: 0 !important; }
-    .gradio-container > .main > .wrap > .contain > div > .row {
-        align-items: stretch !important;
-    }
-    .sm-sidebar-col > div { position: sticky; top: 0; }
-    
-    .gradio-container .sm-card, .gradio-container .sm-card.column {
-        background: #ffffff !important; border: 1px solid #e2e8f0 !important;
-        border-radius: 12px !important; padding: 32px !important; margin: 24px auto !important;
-        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05), 0 2px 4px -1px rgba(0, 0, 0, 0.03) !important;
-        max-width: 1400px !important; align-self: center !important; width: 100% !important;
-    }
-    .narrow-container { max-width: 720px !important; margin: 0 auto !important; }
-    .sm-start-btn { max-width: 720px !important; margin: 16px auto 24px auto !important; }
-    .sm-bill-wrapper {
-        font-family: Inter, system-ui, sans-serif;
-        max-width: 720px; margin: 0 auto;
-        border: 1px solid #e2e8f0; border-radius: 12px;
-        padding: 8px; background: #ffffff;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
-    }
-    .sm-receipt-wrapper {
-        max-width: 720px; margin: 0 auto;
-        border: 1px solid #e2e8f0; border-radius: 12px;
-        padding: 24px 8px; background: #ffffff;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.03);
-    }
-    
-    /* Radio (payment modes) */
-    .gradio-container [data-testid="radio"] { background: transparent !important; border: none !important; box-shadow: none !important; }
-    .gradio-container [data-testid="radio"] label {
-        background: #ffffff !important; border: 1px solid #cbd5e1 !important;
-        border-radius: 8px !important; color: #0F172A !important; padding: 12px !important; margin-bottom: 8px !important;
-    }
-    
-    /* Force inputs to be clean */
-    .gradio-container label.svelte-1f354aw, .gradio-container .wrap > label, .gradio-container label span {
-        background: transparent !important;
-        border: none !important;
-    }
-    .gradio-container .form {
-        background: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-    }
-    .sm-headline { font-size: 32px; font-weight: 700; color: #0F172A; margin: 0 0 12px; letter-spacing: -0.02em; }
-    .sm-subtitle { font-size: 16px; color: #64748b; margin: 0 0 32px; line-height: 1.5; }
-    
-    /* Progress Bar */
-    .sm-steps {
-        display: flex; align-items: center; justify-content: center;
-        gap: 0; max-width: 400px; margin: 0 auto 16px;
-    }
-    .sm-step-dot {
-        width: 28px; height: 28px; border-radius: 50%; display: flex;
-        align-items: center; justify-content: center;
-        font-size: 13px; font-weight: 600; flex-shrink: 0;
-    }
-    .sm-step-pending { background: #f1f5f9; color: #94a3b8; border: 1px solid #e2e8f0; }
-    .sm-step-active  { background: #b7102a; color: #ffffff; border: 1px solid #b7102a; }
-    .sm-step-done    { background: #b7102a; color: #ffffff; border: 1px solid #b7102a; }
-    .sm-step-line { flex: 1; height: 2px; background: #e2e8f0; }
-    .sm-step-line-done { background: #b7102a; }
-    .sm-step-label { text-align: center; font-size: 13px; font-weight: 500; color: #64748b; margin-top: 12px; margin-bottom: 24px; }
-
-    /* Grids */
-    .sm-base-grid {
-        display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px;
-    }
-
-    .sm-pizza-grid {
-        display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 16px; margin-bottom: 24px;
-    }
-    
-    .sm-topping-pills { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 24px; }
-    
-    /* Cart Styling */
-    .sm-cart-title { color: #0F172A; }
-    .dark .sm-cart-title { color: #f8fafc !important; }
-    .sm-cart-remove {
-        background: none; border: 1px solid #e2e8f0; border-radius: 6px;
-        color: #94a3b8; cursor: pointer; font-size: 14px; line-height: 1;
-        width: 28px; height: 28px; display: flex; align-items: center;
-        justify-content: center; padding: 0; flex-shrink: 0;
+    .sm-sidebar-item {
+        padding: 12px 16px;
+        margin-bottom: 6px;
+        border-radius: 10px;
+        color: #475569;
+        font-size: 14px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
         transition: all 0.15s ease;
     }
-    .sm-cart-remove:hover { background: #fef2f2; border-color: #dc2626; color: #dc2626; }
-    .sm-cart-remove-btn { max-width: 40px !important; min-width: 40px !important; }
-    .sm-cart-remove-btn button {
-        background: none !important; border: 1px solid #e2e8f0 !important;
-        color: #94a3b8 !important; font-size: 16px !important; padding: 4px !important;
-        margin: 0 !important; border-radius: 6px !important; box-shadow: none !important;
-        min-width: 36px !important; height: 36px !important;
+    .sm-sidebar-active {
+        background-color: #fef2f2 !important;
+        color: #b7102a !important;
+        font-weight: 600 !important;
+        box-shadow: inset 4px 0 0 0 #b7102a !important;
     }
-    .sm-cart-remove-btn button:hover {
-        background: #fef2f2 !important; border-color: #dc2626 !important; color: #dc2626 !important;
-    }
-    .sm-cart-row {
-        align-items: flex-start !important; gap: 0 !important;
-        border-bottom: 1px dashed #e2e8f0; padding-bottom: 8px; margin-bottom: 8px;
-    }
-    .sm-cart-row > :first-child { flex: 1 !important; }
-    .sm-cart-row > .sm-cart-remove-btn { margin-top: 4px !important; }
-    .sm-cart-desc { font-size: 13px; color: #64748b; }
-    .dark .sm-cart-desc { color: #cbd5e1 !important; }
-    
-    .sm-action-buttons { display: flex !important; align-items: stretch !important; gap: 12px !important; margin-top: 16px !important; }
-    .sm-action-buttons > * { flex: 1 !important; margin: 0 !important; }
-    .gradio-container .sm-action-buttons button { margin-top: 0 !important; height: auto !important; }
-
-    /* Toppings Checkboxes Styling */
-    .sm-topping-checkboxes .wrap { flex-direction: row !important; flex-wrap: wrap !important; gap: 12px !important; }
-    .sm-topping-checkboxes label {
-        background: #ffffff !important;
-        border: 1px solid #e2e8f0 !important;
-        border-radius: 8px !important;
-        padding: 10px 16px !important;
-        margin: 0 !important;
-        cursor: pointer !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        box-shadow: 0 1px 2px rgba(0,0,0,0.02) !important;
-        transition: all 0.2s ease !important;
-    }
-    .sm-topping-checkboxes label:hover {
-        border-color: #cbd5e1 !important;
-        background: #f8f9fa !important;
-    }
-    .sm-topping-checkboxes label:has(input:checked) {
-        background: #fef2f2 !important;
-        border-color: #b7102a !important;
-    }
-    .sm-topping-checkboxes label span {
-        color: #0F172A !important;
-        font-weight: 500 !important;
-    }
-    .dark .sm-topping-checkboxes label {
-        background: #1e293b !important;
-        border-color: #334155 !important;
-    }
-    .dark .sm-topping-checkboxes label:hover {
-        background: #0f172a !important;
-    }
-    .dark .sm-topping-checkboxes label:has(input:checked) {
-        background: rgba(183,16,42,0.2) !important;
-        border-color: #b7102a !important;
-    }
-    .dark .sm-topping-checkboxes label span {
-        color: #f8fafc !important;
+    .sm-logo-text {
+        font-family: 'Inter', sans-serif !important;
+        font-size: 22px !important;
+        font-weight: 800 !important;
+        color: #0f172a !important;
+        letter-spacing: -0.03em !important;
     }
 
-    .sm-card-item {
-        background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
-        padding: 12px; display: flex; flex-direction: column; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    /* Bill summary styling */
+    .sm-bill-wrapper {
+        border: 1px solid #e2e8f0;
+        border-radius: 16px;
+        padding: 24px;
+        background: #ffffff;
+        box-shadow: 0 4px 6px -1px rgba(0,0,0,0.02);
     }
-    .sm-card-unavailable {
-        opacity: 0.45; pointer-events: none; filter: grayscale(0.6);
-    }
-    .sm-num-disabled {
-        background: #94a3b8 !important;
-    }
-    .sm-card-pizza {
-        background: #ffffff; border: 1px solid #e2e8f0; border-radius: 12px;
-        padding: 12px; display: flex; gap: 12px; align-items: center; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-    }
-    .sm-img {
-        aspect-ratio: 1/1; width: 100%; border-radius: 8px; overflow: hidden;
-        background: #f1f5f9; display: flex; align-items: center; justify-content: center;
-        margin-bottom: 12px;
-    }
-    .sm-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .sm-img-placeholder { font-size: 32px; opacity: 0.3; }
-    .sm-thumb { width: 72px; height: 72px; border-radius: 8px; overflow: hidden;
-                background: #f1f5f9; flex-shrink: 0;
-                display: flex; align-items: center; justify-content: center; }
-    .sm-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
-    .sm-num {
-        display: inline-block; min-width: 24px; height: 24px; line-height: 24px;
-        text-align: center; border-radius: 50%; background: #b7102a; color: #fff;
-        font-size: 12px; font-weight: 700; margin-right: 8px;
-    }
-    .sm-item-name  { font-weight: 600; color: #0F172A; font-size: 14px; }
-    .sm-item-price { color: #64748b; font-size: 14px; margin-top: 4px; }
-    .sm-pill {
-        background: #ffffff; border: 1px solid #e2e8f0; border-radius: 999px;
-        padding: 8px 16px; font-size: 14px; color: #0F172A; display: inline-flex;
-        align-items: center; gap: 8px; box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-    }
-    .sm-primary-text { color: #001b3c; }
-    .sm-topping-price { color: #5b403f; }
-    .sm-step-text { color: #b7102a; }
-    .sm-logo-text { color: #b7102a; }
-    .sm-error-text, .gradio-container .prose .sm-error-text, .gradio-container .prose p.sm-error-text { color: #dc2626 !important; }
-    
-    /* Bill Summary Table */
     .sm-bill-table {
-        width: 100%; border-collapse: collapse; background: #ffffff;
-        border-radius: 12px; overflow: hidden;
+        width: 100%;
+        border-collapse: collapse;
     }
-    .sm-bill-row { border-bottom: 1px solid #eee; }
-    .sm-bill-row-heavy { border-bottom: 2px solid #8f6f6e; }
-    .sm-bill-row-top { border-top: 1px solid #e4bebc; }
-    .sm-bill-cell { padding: 12px 16px; color: #0F172A; }
-    .sm-bill-val { padding: 12px 16px; text-align: right; font-weight: 500; color: #0F172A; }
-    .sm-bill-bold { font-weight: 600; }
-    .sm-bill-discount { color: #336366; font-weight: 600; }
-    .sm-bill-total-row { background: #f0f3ff; border-top: 2px solid #b7102a; }
-    .sm-bill-total-cell { padding: 16px; font-weight: 700; font-size: 1.1em; color: #0F172A; }
-    .sm-bill-tax-note { font-size: 0.75em; font-weight: 400; color: #5b403f; }
-    .sm-bill-total-val { padding: 16px; text-align: right; font-weight: 700; font-size: 1.4em; color: #b7102a; }
-    .sm-bill-badge {
-        background: #e7eeff; padding: 4px 12px; border-radius: 6px;
-        font-size: 12px; color: #001b3c;
-        display: inline-block;
+    .sm-bill-row {
+        border-bottom: 1px solid #f1f5f9;
     }
-    
+    .sm-bill-cell {
+        padding: 12px 0;
+        color: #334155;
+    }
+    .sm-bill-val {
+        padding: 12px 0;
+        text-align: right;
+        font-weight: 600;
+        color: #0f172a;
+    }
+    .sm-bill-bold {
+        font-weight: 700;
+    }
+    .sm-bill-total-row {
+        border-top: 2px solid #b7102a;
+        background: #fff8f8;
+    }
+    .sm-bill-total-cell {
+        padding: 16px 12px;
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .sm-bill-total-val {
+        padding: 16px 12px;
+        text-align: right;
+        font-weight: 800;
+        font-size: 1.3em;
+        color: #b7102a;
+    }
     .sm-dev-log {
         background: #0B192C;
         border-radius: 8px;
@@ -1790,32 +1590,6 @@ if __name__ == "__main__":
         font-weight: 700;
         letter-spacing: 1px;
         color: #e2e8f0 !important;
-        margin-bottom: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-    }
-    .sm-dev-log-header span, .sm-dev-log-header div {
-        color: #e2e8f0 !important;
-    }
-    .sm-dev-log-copy {
-        background: rgba(255,255,255,0.08);
-        border: 1px solid rgba(255,255,255,0.2);
-        color: #e2e8f0 !important;
-        cursor: pointer;
-        padding: 6px;
-        border-radius: 6px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-family: inherit;
-    }
-    .sm-dev-log-copy svg {
-        stroke: #e2e8f0 !important;
-    }
-    .sm-dev-log-copy:hover {
-        background: #1e293b;
-        color: #f8fafc;
     }
     .sm-dev-log-content {
         background: #4C2E2A !important; 
@@ -1824,97 +1598,15 @@ if __name__ == "__main__":
         border-radius: 6px; 
         font-size: 13px; 
         word-break: break-all;
-        font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace !important;
+        font-family: monospace !important;
     }
-    
-    .sm-success-msg { color: #24963F; font-weight: 600; }
     .sm-success-icon { color: #24963F; font-size: 48px; }
     .sm-success-title { color: #24963F; margin: 12px 0; }
     .sm-error-icon { color: #ba1a1a; font-size: 48px; }
     .sm-error-title { color: #ba1a1a; margin: 12px 0; }
-    
     .sm-pay-info { color: #336366; }
     .sm-receipt-msg { color: #5b403f; }
     .sm-receipt-details { margin: 20px auto; text-align: left; max-width: 720px; color: #0F172A; }
-    .sm-receipt-details strong { color: #000000; }
-    
-    /* Sidebar CSS */
-    .sm-sidebar-col {
-        background: #f8f9fa !important; border-right: 1px solid #e2e8f0 !important;
-        padding: 0 !important; margin: 0 !important; min-height: 100% !important;
-        align-self: stretch !important;
-    }
-    .sm-main-col {
-        padding: 0 32px !important; margin: 0 !important;
-    }
-    .sm-sidebar {
-        padding: 0 8px;
-    }
-    .sm-sidebar-item {
-        padding: 12px 16px; margin-bottom: 4px; border-radius: 8px;
-        color: #334155; font-size: 15px; font-weight: 500;
-        display: flex; align-items: center; cursor: default;
-    }
-    .sm-sidebar-active {
-        background: #dee8ff; color: #1e3a8a; font-weight: 600;
-    }
-    
-    /* Dark Mode Overrides */
-    .dark .sm-card { background: #1e293b !important; border: none !important; }
-    .dark .sm-headline { color: #f8fafc !important; }
-    .dark .sm-subtitle { color: #94a3b8 !important; }
-    .dark .sm-item-name { color: #f8fafc !important; }
-    .dark .sm-item-price { color: #94a3b8 !important; }
-    .dark .sm-card-item, .dark .sm-card-pizza { background: #0f172a !important; border-color: #334155 !important; }
-    .dark .sm-pill { background: #0f172a !important; border-color: #334155 !important; color: #f8fafc !important; }
-    .dark .sm-sidebar-col { background: #020617 !important; border-right: 1px solid #1e293b !important; }
-    .dark .sm-sidebar-item { color: #cbd5e1 !important; }
-    .dark .sm-sidebar-active { background: #1e293b !important; color: #38bdf8 !important; }
-    .dark .sm-primary-text { color: #f8fafc !important; }
-    .dark .sm-topping-price { color: #cbd5e1 !important; }
-    .dark .sm-img, .dark .sm-thumb { background: #334155 !important; }
-    .dark .sm-step-text { color: #f87171 !important; }
-    .dark .sm-logo-text { color: #f8fafc !important; }
-    .dark .sm-error-text, .dark .gradio-container .prose .sm-error-text, .dark .gradio-container .prose p.sm-error-text { color: #f87171 !important; }
-    
-    /* Bill Summary Dark Mode Overrides */
-    .dark .sm-bill-table { background: #0f172a !important; border-color: #334155 !important; }
-    .dark .sm-bill-wrapper, .dark .sm-receipt-wrapper { background: #0f172a !important; border-color: #334155 !important; }
-    .dark .sm-bill-row { border-color: #1e293b !important; }
-    .dark .sm-bill-row-heavy { border-color: #475569 !important; }
-    .dark .sm-bill-row-top { border-color: #334155 !important; }
-    .dark .sm-bill-cell { color: #f8fafc !important; }
-    .dark .sm-bill-val { color: #f8fafc !important; }
-    .dark .sm-bill-discount { color: #34d399 !important; }
-    .dark .sm-bill-total-row { background: #1e293b !important; border-color: #ef4444 !important; }
-    .dark .sm-bill-total-cell { color: #f8fafc !important; }
-    .dark .sm-bill-tax-note { color: #94a3b8 !important; }
-    .dark .sm-bill-total-val { color: #ef4444 !important; }
-    .dark .sm-bill-badge { background: #1e293b !important; color: #38bdf8 !important; }
-    
-    .dark .gradio-container .prose .sm-success-msg, .dark .sm-success-msg { color: #4ade80 !important; }
-    .dark .sm-success-icon { color: #4ade80 !important; }
-    .dark .gradio-container .prose .sm-success-title, .dark .sm-success-title { color: #4ade80 !important; }
-    .dark .sm-error-icon { color: #f87171 !important; }
-    .dark .gradio-container .prose .sm-error-title, .dark .sm-error-title { color: #f87171 !important; }
-    
-    .dark .sm-pay-info { color: #cbd5e1 !important; }
-    .dark .sm-receipt-msg { color: #94a3b8 !important; }
-    .dark .sm-receipt-details, .dark .sm-receipt-details p { color: #f8fafc !important; }
-    .dark .sm-receipt-details strong { color: #f8fafc !important; }
-    
-    .dark .gradio-container [data-testid="radio"] label {
-        background: #1e293b !important; border-color: #334155 !important; color: #f8fafc !important;
-    }
-    .dark .gradio-container label span { color: #cbd5e1 !important; }
-    .dark .gradio-container span[data-testid="block-info"] { color: #cbd5e1 !important; }
-    .dark .gradio-container .prose .sm-dev-log-header, .dark .sm-dev-log-header, .dark .sm-dev-log-header span, .dark .sm-dev-log-header div { color: #e2e8f0 !important; }
-    .dark .sm-dev-log-copy, .dark .sm-dev-log-copy svg { color: #e2e8f0 !important; stroke: #e2e8f0 !important; }
-    """
+"""
 
-    app.launch(
-        theme=gr.themes.Base(),
-        css=DESIGN_CSS,
-        allowed_paths=[str(APP_DIR)],
-        head=HEAD_JS
-    )
+st.markdown(f"<style>{DESIGN_CSS}</style>", unsafe_allow_html=True)
