@@ -241,7 +241,7 @@ Full-stack Next.js 14 application with:
 - **Admin console**: Revenue analytics, order management, menu lifecycle studio, AI ops briefing, demand forecast
 - **Payment integration**: Razorpay (Card) + Cashfree (UPI) + Cash — test mode, server-verified
 - **AI features**: OpenRouter-powered recommendation engine, cart strategist, menu copywriter, ops briefing
-- **ML forecast**: scikit-learn demand prediction by hour/day
+- **ML forecast**: scikit-learn demand prediction by hour/day a lightweight model we are using
 - **Database**: Supabase PostgreSQL with full schema (menu, orders, customers, analytics)
 - **Auth**: Admin + customer accounts via Supabase Auth, with guest checkout support
 

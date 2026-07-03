@@ -158,6 +158,8 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   const [cartInsightLoading, setCartInsightLoading] = useState(false);
   const [opsBriefing, setOpsBriefing] = useState<OpsBriefing | null>(null);
   const [opsLoading, setOpsLoading] = useState(false);
+  const [customerOrders, setCustomerOrders] = useState<any[]>([]);
+  const [customerOrdersLoading, setCustomerOrdersLoading] = useState(false);
   const [brand, setBrand] = useState({
     name: "SliceMatic",
     outlet: "New Ashok Nagar",
@@ -216,9 +218,14 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       const customerJson = window.sessionStorage.getItem("slicematic_customer");
       const email = window.sessionStorage.getItem("slicematic_customer_email") ?? "";
 
+      let identifierToUse = email;
+
       if (customerJson) {
         try {
           const parsedCustomer = JSON.parse(customerJson) as Partial<CustomerDetails>;
+          if (!identifierToUse && parsedCustomer.phone) {
+             identifierToUse = parsedCustomer.phone;
+          }
           setCustomer((current) => ({
             ...current,
             name: parsedCustomer.name ?? current.name,
@@ -232,8 +239,21 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
         }
       }
 
+      if (identifierToUse) {
+         setCustomerOrdersLoading(true);
+         fetch(`/api/customer/orders?identifier=${encodeURIComponent(identifierToUse)}`)
+           .then(res => res.json())
+           .then(data => {
+              if (data.ok && data.orders) {
+                 setCustomerOrders(data.orders);
+              }
+           })
+           .catch(err => console.error("Error fetching customer orders", err))
+           .finally(() => setCustomerOrdersLoading(false));
+      }
+
       setCustomerLoggedIn(true);
-      setCustomerSessionEmail(email);
+      setCustomerSessionEmail(email || identifierToUse);
       setWorkspace("customer");
       setStep("menu");
     } else if (loggedInValue === "false") {
@@ -1551,8 +1571,39 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
             </div>
           </div>
           <div className="account-grid">
+            <article className="order-history-widget" style={{ gridColumn: "1 / -1" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: "0.5rem", marginBottom: "1rem" }}>
+                <ReceiptText /><strong>Your Order History</strong>
+              </div>
+              {customerOrdersLoading ? (
+                <p style={{ color: "var(--text-muted)" }}>Loading past orders...</p>
+              ) : customerOrders.length === 0 ? (
+                <p style={{ color: "var(--text-muted)" }}>No past orders found. Place your first order today!</p>
+              ) : (
+                <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
+                  {customerOrders.map(order => (
+                    <div key={order.id} style={{ border: "1px solid var(--border-light)", borderRadius: "var(--radius)", padding: "1rem", background: "var(--surface)" }}>
+                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
+                        <span>{new Date(order.createdAt).toLocaleDateString()}</span>
+                        <span style={{ textTransform: "capitalize", fontWeight: 600, color: order.status === "Placed" ? "var(--accent)" : "inherit" }}>{order.status}</span>
+                      </div>
+                      <div style={{ marginBottom: "0.5rem" }}>
+                         {order.lines.map((item: any, idx: number) => (
+                           <div key={idx} style={{ fontSize: "0.9rem", color: "var(--text-base)", marginBottom: "0.25rem" }}>
+                             {item.quantity}x {item.pizzaName} <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>({item.sizeName})</span>
+                           </div>
+                         ))}
+                      </div>
+                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, borderTop: "1px solid var(--border-light)", paddingTop: "0.5rem", marginTop: "0.5rem", color: "var(--text-base)" }}>
+                        <span>Total</span>
+                        <span>₹{order.finalTotal.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </article>
             <article><Sparkles /><strong>Personalized picks</strong><span>Recommendation context can use account-linked history.</span></article>
-            <article><ReceiptText /><strong>Order memory</strong><span>Past orders and preferences are ready for Supabase-backed accounts.</span></article>
             <article><ShieldCheck /><strong>Secure recovery</strong><span>Password reset and logout are built into the customer workspace.</span></article>
             <article><CreditCard /><strong>Full payment choice</strong><span>Members can use Cash, Card, or UPI; guests stay online-only.</span></article>
           </div>

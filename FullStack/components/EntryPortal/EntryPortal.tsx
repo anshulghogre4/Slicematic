@@ -3,7 +3,6 @@
 import React, { useState, useEffect } from "react";
 import { Pizza, ArrowRight, Lock, UserCheck, ShieldAlert, Smartphone, Mail, Sparkles, Smile, ArrowLeft } from "lucide-react";
 import { getSupabaseBrowserClient } from "../../lib/supabase";
-import { randomUUID } from "crypto"; // In browser we can fall back to crypto.randomUUID or simple random generators
 import "./EntryPortal.css";
 
 interface EntryPortalProps {
@@ -29,26 +28,6 @@ const SEED_CUSTOMERS = [
     age: 24,
     deliveryZone: "2-4" as const,
     note: "Call once before dispatch."
-  },
-  {
-    name: "Nisha Verma",
-    phone: "9876500007",
-    email: "nisha@slicematic.in",
-    address: "15, Block B, Green Park",
-    city: "Delhi NCR",
-    age: 35,
-    deliveryZone: "0-2" as const,
-    note: "Leave with guard."
-  },
-  {
-    name: "Kabir Mehta",
-    phone: "9876500002",
-    email: "kabir@slicematic.in",
-    address: "B-42, Sector 62",
-    city: "Noida",
-    age: 29,
-    deliveryZone: "4-6" as const,
-    note: "Behind the shopping complex."
   }
 ];
 
@@ -58,6 +37,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
   const [otp, setOtp] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
   const [loading, setLoading] = useState(false);
+  const [fallbackDemo, setFallbackDemo] = useState(false);
 
   // Registration Form States
   const [regName, setRegName] = useState("");
@@ -67,149 +47,162 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
   const [regMobile, setRegMobile] = useState("");
   const [regEmail, setRegEmail] = useState("");
 
-  // Target customer found during login
-  const [matchedCustomer, setMatchedCustomer] = useState<any>(null);
-
-  // Validate if input looks like email or mobile
   const isEmail = (val: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
   const isMobile = (val: string) => /^\d{10}$/.test(val);
+  const isDemoUser = (val: string) => val === "demo@slicematic.in" || val === "9999999999";
 
-  // Initial pre-fill setup when moving to registration
   useEffect(() => {
     if (step === "register") {
-      if (isEmail(identifier)) {
-        setRegEmail(identifier.trim());
-      } else if (isMobile(identifier)) {
-        setRegMobile(identifier.trim());
-      }
+      if (isEmail(identifier)) setRegEmail(identifier.trim());
+      else if (isMobile(identifier)) setRegMobile(identifier.trim());
     }
   }, [step, identifier]);
 
-  // Handle Identity Submission (Phone/Email verification)
   const handleIdentitySubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
-    const trimmedVal = identifier.trim();
+    const trimmedVal = identifier.trim().toLowerCase();
 
     if (!trimmedVal) {
-      setErrorMsg("Please enter your email address or 10-digit mobile number.");
+      setErrorMsg("Please enter your email address.");
       return;
     }
 
-    if (!isEmail(trimmedVal) && !isMobile(trimmedVal)) {
-      setErrorMsg("Please enter a valid email address or a 10-digit mobile number.");
+    if (!isEmail(trimmedVal)) {
+      setErrorMsg("Please enter a valid email address.");
       return;
     }
 
     setLoading(true);
     try {
-      let foundCustomer: any = null;
-
-      // 1. Check Supabase DB first (if configured)
-      const supabase = getSupabaseBrowserClient();
-      if (supabase) {
-        const queryField = isEmail(trimmedVal) ? "email" : "mobile_number";
-        const { data, error } = await supabase
-          .schema("slicematic")
-          .from("customer")
-          .select("*")
-          .eq(queryField, trimmedVal)
-          .maybeSingle();
-
-        if (!error && data) {
-          foundCustomer = {
-            name: `${data.first_name || ""} ${data.last_name || ""}`.trim(),
-            phone: data.mobile_number || "",
-            email: data.email || "",
-            address: "", // Will populate or fetch from orders later
-            city: data.city || "Delhi NCR",
-            age: 25 // default
-          };
-        }
-      }
-
-      // 2. Check localstorage registered customers (offline mock DB)
-      if (!foundCustomer) {
-        const localUsers = localStorage.getItem("slicematic_mock_customers");
-        if (localUsers) {
-          const parsedUsers: LocalRegisteredCustomer[] = JSON.parse(localUsers);
-          const localMatch = parsedUsers.find(
-            (c) => c.email.toLowerCase() === trimmedVal.toLowerCase() || c.phone === trimmedVal
-          );
-          if (localMatch) {
-            foundCustomer = localMatch;
+      if (!isDemoUser(trimmedVal)) {
+        const supabase = getSupabaseBrowserClient();
+        if (supabase) {
+          const { error } = await supabase.auth.signInWithOtp({ email: trimmedVal });
+          
+          if (error) {
+            console.error("OTP Send Error:", error);
+            if (error.message.toLowerCase().includes("rate limit")) {
+              setErrorMsg("Free tier rate limit hit! Falling back to Demo Mode. Use OTP 1111 to proceed.");
+              setFallbackDemo(true);
+            } else {
+              setErrorMsg("Failed to send OTP: " + error.message);
+              setLoading(false);
+              return;
+            }
           }
         }
       }
-
-      // 3. Check hardcoded seed customers
-      if (!foundCustomer) {
-        const seedMatch = SEED_CUSTOMERS.find(
-          (c) => c.email.toLowerCase() === trimmedVal.toLowerCase() || c.phone === trimmedVal
-        );
-        if (seedMatch) {
-          foundCustomer = seedMatch;
-        }
-      }
-
-      if (foundCustomer) {
-        // Customer exists, proceed to OTP step
-        setMatchedCustomer(foundCustomer);
-        setStep("otp");
-      } else {
-        // Customer does not exist, proceed to registration
-        setMatchedCustomer(null);
-        setStep("register");
-      }
-    } catch (err) {
+      setStep("otp");
+    } catch (err: any) {
       console.error(err);
-      setErrorMsg("An error occurred during account lookup. Please try again.");
+      setErrorMsg("An error occurred while sending OTP.");
     } finally {
       setLoading(false);
     }
   };
 
-  // Handle OTP submission (always 1111)
-  const handleOtpSubmit = (e: React.FormEvent) => {
+  const handleOtpSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
+    const trimmedVal = identifier.trim().toLowerCase();
 
-    if (otp !== "1111") {
-      setErrorMsg("Incorrect OTP code. For demo purposes, use code 1111.");
+    if (!otp) {
+      setErrorMsg("Please enter the OTP.");
       return;
     }
 
-    // Success login
-    saveSessionAndProceed(matchedCustomer);
+    setLoading(true);
+    try {
+      let isVerified = false;
+
+      if (isDemoUser(trimmedVal) || fallbackDemo) {
+        if (otp !== "1111") {
+          setErrorMsg("Incorrect OTP code. For demo purposes, use code 1111.");
+          setLoading(false);
+          return;
+        }
+        isVerified = true;
+      } else {
+        const supabase = getSupabaseBrowserClient();
+        if (supabase) {
+          const { error } = await supabase.auth.verifyOtp({ email: trimmedVal, token: otp, type: 'email' });
+
+          if (error) {
+            setErrorMsg("Invalid OTP: " + error.message);
+            setLoading(false);
+            return;
+          }
+          isVerified = true;
+        }
+      }
+
+      if (isVerified) {
+        await checkCustomerInDb(trimmedVal);
+      }
+    } catch (err) {
+      console.error(err);
+      setErrorMsg("Error verifying OTP.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  // Handle Registration submission
+  const checkCustomerInDb = async (verifiedIdentifier: string) => {
+    let foundCustomer: any = null;
+    const supabase = getSupabaseBrowserClient();
+    if (supabase) {
+      const queryField = isEmail(verifiedIdentifier) ? "email" : "mobile_number";
+      const { data, error } = await supabase
+        .schema("slicematic")
+        .from("customer")
+        .select("*")
+        .eq(queryField, verifiedIdentifier)
+        .maybeSingle();
+
+      if (!error && data) {
+        foundCustomer = {
+          name: `${data.first_name || ""} ${data.last_name || ""}`.trim(),
+          phone: data.mobile_number || "",
+          email: data.email || "",
+          address: "",
+          city: data.city || "Delhi NCR",
+          age: 25
+        };
+      }
+    }
+
+    if (!foundCustomer) {
+      const localUsers = localStorage.getItem("slicematic_mock_customers");
+      if (localUsers) {
+        const parsedUsers: LocalRegisteredCustomer[] = JSON.parse(localUsers);
+        const localMatch = parsedUsers.find(
+          (c) => c.email.toLowerCase() === verifiedIdentifier || c.phone === verifiedIdentifier
+        );
+        if (localMatch) foundCustomer = localMatch;
+      }
+    }
+
+    if (!foundCustomer) {
+      const seedMatch = SEED_CUSTOMERS.find(
+        (c) => c.email.toLowerCase() === verifiedIdentifier || c.phone === verifiedIdentifier
+      );
+      if (seedMatch) foundCustomer = seedMatch;
+    }
+
+    if (foundCustomer) {
+      saveSessionAndProceed(foundCustomer);
+    } else {
+      setStep("register");
+    }
+  };
+
   const handleRegistrationSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
 
-    if (!regName.trim()) {
-      setErrorMsg("Full Name is required.");
-      return;
-    }
-    if (!regAge.trim() || isNaN(Number(regAge)) || Number(regAge) <= 0) {
-      setErrorMsg("Please enter a valid age.");
-      return;
-    }
-    if (!regAddress.trim()) {
-      setErrorMsg("Delivery address is required.");
-      return;
-    }
-    if (!regCity.trim()) {
-      setErrorMsg("City is required.");
-      return;
-    }
-    if (!isMobile(regMobile)) {
-      setErrorMsg("Please enter a valid 10-digit mobile number.");
-      return;
-    }
-    if (!isEmail(regEmail)) {
-      setErrorMsg("Please enter a valid email address.");
+    if (!regName.trim() || !regAddress.trim() || !regCity.trim() || !isMobile(regMobile) || !isEmail(regEmail)) {
+      setErrorMsg("Please fill in all fields with valid data.");
       return;
     }
 
@@ -220,54 +213,43 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
       email: regEmail.trim().toLowerCase(),
       address: regAddress.trim(),
       city: regCity.trim(),
-      age: Number(regAge)
+      age: Number(regAge) || 25
     };
 
     try {
-      // 1. Try to register in Supabase
       const supabase = getSupabaseBrowserClient();
       if (supabase) {
         const [firstName, ...rest] = newCustomer.name.split(/\s+/);
         const lastName = rest.join(" ");
-        const calculatedBirthYear = new Date().getFullYear() - newCustomer.age;
-        const mockBirthDate = `${calculatedBirthYear}-01-01`;
 
-        await supabase.schema("slicematic").from("customer").insert({
-          customer_id: typeof window !== "undefined" && window.crypto?.randomUUID ? window.crypto.randomUUID() : Math.random().toString(36).substring(2),
+        const { error } = await supabase.schema("slicematic").from("customer").insert({
           first_name: firstName,
-          last_name: lastName,
+          last_name: lastName || null,
           mobile_number: newCustomer.phone,
-          email: newCustomer.email,
+          email: newCustomer.email || null,
           city: newCustomer.city,
-          birth_date: mockBirthDate,
           registration_date: new Date().toISOString()
         });
-      }
-
-      // 2. Save to localStorage to persist in mock DB
-      const localUsers = localStorage.getItem("slicematic_mock_customers");
-      let usersList: LocalRegisteredCustomer[] = [];
-      if (localUsers) {
-        try {
-          usersList = JSON.parse(localUsers);
-        } catch {
-          usersList = [];
+        
+        if (error) {
+           throw new Error(error.message);
         }
       }
+
+      const localUsers = localStorage.getItem("slicematic_mock_customers");
+      let usersList: LocalRegisteredCustomer[] = localUsers ? JSON.parse(localUsers) : [];
       usersList.push(newCustomer);
       localStorage.setItem("slicematic_mock_customers", JSON.stringify(usersList));
 
-      // Proceed and complete
       saveSessionAndProceed(newCustomer);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      setErrorMsg("Failed to register. Please check input data and try again.");
+      setErrorMsg("Failed to register: " + (err.message || "Please check input data."));
     } finally {
       setLoading(false);
     }
   };
 
-  // Helper to save session details and trigger parent callback
   const saveSessionAndProceed = (customerObj: any) => {
     if (typeof window !== "undefined") {
       const displayAddress = customerObj.city 
@@ -290,7 +272,6 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
     onComplete();
   };
 
-  // Guest login bypass
   const handleGuestLogin = () => {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("slicematic_customer");
@@ -300,10 +281,11 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
     onComplete();
   };
 
+  const isDemo = isDemoUser(identifier.trim().toLowerCase());
+
   return (
     <div className="portal-container">
       <div className="portal-glass">
-        {/* Brand Header */}
         <div className="portal-header">
           <div className="portal-logo">
             <Pizza />
@@ -312,17 +294,16 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
           <p>Fresh crusts, premium toppings, elite AI pairings.</p>
         </div>
 
-        {/* Wizard Form States */}
         {step === "identity" && (
           <form onSubmit={handleIdentitySubmit} className="portal-form">
             <div className="input-group">
-              <label htmlFor="identifier">Mobile or Email</label>
+              <label htmlFor="identifier">Email Address</label>
               <div className="input-icon-wrapper">
-                {identifier.includes("@") ? <Mail /> : <Smartphone />}
+                <Mail />
                 <input
                   type="text"
                   id="identifier"
-                  placeholder="Enter email or 10-digit phone number"
+                  placeholder="e.g. name@email.com"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   disabled={loading}
@@ -333,7 +314,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
             {errorMsg && <div className="portal-error-card"><ShieldAlert /><span>{errorMsg}</span></div>}
 
             <button type="submit" className="portal-primary-btn" disabled={loading}>
-              {loading ? "Checking..." : "Proceed"} <ArrowRight />
+              {loading ? "Sending OTP..." : "Get OTP"} <ArrowRight />
             </button>
 
             <div className="portal-divider">
@@ -355,16 +336,16 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
             <div className="otp-heading">
               <Lock />
               <h3>Enter Security Code</h3>
-              <p>We've sent an OTP to <strong>{identifier}</strong> (for this demo, enter <strong>1111</strong>).</p>
+              <p>We've sent an OTP to <strong>{identifier}</strong> {(isDemo || fallbackDemo) && "(for this demo, enter 1111)"}.</p>
             </div>
 
             <div className="input-group">
-              <label htmlFor="otp">4-Digit OTP Code</label>
+              <label htmlFor="otp">OTP Code</label>
               <input
                 type="text"
                 id="otp"
-                maxLength={4}
-                placeholder="XXXX"
+                maxLength={8}
+                placeholder={(isDemo || fallbackDemo) ? "1111" : "Enter OTP"}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
                 disabled={loading}
@@ -375,7 +356,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
             {errorMsg && <div className="portal-error-card"><ShieldAlert /><span>{errorMsg}</span></div>}
 
             <button type="submit" className="portal-primary-btn" disabled={loading}>
-              Verify & Enter App <UserCheck />
+              {loading ? "Verifying..." : "Verify & Enter App"} <UserCheck />
             </button>
           </form>
         )}
@@ -395,74 +376,32 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
             <div className="reg-grid">
               <div className="input-group">
                 <label htmlFor="regName">Full Name</label>
-                <input
-                  type="text"
-                  id="regName"
-                  placeholder="Rahul Sharma"
-                  value={regName}
-                  onChange={(e) => setRegName(e.target.value)}
-                  disabled={loading}
-                />
+                <input type="text" id="regName" placeholder="Rahul Sharma" value={regName} onChange={(e) => setRegName(e.target.value)} disabled={loading} />
               </div>
 
               <div className="input-group">
                 <label htmlFor="regAge">Age</label>
-                <input
-                  type="number"
-                  id="regAge"
-                  placeholder="25"
-                  value={regAge}
-                  onChange={(e) => setRegAge(e.target.value)}
-                  disabled={loading}
-                />
+                <input type="number" id="regAge" placeholder="25" value={regAge} onChange={(e) => setRegAge(e.target.value)} disabled={loading} />
               </div>
 
               <div className="input-group">
                 <label htmlFor="regMobile">Mobile Number</label>
-                <input
-                  type="text"
-                  id="regMobile"
-                  placeholder="9876543210"
-                  value={regMobile}
-                  onChange={(e) => setRegMobile(e.target.value.replace(/\D/g, ""))}
-                  disabled={loading}
-                />
+                <input type="text" id="regMobile" placeholder="9876543210" value={regMobile} onChange={(e) => setRegMobile(e.target.value.replace(/\D/g, ""))} disabled={loading} />
               </div>
 
               <div className="input-group">
                 <label htmlFor="regEmail">Email Address</label>
-                <input
-                  type="email"
-                  id="regEmail"
-                  placeholder="rahul@slicematic.in"
-                  value={regEmail}
-                  onChange={(e) => setRegEmail(e.target.value)}
-                  disabled={loading}
-                />
+                <input type="email" id="regEmail" placeholder="rahul@slicematic.in" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} disabled={loading} />
               </div>
 
               <div className="input-group wide-field">
                 <label htmlFor="regCity">City</label>
-                <input
-                  type="text"
-                  id="regCity"
-                  placeholder="Delhi NCR"
-                  value={regCity}
-                  onChange={(e) => setRegCity(e.target.value)}
-                  disabled={loading}
-                />
+                <input type="text" id="regCity" placeholder="Delhi NCR" value={regCity} onChange={(e) => setRegCity(e.target.value)} disabled={loading} />
               </div>
 
               <div className="input-group wide-field">
                 <label htmlFor="regAddress">Delivery Address</label>
-                <textarea
-                  id="regAddress"
-                  placeholder="Flat No, Wing, Landmark, Street Area"
-                  value={regAddress}
-                  onChange={(e) => setRegAddress(e.target.value)}
-                  disabled={loading}
-                  rows={2}
-                />
+                <textarea id="regAddress" placeholder="Flat No, Wing, Landmark, Street Area" value={regAddress} onChange={(e) => setRegAddress(e.target.value)} disabled={loading} rows={2} />
               </div>
             </div>
 
