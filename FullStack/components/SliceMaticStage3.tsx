@@ -100,14 +100,14 @@ const emptyMenuDraft: MenuDraft = {
   prepMinutes: "24"
 };
 
-export default function SliceMaticStage3() {
+export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: () => void }) {
   const router = useRouter();
   const { cart, setCart, customer, setCustomer, pricingConfig, setPricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setRecommendation } = useStore();
 
   const [menu, setMenu] = useState<MenuPayload>(seedMenu);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
-  const [step, setStep] = useState<Step>("intake");
+  const [step, setStep] = useState<Step>("menu");
   const [customerErrors, setCustomerErrors] = useState<Record<string, string>>({});
   const [customerLoggedIn, setCustomerLoggedIn] = useState(false);
   const [customerAuthView, setCustomerAuthView] = useState<CustomerAuthView>("login");
@@ -199,6 +199,40 @@ export default function SliceMaticStage3() {
       setWorkspace("admin");
       setAdminAuthView("reset");
       setAdminAuthMessage("Choose a new password to finish account recovery.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const loggedInValue = window.sessionStorage.getItem("slicematic_customer_logged_in");
+    if (loggedInValue === "true") {
+      const customerJson = window.sessionStorage.getItem("slicematic_customer");
+      const email = window.sessionStorage.getItem("slicematic_customer_email") ?? "";
+
+      if (customerJson) {
+        try {
+          const parsedCustomer = JSON.parse(customerJson) as Partial<CustomerDetails>;
+          setCustomer((current) => ({
+            ...current,
+            name: parsedCustomer.name ?? current.name,
+            phone: parsedCustomer.phone ?? current.phone,
+            address: parsedCustomer.address ?? current.address,
+            deliveryZone: parsedCustomer.deliveryZone ?? current.deliveryZone,
+            note: parsedCustomer.note ?? current.note
+          }));
+        } catch {
+          console.warn("Invalid customer session data");
+        }
+      }
+
+      setCustomerLoggedIn(true);
+      setCustomerSessionEmail(email);
+      setWorkspace("customer");
+      setStep("menu");
+    } else if (loggedInValue === "false") {
+      setCustomerLoggedIn(false);
+      setCustomerSessionEmail("");
+      setStep("intake");
     }
   }, []);
 
@@ -720,6 +754,8 @@ export default function SliceMaticStage3() {
         const email = data.user?.email ?? customerAuthEmail.trim();
         setCustomerLoggedIn(true);
         setCustomerSessionEmail(email);
+        setWorkspace("customer");
+        setStep("menu");
         setCustomerAuthView("login");
         setCustomerAuthMessage("");
         showToast("Customer account signed in.");
@@ -729,6 +765,8 @@ export default function SliceMaticStage3() {
       if (customerAuthEmail.trim() === demoCustomerEmail && customerAuthPassword === demoCustomerSessionPassword) {
         setCustomerLoggedIn(true);
         setCustomerSessionEmail(demoCustomerEmail);
+        setWorkspace("customer");
+        setStep("menu");
         setCustomerAuthView("login");
         setCustomerAuthMessage("");
         showToast("Demo customer account signed in.");
@@ -788,6 +826,8 @@ export default function SliceMaticStage3() {
         }
         setCustomerLoggedIn(true);
         setCustomerSessionEmail(sessionData.session.user.email ?? customerAuthEmail.trim());
+        setWorkspace("customer");
+        setStep("menu");
         setCustomerResetPassword("");
         setCustomerResetConfirm("");
         setCustomerAuthView("login");
@@ -818,6 +858,9 @@ export default function SliceMaticStage3() {
       setCustomerSessionEmail("");
       setCustomerAuthView("login");
       setCustomerAuthMessage("You have been signed out.");
+      setWorkspace("customer");
+      setStep("intake");
+      if (onUnauthorize) onUnauthorize();
       setCustomerAuthLoading(false);
       showToast("Signed out of customer account.");
     }
@@ -1003,6 +1046,9 @@ export default function SliceMaticStage3() {
       setOpsBriefing(null);
       setAdminAuthView("login");
       setAdminAuthMessage("You have been signed out.");
+      setWorkspace("customer");
+      setStep("intake");
+      if (onUnauthorize) onUnauthorize();
       setAdminAuthLoading(false);
       showToast("Signed out of admin console.");
     }
@@ -1594,7 +1640,7 @@ export default function SliceMaticStage3() {
                     <h1>{brand.hero}</h1>
                     <p>{brand.subhero}</p>
                     <div className="hero-actions">
-                      <button type="button" onClick={() => setStep("intake")}><Flame /> Start order</button>
+                      <button type="button" onClick={() => setStep("menu")}><Flame /> Start order</button>
                       <button type="button" onClick={() => openAdmin("overview")}><ShieldCheck /> Admin dashboard</button>
                     </div>
                   </div>
@@ -1608,9 +1654,9 @@ export default function SliceMaticStage3() {
                 </div>
 
                 <div className="flow-tabs">
-                  {["intake", "recommendation", "menu", "checkout", "tracking"].map((item) => (
+                  {["menu", "recommendation", "checkout", "tracking", "intake"].map((item) => (
                     <button key={item} className={step === item ? "active" : ""} onClick={() => goToStep(item as Step)} type="button">
-                      {item}
+                      {item === "intake" ? "Customer Details" : item}
                     </button>
                   ))}
                 </div>

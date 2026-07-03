@@ -4,6 +4,14 @@ This file maintains a timestamp-based record of the modifications, debugging ses
 
 ---
 
+### [2026-07-03 14:30:00] - Customer session and member checkout restoration
+**Context:** Fixed the EntryPortal account handoff so registered/logged-in customers are restored correctly in the main FullStack app and no longer show as guest checkout.
+**Changes & Fixes:**
+* Added session restoration in `FullStack/components/SliceMaticStage3.tsx` for `slicematic_customer`, `slicematic_customer_email`, and `slicematic_customer_logged_in`.
+* Ensured successful customer sign-in and password reset now open the customer workspace and `menu` step instead of leaving the user in guest mode.
+* Kept explicit guest behavior when `slicematic_customer_logged_in` is `false`, routing guest users to the intake step.
+* Verified the app build succeeds after the fix.
+
 ### [2026-07-03 13:52:00] - TDD Parity with GRADIO-MVP-2
 **Context:** Audited the `FullStack` Next.js application against the original `GRADIO-MVP-2` prototype tests (`test_core.py` and `test_edge_cases.py`) to ensure 100% logic and edge-case parity.
 **Changes & Fixes:**

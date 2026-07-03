@@ -17,6 +17,7 @@
   --radius: 8px;
 }
 
+
 * {
   box-sizing: border-box;
 }
@@ -318,7 +319,7 @@ img {
 
 .hero-shell {
   display: grid;
-  grid-template-columns: minmax(210px, 250px) minmax(0, 1fr) minmax(300px, 360px);
+  grid-template-columns: minmax(180px, 220px) minmax(0, 1fr) minmax(300px, 360px);
   gap: 16px;
   margin-top: 18px;
   align-items: flex-start;
@@ -646,7 +647,7 @@ a.primary:hover {
 
 .intake-grid {
   display: grid;
-  grid-template-columns: minmax(260px, 0.8fr) minmax(320px, 1.2fr);
+  grid-template-columns: 1fr;
   gap: 22px;
   align-items: flex-start;
 }
