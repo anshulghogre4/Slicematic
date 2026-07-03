@@ -83,7 +83,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
           if (error) {
             console.error("OTP Send Error:", error);
             if (error.message.toLowerCase().includes("rate limit")) {
-              setErrorMsg("Free tier rate limit hit! Falling back to Demo Mode. Use OTP 1111 to proceed.");
+              setErrorMsg("Free tier rate limit hit! Falling back to Demo Mode. Use OTP 9812 to proceed.");
               setFallbackDemo(true);
             } else {
               setErrorMsg("Failed to send OTP: " + error.message);
@@ -117,8 +117,8 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
       let isVerified = false;
 
       if (isDemoUser(trimmedVal) || fallbackDemo) {
-        if (otp !== "1111") {
-          setErrorMsg("Incorrect OTP code. For demo purposes, use code 1111.");
+        if (otp !== "9812") {
+          setErrorMsg("Incorrect OTP code.");
           setLoading(false);
           return;
         }
@@ -336,7 +336,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
             <div className="otp-heading">
               <Lock />
               <h3>Enter Security Code</h3>
-              <p>We've sent an OTP to <strong>{identifier}</strong> {(isDemo || fallbackDemo) && "(for this demo, enter 1111)"}.</p>
+              <p>We've sent an OTP to <strong>{identifier}</strong>.</p>
             </div>
 
             <div className="input-group">
@@ -345,7 +345,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
                 type="text"
                 id="otp"
                 maxLength={8}
-                placeholder={(isDemo || fallbackDemo) ? "1111" : "Enter OTP"}
+                placeholder={(isDemo || fallbackDemo) ? "9812" : "Enter OTP"}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
                 disabled={loading}
