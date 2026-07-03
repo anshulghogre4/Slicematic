@@ -335,12 +335,20 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   function goToStep(nextStep: Step) {
     setWorkspace("customer");
     if (nextStep !== "intake" && !ensureCustomerReady()) return;
-    if (nextStep === "checkout" && !cart.length) {
-      showToast("Add at least one pizza before checkout.");
+    if (nextStep === "checkout") {
+      if (!cart.length) {
+        showToast("Add at least one pizza before checkout.");
+        return;
+      }
+      router.push("/payment");
       return;
     }
-    if (nextStep === "tracking" && !lastOrder) {
-      showToast("Place an order before tracking.");
+    if (nextStep === "tracking") {
+      if (!lastOrder) {
+        showToast("Place an order before tracking.");
+        return;
+      }
+      router.push("/confirmation");
       return;
     }
     setStep(nextStep);
@@ -393,6 +401,49 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     });
   }
 
+  function addPizzaDirectToCart(pizza: MenuItem) {
+    if (!ensureCustomerReady()) return;
+    const base = activeBases[0];
+    const size = activeSizes[0];
+    if (!base || !size) {
+      showToast("Admin must enable at least one crust and size.");
+      return;
+    }
+    const existingQuantity = cart.reduce((sum, line) => sum + line.quantity, 0);
+    if (existingQuantity + 1 > pricingConfig.maxOrderQty) {
+      showToast(`Maximum outlet capacity is ${pricingConfig.maxOrderQty} pizzas per order.`);
+      return;
+    }
+    setCart((current) => {
+      const match = current.find(
+        (line) =>
+          line.pizzaId === pizza.id &&
+          line.baseId === base.id &&
+          line.sizeId === size.id &&
+          line.toppingIds.length === 0
+      );
+      if (match) {
+        return current.map((line) =>
+          line.id === match.id
+            ? { ...line, quantity: line.quantity + 1 }
+            : line
+        );
+      }
+      return [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          pizzaId: pizza.id,
+          baseId: base.id,
+          sizeId: size.id,
+          toppingIds: [],
+          quantity: 1
+        }
+      ];
+    });
+    showToast(`${pizza.name} added to cart.`);
+  }
+
   function addBuilderToCart() {
     if (!selectedPizza) return;
     if (!Number.isInteger(builder.quantity)) {
@@ -412,17 +463,41 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       showToast(`Maximum outlet capacity is ${pricingConfig.maxOrderQty} pizzas per order.`);
       return;
     }
-    setCart((current) => [
-      ...current,
-      {
-        id: crypto.randomUUID(),
-        pizzaId: selectedPizza.id,
-        baseId: builder.baseId,
-        sizeId: builder.sizeId,
-        toppingIds: builder.toppingIds,
-        quantity: builder.quantity
+
+    const areToppingsEqual = (a: number[], b: number[]) => {
+      if (a.length !== b.length) return false;
+      const sortedA = [...a].sort();
+      const sortedB = [...b].sort();
+      return sortedA.every((val, index) => val === sortedB[index]);
+    };
+
+    setCart((current) => {
+      const match = current.find(
+        (line) =>
+          line.pizzaId === selectedPizza.id &&
+          line.baseId === builder.baseId &&
+          line.sizeId === builder.sizeId &&
+          areToppingsEqual(line.toppingIds, builder.toppingIds)
+      );
+      if (match) {
+        return current.map((line) =>
+          line.id === match.id
+            ? { ...line, quantity: line.quantity + builder.quantity }
+            : line
+        );
       }
-    ]);
+      return [
+        ...current,
+        {
+          id: crypto.randomUUID(),
+          pizzaId: selectedPizza.id,
+          baseId: builder.baseId,
+          sizeId: builder.sizeId,
+          toppingIds: builder.toppingIds,
+          quantity: builder.quantity
+        }
+      ];
+    });
     setSelectedPizza(null);
     setStep("menu");
     showToast(`${selectedPizza.name} added to cart.`);
@@ -1629,7 +1704,6 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                 <div className="rail-card metric">
                   <ReceiptText /><strong>{Math.round(pricingConfig.gstRate * 100)}%</strong><span>GST after discount</span>
                   <BadgePercent /><strong>{Math.round(pricingConfig.bulkDiscountRate * 100)}%</strong><span>off on {pricingConfig.bulkDiscountQty}+ pizzas</span>
-                  <Gauge /><strong>{pricingConfig.maxOrderQty}</strong><span>max pizzas/order</span>
                 </div>
               </aside>
 
@@ -1639,18 +1713,12 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                     <p className="eyebrow">Elite delivery OS</p>
                     <h1>{brand.hero}</h1>
                     <p>{brand.subhero}</p>
-                    <div className="hero-actions">
+                    {/* <div className="hero-actions">
                       <button type="button" onClick={() => setStep("menu")}><Flame /> Start order</button>
                       <button type="button" onClick={() => openAdmin("overview")}><ShieldCheck /> Admin dashboard</button>
-                    </div>
+                    </div> */}
                   </div>
                   <img src="/assets/pizza-hero.jpg" alt="Fresh pizza" />
-                </div>
-
-                <div className="customer-promise-strip">
-                  <article><Check /><strong>Live price before pay</strong><span>{brand.customerPromise}</span></article>
-                  <article><ShieldCheck /><strong>{customerLoggedIn ? "Member payment choice" : "Guest risk control"}</strong><span>{customerLoggedIn || pricingConfig.guestCashAllowed ? "Cash, Card, and UPI are available." : "UPI/Card only keeps delivery failures lower."}</span></article>
-                  <article><Sparkles /><strong>Smarter repeat orders</strong><span>{customerLoggedIn ? "Saved profile and favourite rebuild are ready." : "Sign in to unlock saved profile and favourites."}</span></article>
                 </div>
 
                 <div className="flow-tabs">
@@ -1700,7 +1768,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                 {step === "menu" && (
                   <section className="menu-section">
                     <div className="section-head">
-                      <div><p className="eyebrow">Menu loaded from DB</p><h2>Signature pizzas</h2></div>
+                      <div><h2>Signature pizzas</h2></div>
                       <div className="category-row">
                         {["All", "Veg", "Chicken", "Cheese", "Spicy"].map((item) => (
                           <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)} type="button">{item}</button>
@@ -1708,24 +1776,51 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                       </div>
                     </div>
                     <div className="menu-grid">
-                      {filteredPizzas.map((pizza) => (
-                        <article className="pizza-card" key={pizza.id}>
-                          <div className="pizza-media">
-                            <img src={pizza.image} alt={pizza.name} />
-                            <span><Sparkles /> {pizza.badge}</span>
-                            <b><Star /> 4.{pizza.id}</b>
-                          </div>
-                          <div className="pizza-body">
-                            <div><h3>{pizza.name}</h3><strong>{money(pizza.price)}</strong></div>
-                            <p>{pizza.description}</p>
-                            <div className="chips"><span><ChefHat /> Fresh</span><span>{pizza.prepMinutes} min</span>{pizza.tags?.slice(0, 2).map((tag) => <span key={tag}>{tag}</span>)}</div>
-                          </div>
-                          <div className="pizza-actions">
-                            <button className="primary" onClick={() => openBuilder(pizza)} type="button"><SlidersHorizontal /> Customize</button>
-                            <button onClick={() => openBuilder(pizza)} type="button" aria-label={`Add ${pizza.name}`}><Plus /></button>
-                          </div>
-                        </article>
-                      ))}
+                      {filteredPizzas.map((pizza) => {
+                        const thinCrust = menu.bases.find((b) => b.code === "B1" || b.name.toLowerCase() === "thin crust");
+                        const thinCrustPrice = thinCrust?.price ?? 149;
+                        return (
+                          <article className="pizza-card" key={pizza.id}>
+                            <div className="pizza-media">
+                              <img src={pizza.image} alt={pizza.name} />
+                              <span><Sparkles /> {pizza.badge}</span>
+                              <b><Star /> 4.{pizza.id}</b>
+                            </div>
+                            <div className="pizza-body">
+                              <div>
+                                <h3 style={{ display: "inline-flex", alignItems: "center" }}>
+                                  <span style={{
+                                    display: "inline-flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    width: "12px",
+                                    height: "12px",
+                                    border: `1px solid ${pizza.tags?.includes("Veg") ? "#10b981" : "#ef4444"}`,
+                                    padding: "2px",
+                                    marginRight: "8px",
+                                    flexShrink: 0
+                                  }}>
+                                    <span style={{
+                                      width: "6px",
+                                      height: "6px",
+                                      borderRadius: "50%",
+                                      backgroundColor: pizza.tags?.includes("Veg") ? "#10b981" : "#ef4444"
+                                    }} />
+                                  </span>
+                                  {pizza.name}
+                                </h3>
+                                <strong>{money(pizza.price + thinCrustPrice)}</strong>
+                              </div>
+                              <p>{pizza.description}</p>
+                              <div className="chips"><span><ChefHat /> Fresh</span><span>{pizza.prepMinutes} min</span>{pizza.tags?.slice(0, 2).map((tag) => <span key={tag}>{tag}</span>)}</div>
+                            </div>
+                            <div className="pizza-actions">
+                              <button className="primary" onClick={() => openBuilder(pizza)} type="button"><SlidersHorizontal /> Customize</button>
+                              <button onClick={() => addPizzaDirectToCart(pizza)} type="button" aria-label={`Add ${pizza.name}`}><Plus /></button>
+                            </div>
+                          </article>
+                        );
+                      })}
                     </div>
                   </section>
                 )}

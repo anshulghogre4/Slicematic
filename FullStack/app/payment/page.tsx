@@ -2,14 +2,23 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, CreditCard, Phone, ReceiptText, Send, ShieldCheck, ShoppingBag, Sparkles, UserRound } from "lucide-react";
+import { ArrowLeft, Check, CreditCard, Phone, ReceiptText, Send, ShieldCheck, ShoppingBag, Sparkles, UserRound, Trash2 } from "lucide-react";
 import { useStore } from "../../lib/store";
 import { calculateBill, getLineUnitPrice, money } from "../../lib/pricing";
 import { CartLine, MenuPayload, PaymentMode } from "../../lib/types";
 import { seedMenu } from "../../lib/seed-data";
 
 const paymentModes: Array<{ mode: PaymentMode; icon: React.ReactNode; copy: string }> = [
-  { mode: "UPI", icon: <Phone />, copy: "Confirm receipt before fulfillment." },
+  { 
+    mode: "UPI", 
+    icon: (
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-upi-triangles">
+        <polygon points="3,6 13,12 3,18" fill="currentColor" fillOpacity="0.4" stroke="currentColor" strokeWidth="2" />
+        <polygon points="10,6 20,12 10,18" fill="currentColor" stroke="currentColor" strokeWidth="2" />
+      </svg>
+    ), 
+    copy: "Confirm receipt before fulfillment." 
+  },
   { mode: "Card", icon: <CreditCard />, copy: "Process on POS or payment link." },
   { mode: "Cash", icon: <ReceiptText />, copy: "Collect at delivery or counter." }
 ];
@@ -34,19 +43,22 @@ async function loadCashfreeSDK() {
   return await load({ mode: "sandbox" });
 }
 
-function renderLine(line: CartLine, menu: MenuPayload, index: number) {
+function renderLine(line: CartLine, menu: MenuPayload, index: number, onRemove: (id: string) => void) {
   const pizza = menu.pizzas.find((item) => item.id === line.pizzaId);
   const base = menu.bases.find((item) => item.id === line.baseId);
   const size = menu.sizes.find((item) => item.id === line.sizeId);
   const toppings = line.toppingIds.map((id) => menu.toppings.find((item) => item.id === id)?.name).filter(Boolean);
   return (
-    <div className="cart-line" key={`${line.pizzaId}-${index}`}>
+    <article className="cart-line" key={line.id ?? `${line.pizzaId}-${index}`}>
       <div>
-        <span>{line.quantity} x {base?.name} / {pizza?.name} / {size?.name}</span>
-        <b>{money(getLineUnitPrice(line, menu) * line.quantity)}</b>
+        <strong>{line.quantity} x {pizza?.name}</strong>
+        <span>{base?.name} / {size?.name} / {toppings.length ? toppings.join(", ") : "No extra toppings"}</span>
       </div>
-      {toppings.length > 0 && <small>{toppings.join(", ")}</small>}
-    </div>
+      <div>
+        <b>{money(getLineUnitPrice(line, menu) * line.quantity)}</b>
+        <button type="button" onClick={() => onRemove(line.id)} aria-label="Remove line"><Trash2 /></button>
+      </div>
+    </article>
   );
 }
 
@@ -58,7 +70,7 @@ export default function PaymentScreen() {
   const [toast, setToast] = useState("");
 
   const brand = { name: "SliceMatic" }; // Minimal brand fallback, full brand should ideally be in store if needed
-  
+
   // Assuming member if email is stored, else guest. SliceMaticStage3 didn't save this to store, so we infer from session
   // For safety, we treat everyone as guest unless we extend the store. In this refactor, we just use the customer object.
   const customerLoggedIn = !!customer.name; // In a real app we'd have `session` in store. Let's simplify.
@@ -332,7 +344,7 @@ export default function PaymentScreen() {
               <div><UserRound /><strong>{customerOrderMode}</strong></div>
               <span>{customerLoggedIn ? `Logged in as ${customer.name}` : "Guest checkout. UPI/Card required unless owner enables guest cash."}</span>
             </div>
-            {cart.length ? cart.map((line, idx) => renderLine(line, menu, idx)) : <div className="empty-cart">Your cart is empty.<br /><span>Go back to menu and build a pizza.</span></div>}
+            {cart.length ? cart.map((line, idx) => renderLine(line, menu, idx, (id) => setCart((current) => current.filter((item) => item.id !== id)))) : <div className="empty-cart">Your cart is empty.<br /><span>Go back to menu and build a pizza.</span></div>}
             <div className="summary">
               <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
               <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>

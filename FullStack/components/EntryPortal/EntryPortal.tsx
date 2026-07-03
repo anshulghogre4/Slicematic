@@ -169,13 +169,13 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
     }
   };
 
-  // Handle OTP submission (always 1111)
+  // Handle OTP submission (always 9812)
   const handleOtpSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMsg("");
 
-    if (otp !== "1111") {
-      setErrorMsg("Incorrect OTP code. For demo purposes, use code 1111.");
+    if (otp !== "9812") {
+      setErrorMsg("Incorrect OTP code.");
       return;
     }
 
@@ -355,7 +355,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
             <div className="otp-heading">
               <Lock />
               <h3>Enter Security Code</h3>
-              <p>We've sent an OTP to <strong>{identifier}</strong> (for this demo, enter <strong>1111</strong>).</p>
+              <p>We've sent an OTP to <strong>{identifier}</strong>.</p>
             </div>
 
             <div className="input-group">
