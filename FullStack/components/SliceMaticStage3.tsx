@@ -98,7 +98,7 @@ const emptyMenuDraft: MenuDraft = {
   prepMinutes: "24"
 };
 
-export default function SliceMaticStage3() {
+export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: () => void }) {
   const [menu, setMenu] = useState<MenuPayload>(seedMenu);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
@@ -167,6 +167,25 @@ export default function SliceMaticStage3() {
       .then((payload: MenuPayload) => setMenu(payload))
       .catch(() => setMenu(seedMenu));
     refreshAdminSummary();
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const storedCustomer = sessionStorage.getItem("slicematic_customer");
+    const storedEmail = sessionStorage.getItem("slicematic_customer_email");
+    const storedLoggedIn = sessionStorage.getItem("slicematic_customer_logged_in");
+    if (storedCustomer) {
+      try {
+        const parsed = JSON.parse(storedCustomer);
+        setCustomer(parsed);
+        if (storedLoggedIn === "true") {
+          setCustomerLoggedIn(true);
+          if (storedEmail) setCustomerSessionEmail(storedEmail);
+        }
+      } catch (e) {
+        console.error("Failed to parse stored customer details", e);
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -578,8 +597,12 @@ export default function SliceMaticStage3() {
       setCustomerSessionEmail("");
       setCustomerAuthView("login");
       setCustomerAuthMessage("You have been signed out.");
-      setCustomerAuthLoading(false);
-      showToast("Signed out of customer account.");
+        // Return to starting page (customer workspace intake)
+        setWorkspace("customer");
+        setStep("intake");
+        if (onUnauthorize) onUnauthorize();
+        setCustomerAuthLoading(false);
+        showToast("Signed out of customer account.");
     }
   }
 
@@ -763,8 +786,12 @@ export default function SliceMaticStage3() {
       setOpsBriefing(null);
       setAdminAuthView("login");
       setAdminAuthMessage("You have been signed out.");
-      setAdminAuthLoading(false);
-      showToast("Signed out of admin console.");
+        // Return to starting page (customer workspace intake) after admin logout
+        setWorkspace("customer");
+        setStep("intake");
+        if (onUnauthorize) onUnauthorize();
+        setAdminAuthLoading(false);
+        showToast("Signed out of admin console.");
     }
   }
 
@@ -1343,7 +1370,6 @@ export default function SliceMaticStage3() {
           <div className="rail-card metric">
             <ReceiptText /><strong>{Math.round(pricingConfig.gstRate * 100)}%</strong><span>GST after discount</span>
             <BadgePercent /><strong>{Math.round(pricingConfig.bulkDiscountRate * 100)}%</strong><span>off on {pricingConfig.bulkDiscountQty}+ pizzas</span>
-            <Gauge /><strong>{pricingConfig.maxOrderQty}</strong><span>max pizzas/order</span>
           </div>
         </aside>
 
@@ -1354,7 +1380,7 @@ export default function SliceMaticStage3() {
               <h1>{brand.hero}</h1>
               <p>{brand.subhero}</p>
               <div className="hero-actions">
-                <button type="button" onClick={() => setStep("intake")}><Flame /> Start order</button>
+                <button type="button" onClick={() => setStep("menu")}><Flame /> Start order</button>
                 <button type="button" onClick={() => openAdmin("overview")}><ShieldCheck /> Admin dashboard</button>
               </div>
             </div>
@@ -1368,24 +1394,21 @@ export default function SliceMaticStage3() {
           </div>
 
           <div className="flow-tabs">
-            {["intake", "recommendation", "menu", "checkout", "tracking"].map((item) => (
+            {["menu", "recommendation", "checkout", "tracking", "intake"].map((item) => (
               <button key={item} className={step === item ? "active" : ""} onClick={() => goToStep(item as Step)} type="button">
-                {item}
+                {item === "intake" ? "Customer Details" : item}
               </button>
             ))}
           </div>
 
           {step === "intake" && (
             <section className="glass-panel intake-grid">
-              <div>
-                <p className="eyebrow">Customer intake</p>
-                <h2>Validated contact details before AI recommendation.</h2>
-                <p className="muted">Stage 2 rules are preserved: name is alphabets/spaces only, phone must be Indian mobile format, and every failure gets a specific message.</p>
+              <div className="wide">
+                <p className="eyebrow">Customer Details</p>
               </div>
               <div className="form-grid">
                 <label>Name<input value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} placeholder="Aarav Sharma" />{customerErrors.name && <em>{customerErrors.name}</em>}</label>
                 <label>Phone<input value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} placeholder="9876543210" />{customerErrors.phone && <em>{customerErrors.phone}</em>}</label>
-                <label>Delivery radius<select value={customer.deliveryZone ?? ""} onChange={(event) => setCustomer({ ...customer, deliveryZone: event.target.value as CustomerDetails["deliveryZone"] })}><option value="">Choose radius</option><option value="0-2">0-2 km priority zone</option><option value="2-4">2-4 km launch radius</option><option value="4-6">4-6 km expansion waitlist</option></select>{customerErrors.deliveryZone && <em>{customerErrors.deliveryZone}</em>}</label>
                 <label className="wide">Delivery address<textarea value={customer.address} onChange={(event) => setCustomer({ ...customer, address: event.target.value })} placeholder="Flat, landmark, street, New Ashok Nagar" />{customerErrors.address && <em>{customerErrors.address}</em>}</label>
                 <label className="wide">Delivery note<input value={customer.note ?? ""} onChange={(event) => setCustomer({ ...customer, note: event.target.value })} placeholder="Ring bell once, leave with security..." /></label>
                 <button className="primary wide" type="button" onClick={submitCustomer}><Brain /> Get AI recommendation</button>
@@ -1398,7 +1421,7 @@ export default function SliceMaticStage3() {
               <div>
                 <p className="eyebrow">OpenRouter recommendation</p>
                 <h2>{recommendation ? `${recommendation.pizzaName} + ${recommendation.toppingName}` : "Reading order history..."}</h2>
-                <p>{recommendation?.reason ?? "The backend queries Supabase history, sends a compact profile to OpenRouter, validates menu IDs, and logs the recommendation event."}</p>
+                <p>{recommendation?.reason ?? "A smart pizza suggestion is ready for you — just tap Build this combo or browse the menu."}</p>
                 {recommendation && <small>{recommendation.source === "openrouter" ? "OpenRouter response" : "Demo fallback"} / confidence {Math.round(recommendation.confidence * 100)}% / {recommendation.customerTier} customer</small>}
               </div>
               <div className="recommendation-actions">
