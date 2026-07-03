@@ -4,6 +4,7 @@ import React, { useState, useEffect } from "react";
 import { Pizza, ArrowRight, Lock, UserCheck, ShieldAlert, Smartphone, Mail, Sparkles, Smile, ArrowLeft } from "lucide-react";
 import { getSupabaseBrowserClient } from "../../lib/supabase";
 import { randomUUID } from "crypto"; // In browser we can fall back to crypto.randomUUID or simple random generators
+import "./EntryPortal.css";
 
 interface EntryPortalProps {
   onComplete: () => void;

@@ -17,7 +17,6 @@
   --radius: 8px;
 }
 
-@import "../components/EntryPortal/EntryPortal.css";
 
 * {
   box-sizing: border-box;
