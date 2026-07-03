@@ -1543,6 +1543,34 @@ a.primary:hover {
   flex-wrap: wrap;
 }
 
+.auth-method-toggle,
+.otp-channel-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.auth-method-toggle button,
+.otp-channel-row button {
+  min-height: 42px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--muted);
+  box-shadow: none;
+}
+
+.auth-method-toggle button.active,
+.otp-channel-row button.active {
+  border-color: rgba(22, 109, 69, 0.28);
+  background: var(--panel-soft);
+  color: var(--basil);
+}
+
+.otp-actions {
+  display: grid;
+  gap: 8px;
+}
+
 .auth-links button,
 .text-action,
 .secondary-action {

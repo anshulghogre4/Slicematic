@@ -45,6 +45,8 @@ type AdminTab = "overview" | "orders" | "forecast" | "menu" | "ai" | "settings";
 type Workspace = "customer" | "account" | "admin";
 type AdminAuthView = "login" | "forgot" | "reset";
 type CustomerAuthView = "login" | "forgot" | "reset";
+type CustomerAuthMethod = "password" | "otp";
+type CustomerOtpChannel = "email" | "sms";
 type MenuSection = "pizzas" | "bases" | "toppings";
 type MenuAdminPage = "create" | MenuSection;
 type SettingsPage = "brand" | "financials" | "delivery";
@@ -113,6 +115,11 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   const [customerAuthView, setCustomerAuthView] = useState<CustomerAuthView>("login");
   const [customerAuthEmail, setCustomerAuthEmail] = useState(demoCustomerEmail);
   const [customerAuthPassword, setCustomerAuthPassword] = useState(demoCustomerPassword);
+  const [customerAuthMethod, setCustomerAuthMethod] = useState<CustomerAuthMethod>("password");
+  const [customerOtpChannel, setCustomerOtpChannel] = useState<CustomerOtpChannel>("email");
+  const [customerOtpPhone, setCustomerOtpPhone] = useState("");
+  const [customerOtpCode, setCustomerOtpCode] = useState("");
+  const [customerOtpSent, setCustomerOtpSent] = useState(false);
   const [customerSessionEmail, setCustomerSessionEmail] = useState("");
   const [customerAuthMessage, setCustomerAuthMessage] = useState("");
   const [customerAuthLoading, setCustomerAuthLoading] = useState(false);
@@ -719,6 +726,114 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       return false;
     }
     return true;
+  }
+
+  function normalizeOtpPhone() {
+    const raw = customerOtpPhone.trim();
+    const digits = raw.replace(/\D/g, "");
+    if (raw.startsWith("+") && /^\+[1-9]\d{7,14}$/.test(raw)) {
+      return raw;
+    }
+    if (/^[6-9]\d{9}$/.test(digits)) {
+      return `+91${digits}`;
+    }
+    if (/^91[6-9]\d{9}$/.test(digits)) {
+      return `+${digits}`;
+    }
+    setCustomerAuthMessage("Enter a valid mobile number for OTP.");
+    return null;
+  }
+
+  async function sendCustomerOtp() {
+    setCustomerAuthLoading(true);
+    setCustomerAuthMessage("");
+    try {
+      const supabase = getSupabaseAuthClient();
+      if (!supabase) {
+        setCustomerAuthMessage("OTP login needs Supabase Auth environment variables.");
+        showToast("OTP login needs Supabase Auth.");
+        return;
+      }
+
+      if (customerOtpChannel === "email") {
+        if (!validateCustomerAuthEmail()) return;
+        const email = customerAuthEmail.trim();
+        const { error } = await supabase.auth.signInWithOtp({
+          email,
+          options: { shouldCreateUser: false }
+        });
+        if (error) {
+          setCustomerAuthMessage(error.message);
+          showToast(error.message);
+          return;
+        }
+        setCustomerOtpSent(true);
+        setCustomerAuthMessage(`OTP sent to ${email}.`);
+        showToast("Email OTP sent.");
+        return;
+      }
+
+      const phone = normalizeOtpPhone();
+      if (!phone) return;
+      const { error } = await supabase.auth.signInWithOtp({
+        phone,
+        options: { shouldCreateUser: false }
+      });
+      if (error) {
+        setCustomerAuthMessage(error.message);
+        showToast(error.message);
+        return;
+      }
+      setCustomerOtpSent(true);
+      setCustomerAuthMessage(`OTP sent to ${phone}.`);
+      showToast("Mobile OTP sent.");
+    } finally {
+      setCustomerAuthLoading(false);
+    }
+  }
+
+  async function verifyCustomerOtp() {
+    const token = customerOtpCode.trim();
+    if (!/^\d{6}$/.test(token)) {
+      setCustomerAuthMessage("Enter the 6-digit OTP.");
+      return;
+    }
+
+    setCustomerAuthLoading(true);
+    setCustomerAuthMessage("");
+    try {
+      const supabase = getSupabaseAuthClient();
+      if (!supabase) {
+        setCustomerAuthMessage("OTP login needs Supabase Auth environment variables.");
+        return;
+      }
+
+      const result = customerOtpChannel === "email"
+        ? await supabase.auth.verifyOtp({ email: customerAuthEmail.trim(), token, type: "email" })
+        : await (async () => {
+            const phone = normalizeOtpPhone();
+            if (!phone) return null;
+            return supabase.auth.verifyOtp({ phone, token, type: "sms" });
+          })();
+      if (!result) return;
+
+      if (result.error) {
+        setCustomerAuthMessage(result.error.message);
+        showToast(result.error.message);
+        return;
+      }
+
+      const user = result.data.user;
+      const sessionName = user?.email ?? user?.phone ?? customerAuthEmail.trim();
+      setCustomerLoggedIn(true);
+      setCustomerSessionEmail(sessionName);
+      setCustomerOtpCode("");
+      setCustomerOtpSent(false);
+      setCustomerAuthMessage("");
+      showToast("Customer account verified.");
+    } finally {
+      setCustomerAuthLoading(false);
+    }
   }
 
   function validateCustomerNewPassword() {
@@ -1480,13 +1595,51 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                   <h3>Faster repeat orders</h3>
                 </div>
               </div>
-              <label>Email
-                <div className="input-with-icon"><Mail /><input value={customerAuthEmail} onChange={(event) => setCustomerAuthEmail(event.target.value)} placeholder="customer@slicematic.in" /></div>
-              </label>
-              <label>Password
-                <div className="input-with-icon"><KeyRound /><input type="password" value={customerAuthPassword} onChange={(event) => setCustomerAuthPassword(event.target.value)} placeholder="Minimum 8 characters" /></div>
-              </label>
-              <button className="primary" disabled={customerAuthLoading} onClick={customerLogin} type="button"><ShieldCheck /> {customerAuthLoading ? "Signing in" : "Sign in"}</button>
+              <div className="auth-method-toggle" role="group" aria-label="Customer sign in method">
+                <button className={customerAuthMethod === "password" ? "active" : ""} type="button" onClick={() => setCustomerAuthMethod("password")}><KeyRound /> Password</button>
+                <button className={customerAuthMethod === "otp" ? "active" : ""} type="button" onClick={() => setCustomerAuthMethod("otp")}><ShieldCheck /> OTP</button>
+              </div>
+
+              {customerAuthMethod === "password" && (
+                <>
+                  <label>Email
+                    <div className="input-with-icon"><Mail /><input value={customerAuthEmail} onChange={(event) => setCustomerAuthEmail(event.target.value)} placeholder="customer@slicematic.in" /></div>
+                  </label>
+                  <label>Password
+                    <div className="input-with-icon"><KeyRound /><input type="password" value={customerAuthPassword} onChange={(event) => setCustomerAuthPassword(event.target.value)} placeholder="Minimum 8 characters" /></div>
+                  </label>
+                  <button className="primary" disabled={customerAuthLoading} onClick={customerLogin} type="button"><ShieldCheck /> {customerAuthLoading ? "Signing in" : "Sign in"}</button>
+                </>
+              )}
+
+              {customerAuthMethod === "otp" && (
+                <>
+                  <div className="otp-channel-row" role="group" aria-label="OTP channel">
+                    <button className={customerOtpChannel === "email" ? "active" : ""} type="button" onClick={() => { setCustomerOtpChannel("email"); setCustomerOtpSent(false); setCustomerOtpCode(""); }}><Mail /> Email</button>
+                    <button className={customerOtpChannel === "sms" ? "active" : ""} type="button" onClick={() => { setCustomerOtpChannel("sms"); setCustomerOtpSent(false); setCustomerOtpCode(""); }}><Phone /> Mobile</button>
+                  </div>
+                  {customerOtpChannel === "email" ? (
+                    <label>Email
+                      <div className="input-with-icon"><Mail /><input value={customerAuthEmail} onChange={(event) => { setCustomerAuthEmail(event.target.value); setCustomerOtpSent(false); }} placeholder="saurav@slicematic.in" /></div>
+                    </label>
+                  ) : (
+                    <label>Mobile number
+                      <div className="input-with-icon"><Phone /><input value={customerOtpPhone} onChange={(event) => { setCustomerOtpPhone(event.target.value); setCustomerOtpSent(false); }} placeholder="9876500101" inputMode="tel" /></div>
+                    </label>
+                  )}
+                  <div className="otp-actions">
+                    <button className="primary" disabled={customerAuthLoading} onClick={sendCustomerOtp} type="button"><Send /> {customerAuthLoading ? "Sending OTP" : customerOtpSent ? "Resend OTP" : "Send OTP"}</button>
+                  </div>
+                  {customerOtpSent && (
+                    <>
+                      <label>OTP code
+                        <div className="input-with-icon"><ShieldCheck /><input value={customerOtpCode} onChange={(event) => setCustomerOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))} placeholder="6-digit code" inputMode="numeric" autoComplete="one-time-code" /></div>
+                      </label>
+                      <button className="primary" disabled={customerAuthLoading} onClick={verifyCustomerOtp} type="button"><ShieldCheck /> {customerAuthLoading ? "Verifying" : "Verify and sign in"}</button>
+                    </>
+                  )}
+                </>
+              )}
               <button className="secondary-action" type="button" onClick={openCustomer}><ShoppingBag /> Continue as guest</button>
               <div className="auth-links">
                 <button type="button" onClick={() => showCustomerAuthView("forgot")}>Forgot password</button>
