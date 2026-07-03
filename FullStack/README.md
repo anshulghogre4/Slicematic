@@ -53,9 +53,16 @@ The customer workspace does not render the admin console below the order flow. T
 - Discount: 10% when total pizza quantity is 5 or more.
 - GST: 18% after discount.
 - Payment modes: Cash, Card, UPI only.
-- Bill: itemized line total, subtotal, discount, GST, final payable amount.
+- Bill: itemized line total, subtotal, discount, GST, final payable amount. (All currency values are strictly rounded to integers to eliminate decimals across the frontend UI and backend).
 
 The source of truth is `lib/pricing.ts`.
+
+## Test Driven Development (TDD)
+The core logic for pricing, data parsing, and payment gateways is verified using Vitest. 
+- 100% logic and edge-case parity with the original MVP Python tests.
+- 44 tests across 6 suites (including Razorpay, Cashfree, Zustand Store, Pricing, and Data Services).
+- Follows the Red-Green-Refactor protocol to prevent regressions in billing math and API behavior.
+- Test suites run cleanly in Node environments with mocked APIs and middleware.
 
 ## Menu Lifecycle
 

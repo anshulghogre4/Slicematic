@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Check, CreditCard, Phone, ReceiptText, Send, ShieldCheck, ShoppingBag, Sparkles, UserRound } from "lucide-react";
 import { useStore } from "../../lib/store";
-import { calculateBill, getLineUnitPrice, money, moneyExact } from "../../lib/pricing";
+import { calculateBill, getLineUnitPrice, money } from "../../lib/pricing";
 import { CartLine, MenuPayload, PaymentMode } from "../../lib/types";
 import { seedMenu } from "../../lib/seed-data";
 
@@ -43,7 +43,7 @@ function renderLine(line: CartLine, menu: MenuPayload, index: number) {
     <div className="cart-line" key={`${line.pizzaId}-${index}`}>
       <div>
         <span>{line.quantity} x {base?.name} / {pizza?.name} / {size?.name}</span>
-        <b>{moneyExact(getLineUnitPrice(line, menu) * line.quantity)}</b>
+        <b>{money(getLineUnitPrice(line, menu) * line.quantity)}</b>
       </div>
       {toppings.length > 0 && <small>{toppings.join(", ")}</small>}
     </div>
@@ -338,7 +338,7 @@ export default function PaymentScreen() {
               <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
               <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
               <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
-              <div className="total"><span>Total payable</span><b>{moneyExact(totals.finalTotal)}</b></div>
+              <div className="total"><span>Total payable</span><b>{money(totals.finalTotal)}</b></div>
             </div>
           </section>
 

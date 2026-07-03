@@ -34,7 +34,7 @@ import {
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { calculateBill, defaultPricingConfig, getLineUnitPrice, money, moneyExact, validateCustomer } from "../lib/pricing";
+import { calculateBill, defaultPricingConfig, getLineUnitPrice, money, validateCustomer } from "../lib/pricing";
 import { buildSeedSummary, seedMenu } from "../lib/seed-data";
 import { AdminSummary, CartLine, CustomerDetails, MenuItem, MenuPayload, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "../lib/types";
 import { useStore } from "../lib/store";
@@ -1698,7 +1698,7 @@ export default function SliceMaticStage3() {
                   <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
                   <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
                   <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
-                  <div className="total"><span>Total</span><b>{moneyExact(totals.finalTotal)}</b></div>
+                  <div className="total"><span>Total</span><b>{money(totals.finalTotal)}</b></div>
                 </div>
                 <div className="ai-cart-card">
                   <div><Brain /><strong>AI cart strategist</strong></div>
@@ -1965,9 +1965,9 @@ function AdminOverview({ summary, opsBriefing, opsLoading, onRefreshOps }: { sum
         <article><Sparkles /><strong>AI assist</strong><span>{opsBriefing ? "Briefing active" : "Briefing ready"}</span></article>
       </div>
       <div className="kpi-grid">
-        <div><span>Total revenue</span><strong>{moneyExact(summary.totalRevenue)}</strong></div>
+        <div><span>Total revenue</span><strong>{money(summary.totalRevenue)}</strong></div>
         <div><span>Orders</span><strong>{summary.orderCount}</strong></div>
-        <div><span>AOV</span><strong>{moneyExact(summary.avgOrderValue)}</strong></div>
+        <div><span>AOV</span><strong>{money(summary.avgOrderValue)}</strong></div>
         <div><span>Top pizza</span><strong>{summary.topPizza}</strong></div>
       </div>
       <div className="owner-action-board">
@@ -1988,7 +1988,7 @@ function AdminOverview({ summary, opsBriefing, opsLoading, onRefreshOps }: { sum
         </article>
         <article>
           <b>Margin lever</b>
-          <strong>{moneyExact(summary.avgOrderValue)} AOV</strong>
+          <strong>{money(summary.avgOrderValue)} AOV</strong>
           <span>Use cart AI to nudge toppings before checkout and move small orders toward the quantity discount threshold.</span>
         </article>
       </div>
@@ -2039,7 +2039,7 @@ function OrderTable({ orders }: { orders: SavedOrder[] }) {
   return (
     <div className="order-table">
       <div className="order-row head"><span>Order</span><span>Customer</span><span>Payment</span><span>Total</span><span>Status</span></div>
-      {orders.map((order) => <div className="order-row" key={order.id}><span>{order.id.slice(0, 8)}</span><span>{order.customerName}<small>{order.phone}</small></span><span>{order.paymentMode}</span><span>{moneyExact(order.finalTotal)}</span><span>{order.status}</span></div>)}
+      {orders.map((order) => <div className="order-row" key={order.id}><span>{order.id.slice(0, 8)}</span><span>{order.customerName}<small>{order.phone}</small></span><span>{order.paymentMode}</span><span>{money(order.finalTotal)}</span><span>{order.status}</span></div>)}
     </div>
   );
 }

@@ -4,40 +4,77 @@ import { buildSeedSummary, seedMenu, seedOrders } from "./seed-data";
 import { getSupabaseServerClient } from "./supabase";
 import { AdminSummary, CartLine, MenuItem, MenuPayload, OrderPayload, PaymentMeta, SavedOrder } from "./types";
 
+const NULL_LIKE = new Set(["na", "nan", "none", "null", "n/a", "undefined", ""]);
+function isNullLike(val: string) {
+  return NULL_LIKE.has(String(val).trim().toLowerCase());
+}
+
 function enrichPizza(row: Record<string, unknown>, fallback: MenuItem): MenuItem {
+  const name = String(row.pizza_name ?? row.name ?? fallback.name);
+  const rawPrice = Number(row.price ?? fallback.price);
+  
+  const isBadName = isNullLike(name);
+  const isBadPrice = isNaN(rawPrice) || rawPrice <= 0 || row.price === null || row.price === undefined;
+  const isAvailable = row.is_available === undefined ? fallback.available : Boolean(row.is_available);
+
   return {
     id: Number(row.pizza_type_id ?? row.id ?? fallback.id),
     code: String(row.code ?? fallback.code),
-    name: String(row.pizza_name ?? row.name ?? fallback.name),
-    price: Number(row.price ?? fallback.price),
+    name: isBadName ? "Unnamed" : name,
+    price: (isBadName || isBadPrice) ? 0 : rawPrice,
     description: String(row.description ?? fallback.description ?? ""),
     image: String(row.image_url ?? fallback.image ?? `/assets/menu/P${fallback.id}.jpg`),
     badge: String(row.badge ?? fallback.badge ?? "Signature"),
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : fallback.tags ?? [],
     prepMinutes: Number(row.prep_minutes ?? fallback.prepMinutes ?? 24),
-    available: row.is_available === undefined ? fallback.available : Boolean(row.is_available)
+    available: (isBadName || isBadPrice) ? false : isAvailable
   };
 }
 
 function enrichBase(row: Record<string, unknown>, fallback: MenuItem): MenuItem {
+  const name = String(row.base_name ?? row.name ?? fallback.name);
+  const rawPrice = Number(row.price ?? fallback.price);
+  const isBadName = isNullLike(name);
+  const isBadPrice = isNaN(rawPrice) || rawPrice <= 0 || row.price === null || row.price === undefined;
+  const isAvailable = row.is_available === undefined ? fallback.available : Boolean(row.is_available);
+
   return {
     id: Number(row.base_id ?? row.id ?? fallback.id),
     code: String(row.code ?? fallback.code),
-    name: String(row.base_name ?? row.name ?? fallback.name),
-    price: Number(row.price ?? fallback.price),
+    name: isBadName ? "Unnamed" : name,
+    price: (isBadName || isBadPrice) ? 0 : rawPrice,
     description: String(row.description ?? fallback.description ?? ""),
-    available: row.is_available === undefined ? fallback.available : Boolean(row.is_available)
+    available: (isBadName || isBadPrice) ? false : isAvailable
   };
 }
 
 function enrichTopping(row: Record<string, unknown>, fallback: MenuItem): MenuItem {
+  const name = String(row.topping_name ?? row.name ?? fallback.name);
+  const rawPrice = Number(row.price ?? fallback.price);
+  const isBadName = isNullLike(name);
+  const isBadPrice = isNaN(rawPrice) || rawPrice <= 0 || row.price === null || row.price === undefined;
+  const isAvailable = row.is_available === undefined ? fallback.available : Boolean(row.is_available);
+
   return {
     id: Number(row.topping_id ?? row.id ?? fallback.id),
     code: String(row.code ?? fallback.code),
-    name: String(row.topping_name ?? row.name ?? fallback.name),
-    price: Number(row.price ?? fallback.price),
-    available: row.is_available === undefined ? fallback.available : Boolean(row.is_available)
+    name: isBadName ? "Unnamed" : name,
+    price: (isBadName || isBadPrice) ? 0 : rawPrice,
+    available: (isBadName || isBadPrice) ? false : isAvailable
   };
+}
+
+function deduplicate<T extends { id: number | string; name: string; price: number }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    const key = `${item.id}|${item.name}|${item.price}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    }
+  }
+  return result;
 }
 
 export async function loadMenu(): Promise<MenuPayload> {
@@ -79,9 +116,9 @@ export async function loadMenu(): Promise<MenuPayload> {
         }));
 
     return {
-      pizzas: pizzas.length ? pizzas : seedMenu.pizzas,
-      bases: bases.length ? bases : seedMenu.bases,
-      toppings: toppings.length ? toppings : seedMenu.toppings,
+      pizzas: pizzas.length ? deduplicate(pizzas) : seedMenu.pizzas,
+      bases: bases.length ? deduplicate(bases) : seedMenu.bases,
+      toppings: toppings.length ? deduplicate(toppings) : seedMenu.toppings,
       sizes
     };
   } catch {

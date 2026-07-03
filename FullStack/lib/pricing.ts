@@ -20,10 +20,6 @@ export function money(value: number) {
   return `Rs. ${Math.round(value).toLocaleString("en-IN")}`;
 }
 
-export function moneyExact(value: number) {
-  return `Rs. ${value.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-}
-
 export function getLineUnitPrice(line: CartLine, menu: MenuPayload) {
   const pizza = menu.pizzas.find((item) => item.id === line.pizzaId);
   const base = menu.bases.find((item) => item.id === line.baseId);
@@ -37,17 +33,18 @@ export function getLineUnitPrice(line: CartLine, menu: MenuPayload) {
 }
 
 export function calculateBill(lines: CartLine[], menu: MenuPayload, config: PricingConfig = defaultPricingConfig): BillTotals {
-  const subtotal = lines.reduce((sum, line) => sum + getLineUnitPrice(line, menu) * line.quantity, 0);
+  const subtotal = Math.round(lines.reduce((sum, line) => sum + getLineUnitPrice(line, menu) * line.quantity, 0));
   const totalQuantity = lines.reduce((sum, line) => sum + line.quantity, 0);
-  const discount = totalQuantity >= config.bulkDiscountQty ? subtotal * config.bulkDiscountRate : 0;
-  const taxable = subtotal - discount;
-  const gst = taxable * config.gstRate;
-  const deliveryCharge = config.deliveryFee > 0 && subtotal < config.freeDeliveryMin ? config.deliveryFee : 0;
+  const discount = Math.round(totalQuantity >= config.bulkDiscountQty ? subtotal * config.bulkDiscountRate : 0);
+  const taxable = Math.round(subtotal - discount);
+  const gst = Math.round(taxable * config.gstRate);
+  const deliveryCharge = Math.round(config.deliveryFee > 0 && subtotal < config.freeDeliveryMin ? config.deliveryFee : 0);
   return {
     subtotal,
     discount,
     taxable,
     gst,
+    deliveryCharge,
     finalTotal: taxable + gst + deliveryCharge,
     totalQuantity
   };
@@ -55,10 +52,15 @@ export function calculateBill(lines: CartLine[], menu: MenuPayload, config: Pric
 
 export function validateCustomer(name: string, phone: string, address: string, deliveryZone?: string, config: PricingConfig = defaultPricingConfig) {
   const errors: Record<string, string> = {};
-  if (!/^[A-Za-z ]{2,40}$/.test(name.trim())) {
+  if (!/^[A-Za-z ]+$/.test(name.trim()) || name.trim().length < 2 || name.trim().length > 40) {
     errors.name = "Name must contain alphabetic characters and be 2-40 characters long.";
   }
-  if (!/^[6-9]\d{9}$/.test(phone.trim())) {
+  const p = phone.trim();
+  if (!p) {
+    errors.phone = "Phone number is required.";
+  } else if (!/^\d+$/.test(p) || p.length !== 10) {
+    errors.phone = "Phone number must be exactly 10 digits.";
+  } else if (!/^[6789]/.test(p)) {
     errors.phone = "Enter a valid Indian mobile number starting with 6, 7, 8, or 9.";
   }
   if (address.trim().length < 12) {

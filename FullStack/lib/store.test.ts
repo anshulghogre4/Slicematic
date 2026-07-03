@@ -1,4 +1,10 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, vi } from "vitest";
+
+// Mock zustand persist to prevent localStorage errors in Node environment
+vi.mock("zustand/middleware", () => ({
+  persist: (config: any) => config,
+}));
+
 import { useStore } from "./store";
 import { defaultPricingConfig } from "./pricing";
 

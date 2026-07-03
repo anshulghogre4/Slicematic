@@ -3,7 +3,7 @@
 import { useRouter } from "next/navigation";
 import { Check, Utensils } from "lucide-react";
 import { useStore } from "../../lib/store";
-import { moneyExact } from "../../lib/pricing";
+import { money } from "../../lib/pricing";
 import { PaymentMode } from "../../lib/types";
 
 function paymentConfirmation(mode: PaymentMode) {
@@ -46,22 +46,22 @@ export default function ConfirmationScreen() {
             ))}
           </div>
           <div className="tracking-card final-bill">
-            <p className="eyebrow">Final bill</p><h2>{moneyExact(lastOrder.finalTotal)}</h2>
+            <p className="eyebrow">Final bill</p><h2>{money(lastOrder.finalTotal)}</h2>
             <div className="bill-lines">
               {lastOrder.lines.map((line, index) => (
                 <div key={`${line.pizzaName}-${index}`}>
                   <span>{line.quantity} x {line.baseName} / {line.pizzaName} / {line.sizeName}</span>
-                  <b>{moneyExact(line.lineTotal)}</b>
+                  <b>{money(line.lineTotal)}</b>
                   <small>{line.toppings.length ? line.toppings.join(", ") : "No extra toppings"}</small>
                 </div>
               ))}
             </div>
             <div className="summary">
-              <div><span>Subtotal</span><b>{moneyExact(lastOrder.subtotal)}</b></div>
-              <div><span>Quantity discount</span><b>- {moneyExact(lastOrder.discount)}</b></div>
-              <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{moneyExact(lastOrder.gst)}</b></div>
+              <div><span>Subtotal</span><b>{money(lastOrder.subtotal)}</b></div>
+              <div><span>Quantity discount</span><b>- {money(lastOrder.discount)}</b></div>
+              <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(lastOrder.gst)}</b></div>
               <div><span>Payment mode</span><b>{lastOrder.paymentMode}</b></div>
-              <div className="total"><span>Final payable</span><b>{moneyExact(lastOrder.finalTotal)}</b></div>
+              <div className="total"><span>Final payable</span><b>{money(lastOrder.finalTotal)}</b></div>
             </div>
             <small>Delivery zone {lastOrder.deliveryZone ?? customer.deliveryZone} km / {lastOrder.address ?? customer.address}</small>
           </div>
