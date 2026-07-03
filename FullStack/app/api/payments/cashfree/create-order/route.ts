@@ -54,7 +54,7 @@ export async function POST(request: Request) {
       amount: totals.finalTotal,
       customerPhone: payload.customer.phone,
       customerName: payload.customer.name,
-      returnUrl: `${origin}?order_id={order_id}`,
+      returnUrl: `${origin}/payment?order_id={order_id}`,
     });
 
     return NextResponse.json({
@@ -63,7 +63,8 @@ export async function POST(request: Request) {
       cfOrderId: orderId,
       amountPaise,
     });
-  } catch {
-    return NextResponse.json({ ok: false, errors: { payment: "Could not start UPI payment. Please retry." } }, { status: 502 });
+  } catch (err: any) {
+    console.error("Cashfree API Error:", err);
+    return NextResponse.json({ ok: false, errors: { payment: "Could not start UPI payment. " + (err.message || "Please retry.") } }, { status: 502 });
   }
 }
