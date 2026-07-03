@@ -117,8 +117,8 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
       let isVerified = false;
 
       if (isDemoUser(trimmedVal) || fallbackDemo) {
-        if (otp !== "9812") {
-          setErrorMsg("Incorrect OTP code.");
+        if (otp.replace(/\s/g, "") !== "1111" && otp.replace(/\s/g, "") !== "9812") {
+          setErrorMsg("Incorrect OTP code. For demo purposes, use code 1111.");
           setLoading(false);
           return;
         }
@@ -217,8 +217,9 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
     };
 
     try {
+      const isDemo = isDemoUser(identifier.trim().toLowerCase());
       const supabase = getSupabaseBrowserClient();
-      if (supabase) {
+      if (supabase && !isDemo && !fallbackDemo) {
         const [firstName, ...rest] = newCustomer.name.split(/\s+/);
         const lastName = rest.join(" ");
 
@@ -345,7 +346,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
                 type="text"
                 id="otp"
                 maxLength={8}
-                placeholder={(isDemo || fallbackDemo) ? "9812" : "Enter OTP"}
+                placeholder={(isDemo || fallbackDemo) ? "1111" : "Enter OTP"}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
                 disabled={loading}
