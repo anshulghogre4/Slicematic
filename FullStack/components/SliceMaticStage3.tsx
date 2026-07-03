@@ -107,7 +107,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   const [menu, setMenu] = useState<MenuPayload>(seedMenu);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
-  const [step, setStep] = useState<Step>("intake");
+  const [step, setStep] = useState<Step>("menu");
   const [customerErrors, setCustomerErrors] = useState<Record<string, string>>({});
   const [customerLoggedIn, setCustomerLoggedIn] = useState(false);
   const [customerAuthView, setCustomerAuthView] = useState<CustomerAuthView>("login");
@@ -199,6 +199,40 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       setWorkspace("admin");
       setAdminAuthView("reset");
       setAdminAuthMessage("Choose a new password to finish account recovery.");
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const loggedInValue = window.sessionStorage.getItem("slicematic_customer_logged_in");
+    if (loggedInValue === "true") {
+      const customerJson = window.sessionStorage.getItem("slicematic_customer");
+      const email = window.sessionStorage.getItem("slicematic_customer_email") ?? "";
+
+      if (customerJson) {
+        try {
+          const parsedCustomer = JSON.parse(customerJson) as Partial<CustomerDetails>;
+          setCustomer((current) => ({
+            ...current,
+            name: parsedCustomer.name ?? current.name,
+            phone: parsedCustomer.phone ?? current.phone,
+            address: parsedCustomer.address ?? current.address,
+            deliveryZone: parsedCustomer.deliveryZone ?? current.deliveryZone,
+            note: parsedCustomer.note ?? current.note
+          }));
+        } catch {
+          console.warn("Invalid customer session data");
+        }
+      }
+
+      setCustomerLoggedIn(true);
+      setCustomerSessionEmail(email);
+      setWorkspace("customer");
+      setStep("menu");
+    } else if (loggedInValue === "false") {
+      setCustomerLoggedIn(false);
+      setCustomerSessionEmail("");
+      setStep("intake");
     }
   }, []);
 
@@ -720,6 +754,8 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
         const email = data.user?.email ?? customerAuthEmail.trim();
         setCustomerLoggedIn(true);
         setCustomerSessionEmail(email);
+        setWorkspace("customer");
+        setStep("menu");
         setCustomerAuthView("login");
         setCustomerAuthMessage("");
         showToast("Customer account signed in.");
@@ -729,6 +765,8 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       if (customerAuthEmail.trim() === demoCustomerEmail && customerAuthPassword === demoCustomerSessionPassword) {
         setCustomerLoggedIn(true);
         setCustomerSessionEmail(demoCustomerEmail);
+        setWorkspace("customer");
+        setStep("menu");
         setCustomerAuthView("login");
         setCustomerAuthMessage("");
         showToast("Demo customer account signed in.");
@@ -788,6 +826,8 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
         }
         setCustomerLoggedIn(true);
         setCustomerSessionEmail(sessionData.session.user.email ?? customerAuthEmail.trim());
+        setWorkspace("customer");
+        setStep("menu");
         setCustomerResetPassword("");
         setCustomerResetConfirm("");
         setCustomerAuthView("login");
