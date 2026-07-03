@@ -6,3 +6,5 @@
 CLAUDE.md
 .venv/
 __pycache__/
+.vercel
+.env*.local
