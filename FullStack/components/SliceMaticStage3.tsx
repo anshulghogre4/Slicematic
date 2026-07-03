@@ -1701,9 +1701,21 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                     <li><Check /> Demand forecast</li>
                   </ul>
                 </div>
-                <div className="rail-card metric">
-                  <ReceiptText /><strong>{Math.round(pricingConfig.gstRate * 100)}%</strong><span>GST after discount</span>
-                  <BadgePercent /><strong>{Math.round(pricingConfig.bulkDiscountRate * 100)}%</strong><span>off on {pricingConfig.bulkDiscountQty}+ pizzas</span>
+                <div className="rail-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <ReceiptText style={{ width: "24px", height: "24px", color: "var(--tomato)", flexShrink: 0 }} />
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <strong style={{ fontSize: "1.45rem", lineHeight: 1.1 }}>{Math.round(pricingConfig.gstRate * 100)}%</strong>
+                      <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>GST after discount</span>
+                    </div>
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
+                    <BadgePercent style={{ width: "24px", height: "24px", color: "var(--tomato)", flexShrink: 0 }} />
+                    <div style={{ display: "flex", flexDirection: "column" }}>
+                      <strong style={{ fontSize: "1.45rem", lineHeight: 1.1 }}>{Math.round(pricingConfig.bulkDiscountRate * 100)}%</strong>
+                      <span style={{ color: "var(--muted)", fontSize: "0.8rem" }}>off on {pricingConfig.bulkDiscountQty}+ pizzas</span>
+                    </div>
+                  </div>
                 </div>
               </aside>
 
