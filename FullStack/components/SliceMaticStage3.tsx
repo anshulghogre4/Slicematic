@@ -37,6 +37,8 @@ import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Too
 import { calculateBill, defaultPricingConfig, getLineUnitPrice, money, moneyExact, validateCustomer } from "../lib/pricing";
 import { buildSeedSummary, seedMenu } from "../lib/seed-data";
 import { AdminSummary, CartLine, CustomerDetails, MenuItem, MenuPayload, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "../lib/types";
+import { useStore } from "../lib/store";
+import { useRouter } from "next/navigation";
 
 type Step = "intake" | "recommendation" | "menu" | "checkout" | "tracking";
 type AdminTab = "overview" | "orders" | "forecast" | "menu" | "ai" | "settings";
@@ -99,12 +101,13 @@ const emptyMenuDraft: MenuDraft = {
 };
 
 export default function SliceMaticStage3() {
+  const router = useRouter();
+  const { cart, setCart, customer, setCustomer, pricingConfig, setPricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setRecommendation } = useStore();
+
   const [menu, setMenu] = useState<MenuPayload>(seedMenu);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("All");
-  const [cart, setCart] = useState<CartLine[]>([]);
   const [step, setStep] = useState<Step>("intake");
-  const [customer, setCustomer] = useState<CustomerDetails>({ name: "", phone: "", address: "", deliveryZone: "2-4", note: "" });
   const [customerErrors, setCustomerErrors] = useState<Record<string, string>>({});
   const [customerLoggedIn, setCustomerLoggedIn] = useState(false);
   const [customerAuthView, setCustomerAuthView] = useState<CustomerAuthView>("login");
@@ -116,13 +119,10 @@ export default function SliceMaticStage3() {
   const [demoCustomerSessionPassword, setDemoCustomerSessionPassword] = useState(demoCustomerPassword);
   const [customerResetPassword, setCustomerResetPassword] = useState("");
   const [customerResetConfirm, setCustomerResetConfirm] = useState("");
-  const [recommendation, setRecommendation] = useState<Recommendation | null>(null);
   const [selectedPizza, setSelectedPizza] = useState<MenuItem | null>(null);
   const [builder, setBuilder] = useState({ baseId: seedMenu.bases[0].id, sizeId: seedMenu.sizes[0].id, toppingIds: [] as number[], quantity: 1 });
-  const [paymentMode, setPaymentMode] = useState<PaymentMode>("UPI");
   const [placingOrder, setPlacingOrder] = useState(false);
   const [paymentStatusMessage, setPaymentStatusMessage] = useState("");
-  const [lastOrder, setLastOrder] = useState<SavedOrder | null>(null);
   const [toast, setToast] = useState("");
   const [workspace, setWorkspace] = useState<Workspace>("customer");
   const [adminTab, setAdminTab] = useState<AdminTab>("overview");
@@ -161,7 +161,6 @@ export default function SliceMaticStage3() {
     hero: "Pizza delivery with a sharper kitchen, smarter recommendations, and a calmer checkout.",
     subhero: "Order from a live menu, build the exact pizza you want, and let the outlet control demand, revenue, and fulfilment from one polished screen."
   });
-  const [pricingConfig, setPricingConfig] = useState<PricingConfig>(defaultPricingConfig);
 
   useEffect(() => {
     fetch("/api/menu")
@@ -1717,108 +1716,11 @@ export default function SliceMaticStage3() {
                     </>
                   )}
                 </div>
-                <button className="primary" disabled={!cart.length} onClick={() => goToStep("checkout")} type="button">Continue to checkout <Send /></button>
+                <button className="primary" disabled={!cart.length} onClick={() => router.push("/payment")} type="button">Continue to checkout <Send /></button>
               </aside>
             </section>
           )}
-
-          {step === "checkout" && (
-            <section className="checkout-page" id="checkout">
-              <div className="checkout-page-head">
-                <div>
-                  <p className="eyebrow">Checkout</p>
-                  <h1>Confirm payment and bill</h1>
-                  <p>Review the basket, payment rules, and live bill before the kitchen accepts the order.</p>
-                </div>
-                <button type="button" onClick={() => goToStep("menu")}><ArrowLeft /> Back to cart</button>
-              </div>
-
-              <div className="checkout-layout">
-                <section className="checkout-review-card">
-                  <div className="cart-head"><div><p className="eyebrow">Order review</p><h2>Basket</h2></div><ShoppingBag /></div>
-                  <div className={customerLoggedIn ? "order-mode member" : "order-mode guest"}>
-                    <div><UserRound /><strong>{customerOrderMode}</strong></div>
-                    <span>{customerLoggedIn ? `Logged in as ${customerSessionEmail}` : "Guest checkout. UPI/Card required unless owner enables guest cash."}</span>
-                  </div>
-                  {cart.length ? cart.map(renderLine) : <div className="empty-cart">Your cart is empty.<br /><span>Go back to menu and build a pizza.</span></div>}
-                  <div className="summary">
-                    <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
-                    <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
-                    <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
-                    <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
-                    <div className="total"><span>Total payable</span><b>{moneyExact(totals.finalTotal)}</b></div>
-                  </div>
-                </section>
-
-                <section className="checkout-payment-card">
-                  <div className="checkout-head">
-                    <div><p className="eyebrow">Payment</p><h2>Select payment mode</h2></div>
-                    <div className={customerLoggedIn ? "checkout-policy member" : "checkout-policy guest"}>
-                      <strong>{customerOrderMode}</strong>
-                      <span>{customerPaymentPolicy}</span>
-                    </div>
-                  </div>
-                  <div className="payment-grid">
-                    {paymentModes.map((payment) => {
-                      const disabledForGuest = !customerLoggedIn && !pricingConfig.guestCashAllowed && payment.mode === "Cash";
-                      return (
-                        <button key={payment.mode} className={paymentMode === payment.mode ? "active" : ""} disabled={disabledForGuest} onClick={() => disabledForGuest ? showToast("Cash is available after customer login.") : setPaymentMode(payment.mode)} type="button">
-                          {payment.icon}<strong>{payment.mode}</strong><span>{disabledForGuest ? "Login required. Guests use UPI or Card only." : payment.copy}</span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <button className="primary" disabled={!cart.length || placingOrder} aria-busy={placingOrder} onClick={placeOrder} type="button">
-                    <Send /> {placingOrder ? "Processing payment…" : paymentMode === "Cash" ? "Place order" : "Pay & place order"}
-                  </button>
-                  {paymentStatusMessage && <p className="payment-status" role="status" aria-live="polite">{paymentStatusMessage}</p>}
-                </section>
-              </div>
-            </section>
-          )}
-
-          {step === "tracking" && lastOrder && (
-            <section className="tracking-page" id="tracking">
-              <div className="tracking-page-head">
-                <div>
-                  <p className="eyebrow">Order journey</p>
-                  <h1>Track your SliceMatic order</h1>
-                  <p>The cart is closed now. The customer sees fulfilment status, rider progress, and final bill on a dedicated page.</p>
-                </div>
-                <button type="button" onClick={() => goToStep("menu")}><Utensils /> New order</button>
-              </div>
-              <section className="tracking-grid">
-                <div className="map-card"><div className="route-line" /><span className="pin store">S</span><span className="pin home">H</span><div className="rider-card">Ravi assigned<br /><small>Arrives in 34 min</small></div></div>
-                <div className="tracking-card">
-                  <p className="eyebrow">Live tracking</p><h2>Order {lastOrder.id.slice(0, 8)} confirmed</h2>
-                  <div className="payment-confirmation">{paymentConfirmation(lastOrder.paymentMode)}</div>
-                  {["Order accepted", "In the oven", "Quality check", "Out for delivery", "At doorstep"].map((item, index) => (
-                    <div className="timeline-item" key={item}><span className={index < 2 ? "done" : ""}>{index < 2 ? <Check /> : index + 1}</span><div><strong>{item}</strong><small>{index === 1 ? "Kitchen is baking selected crust and toppings." : "Tracked in the order lifecycle."}</small></div></div>
-                  ))}
-                </div>
-                <div className="tracking-card final-bill">
-                  <p className="eyebrow">Final bill</p><h2>{moneyExact(lastOrder.finalTotal)}</h2>
-                  <div className="bill-lines">
-                    {lastOrder.lines.map((line, index) => (
-                      <div key={`${line.pizzaName}-${index}`}>
-                        <span>{line.quantity} x {line.baseName} / {line.pizzaName} / {line.sizeName}</span>
-                        <b>{moneyExact(line.lineTotal)}</b>
-                        <small>{line.toppings.length ? line.toppings.join(", ") : "No extra toppings"}</small>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="summary">
-                    <div><span>Subtotal</span><b>{moneyExact(lastOrder.subtotal)}</b></div>
-                    <div><span>Quantity discount</span><b>- {moneyExact(lastOrder.discount)}</b></div>
-                    <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{moneyExact(lastOrder.gst)}</b></div>
-                    <div><span>Payment mode</span><b>{lastOrder.paymentMode}</b></div>
-                    <div className="total"><span>Final payable</span><b>{moneyExact(lastOrder.finalTotal)}</b></div>
-                  </div>
-                  <small>Delivery zone {lastOrder.deliveryZone ?? customer.deliveryZone} km / {lastOrder.address ?? customer.address}</small>
-                </div>
-              </section>
-            </section>
-          )}
+          {/* Checkout and Tracking moved to /payment and /confirmation */}
         </>
       )}
 
