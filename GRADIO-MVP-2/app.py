@@ -1,5 +1,6 @@
 import gradio as gr
 import os
+import math
 from datetime import datetime
 from html import escape as html_escape
 from pathlib import Path
@@ -16,6 +17,10 @@ except Exception:
 # ═══════════════════════════════════════════════════════════
 # BUSINESS CONSTANTS (module-level, named variables)
 # ═══════════════════════════════════════════════════════════
+
+# Sentinel strings that mean "no value" — matched case-insensitively after strip
+NULL_LIKE = {"na", "nan", "none", "null", "n/a", "undefined", ""}
+
 GST_RATE = 0.18
 DISCOUNT_RATE = 0.10
 DISCOUNT_THRESHOLD = 5
@@ -72,15 +77,27 @@ def pizza_image_url(item_id):
 # ═══════════════════════════════════════════════════════════
 # MENU FILE LOADER
 # ═══════════════════════════════════════════════════════════
+def _is_null_like(value: str) -> bool:
+    """Return True if a stripped string field represents a missing/sentinel value.
+
+    Catches: empty string, bare quotes (\'\' or "\"\""), NA, NaN, None, Null, N/A,
+    undefined — all matched case-insensitively.
+    """
+    v = value.strip().strip("'\"")
+    return v.lower() in NULL_LIKE
+
+
 def load_menu_file(filepath):
     """Load menu items from a semicolon-delimited file. Returns list of (id, name, price) tuples.
 
-    Items with missing/empty name or missing/bad/zero/negative price are kept with
-    price=0 (and name='Unnamed' if blank) so numbering stays consistent —
-    rendering and validation treat these as unavailable.
+    Items are marked unavailable (price=0, name='Unnamed' where needed) when:
+      - ID field is empty or a null-like sentinel (NA, NaN, None, Null, N/A, '')
+      - Name field is empty or a null-like sentinel
+      - Price field is empty, non-numeric, NaN, infinite, zero, or negative
+      - Quoted-empty strings such as '' or "" in any field are treated as missing
 
-    Exact duplicate rows (same id AND same name AND same price) are skipped with
-    a [WARN] log so they do not appear as separate menu entries.
+    Unavailable items are KEPT in the list so display numbering stays consistent.
+    Exact duplicate rows are skipped with a [WARN] log.
     """
     items = []
     seen = set()  # tracks (item_id, name, price) tuples to catch exact duplicate rows
@@ -94,28 +111,48 @@ def load_menu_file(filepath):
                 if len(parts) != 3:
                     print(f"[WARN] {filepath}:{line_num} — expected 3 fields, got {len(parts)}, skipping")
                     continue
-                item_id, name, price_str = [p.strip() for p in parts]
-                if not name:
-                    print(f"[WARN] {filepath}:{line_num} — empty name for '{item_id}', marking unavailable")
+
+                item_id_raw, name_raw, price_str_raw = [p.strip() for p in parts]
+
+                # ── ID check ─────────────────────────────────────────────────
+                item_id = item_id_raw.strip("'\"")
+                if _is_null_like(item_id_raw):
+                    print(f"[WARN] {filepath}:{line_num} — null-like ID '{item_id_raw}', marking unavailable")
+                    items.append((item_id or "?", "Unnamed", 0.0))
+                    continue
+
+                # ── Name check ───────────────────────────────────────────────
+                name = name_raw.strip("'\"")
+                if _is_null_like(name_raw):
+                    print(f"[WARN] {filepath}:{line_num} — null-like name '{name_raw}' for '{item_id}', marking unavailable")
                     items.append((item_id, "Unnamed", 0.0))
                     continue
-                if not price_str:
-                    print(f"[WARN] {filepath}:{line_num} — empty price for '{name}', marking unavailable")
+
+                # ── Price check ──────────────────────────────────────────────
+                price_str = price_str_raw.strip("'\"")
+                if _is_null_like(price_str_raw):
+                    print(f"[WARN] {filepath}:{line_num} — null-like price '{price_str_raw}' for '{name}', marking unavailable")
                     items.append((item_id, name, 0.0))
                     continue
                 try:
                     price = float(price_str)
                 except ValueError:
-                    print(f"[WARN] {filepath}:{line_num} — non-numeric price '{price_str}' for '{name}', marking unavailable")
+                    print(f"[WARN] {filepath}:{line_num} — non-numeric price '{price_str_raw}' for '{name}', marking unavailable")
+                    items.append((item_id, name, 0.0))
+                    continue
+                if math.isnan(price) or math.isinf(price):
+                    print(f"[WARN] {filepath}:{line_num} — NaN/Inf price for '{name}', marking unavailable")
                     items.append((item_id, name, 0.0))
                     continue
                 if price < 0:
                     print(f"[WARN] {filepath}:{line_num} — negative price {price} for '{name}', marking unavailable")
                     items.append((item_id, name, 0.0))
                     continue
+
+                # ── Duplicate check ──────────────────────────────────────────
                 row_key = (item_id, name, price)
                 if row_key in seen:
-                    print(f"[WARN] {filepath}:{line_num} — exact duplicate row '{item_id};{name};{price_str}', skipping")
+                    print(f"[WARN] {filepath}:{line_num} — exact duplicate row '{item_id};{name};{price_str_raw}', skipping")
                     continue
                 seen.add(row_key)
                 items.append((item_id, name, price))
@@ -558,9 +595,15 @@ def render_pizza_cards(items):
 
 
 def render_topping_pills(items):
-    """Numbered pills (no image — matches the design's Stage 3 toppings row)."""
+    """Numbered pills (no image — matches the design's Stage 3 toppings row).
+
+    Items with price <= 0 (unavailable/null-like name or price) are hidden entirely,
+    consistent with how they are excluded from the CheckboxGroup choices.
+    """
     pills = []
     for i, (_id, name, price) in enumerate(items, 1):
+        if price <= 0:
+            continue  # hide unavailable toppings — do not show greyed pill
         pills.append(
             f'<span class="sm-pill"><span class="sm-num">{i}</span>'
             f'{html_escape(name)} <span class="sm-topping-price">+₹{price:.2f}</span></span>'

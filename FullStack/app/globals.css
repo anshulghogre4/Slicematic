@@ -2653,3 +2653,9 @@ a.primary:hover {
     min-width: 0;
   }
 }
+
+.payment-status {
+  margin-top: 12px;
+  font-size: 14px;
+  color: #b42318;
+}

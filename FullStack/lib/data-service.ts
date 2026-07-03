@@ -2,42 +2,79 @@ import { randomUUID } from "crypto";
 import { calculateBill, getLineUnitPrice, sanitizePricingConfig } from "./pricing";
 import { buildSeedSummary, seedMenu, seedOrders } from "./seed-data";
 import { getSupabaseServerClient } from "./supabase";
-import { AdminSummary, CartLine, MenuItem, MenuPayload, OrderPayload, SavedOrder } from "./types";
+import { AdminSummary, CartLine, MenuItem, MenuPayload, OrderPayload, PaymentMeta, SavedOrder } from "./types";
+
+const NULL_LIKE = new Set(["na", "nan", "none", "null", "n/a", "undefined", ""]);
+function isNullLike(val: string) {
+  return NULL_LIKE.has(String(val).trim().toLowerCase());
+}
 
 function enrichPizza(row: Record<string, unknown>, fallback: MenuItem): MenuItem {
+  const name = String(row.pizza_name ?? row.name ?? fallback.name);
+  const rawPrice = Number(row.price ?? fallback.price);
+  
+  const isBadName = isNullLike(name);
+  const isBadPrice = isNaN(rawPrice) || rawPrice <= 0 || row.price === null || row.price === undefined;
+  const isAvailable = row.is_available === undefined ? fallback.available : Boolean(row.is_available);
+
   return {
     id: Number(row.pizza_type_id ?? row.id ?? fallback.id),
     code: String(row.code ?? fallback.code),
-    name: String(row.pizza_name ?? row.name ?? fallback.name),
-    price: Number(row.price ?? fallback.price),
+    name: isBadName ? "Unnamed" : name,
+    price: (isBadName || isBadPrice) ? 0 : rawPrice,
     description: String(row.description ?? fallback.description ?? ""),
     image: String(row.image_url ?? fallback.image ?? `/assets/menu/P${fallback.id}.jpg`),
     badge: String(row.badge ?? fallback.badge ?? "Signature"),
     tags: Array.isArray(row.tags) ? (row.tags as string[]) : fallback.tags ?? [],
     prepMinutes: Number(row.prep_minutes ?? fallback.prepMinutes ?? 24),
-    available: row.is_available === undefined ? fallback.available : Boolean(row.is_available)
+    available: (isBadName || isBadPrice) ? false : isAvailable
   };
 }
 
 function enrichBase(row: Record<string, unknown>, fallback: MenuItem): MenuItem {
+  const name = String(row.base_name ?? row.name ?? fallback.name);
+  const rawPrice = Number(row.price ?? fallback.price);
+  const isBadName = isNullLike(name);
+  const isBadPrice = isNaN(rawPrice) || rawPrice <= 0 || row.price === null || row.price === undefined;
+  const isAvailable = row.is_available === undefined ? fallback.available : Boolean(row.is_available);
+
   return {
     id: Number(row.base_id ?? row.id ?? fallback.id),
     code: String(row.code ?? fallback.code),
-    name: String(row.base_name ?? row.name ?? fallback.name),
-    price: Number(row.price ?? fallback.price),
+    name: isBadName ? "Unnamed" : name,
+    price: (isBadName || isBadPrice) ? 0 : rawPrice,
     description: String(row.description ?? fallback.description ?? ""),
-    available: row.is_available === undefined ? fallback.available : Boolean(row.is_available)
+    available: (isBadName || isBadPrice) ? false : isAvailable
   };
 }
 
 function enrichTopping(row: Record<string, unknown>, fallback: MenuItem): MenuItem {
+  const name = String(row.topping_name ?? row.name ?? fallback.name);
+  const rawPrice = Number(row.price ?? fallback.price);
+  const isBadName = isNullLike(name);
+  const isBadPrice = isNaN(rawPrice) || rawPrice <= 0 || row.price === null || row.price === undefined;
+  const isAvailable = row.is_available === undefined ? fallback.available : Boolean(row.is_available);
+
   return {
     id: Number(row.topping_id ?? row.id ?? fallback.id),
     code: String(row.code ?? fallback.code),
-    name: String(row.topping_name ?? row.name ?? fallback.name),
-    price: Number(row.price ?? fallback.price),
-    available: row.is_available === undefined ? fallback.available : Boolean(row.is_available)
+    name: isBadName ? "Unnamed" : name,
+    price: (isBadName || isBadPrice) ? 0 : rawPrice,
+    available: (isBadName || isBadPrice) ? false : isAvailable
   };
+}
+
+function deduplicate<T extends { id: number | string; name: string; price: number }>(items: T[]): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+  for (const item of items) {
+    const key = `${item.id}|${item.name}|${item.price}`;
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    }
+  }
+  return result;
 }
 
 export async function loadMenu(): Promise<MenuPayload> {
@@ -79,9 +116,9 @@ export async function loadMenu(): Promise<MenuPayload> {
         }));
 
     return {
-      pizzas: pizzas.length ? pizzas : seedMenu.pizzas,
-      bases: bases.length ? bases : seedMenu.bases,
-      toppings: toppings.length ? toppings : seedMenu.toppings,
+      pizzas: pizzas.length ? deduplicate(pizzas) : seedMenu.pizzas,
+      bases: bases.length ? deduplicate(bases) : seedMenu.bases,
+      toppings: toppings.length ? deduplicate(toppings) : seedMenu.toppings,
       sizes
     };
   } catch {
@@ -89,7 +126,7 @@ export async function loadMenu(): Promise<MenuPayload> {
   }
 }
 
-export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
+export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta = {}): Promise<SavedOrder> {
   const menu = await loadMenu();
   const pricingConfig = sanitizePricingConfig(payload.pricingConfig);
   const totals = calculateBill(payload.lines, menu, pricingConfig);
@@ -105,6 +142,11 @@ export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
     deliveryZone: payload.customer.deliveryZone,
     paymentMode: payload.paymentMode,
     status: "Placed",
+    razorpayOrderId: paymentMeta.razorpayOrderId,
+    razorpayPaymentId: paymentMeta.razorpayPaymentId,
+    cashfreeOrderId: paymentMeta.cashfreeOrderId,
+    cashfreePaymentId: paymentMeta.cashfreePaymentId,
+    paymentStatus: paymentMeta.paymentStatus ?? "confirmed",
     subtotal: totals.subtotal,
     discount: totals.discount,
     gst: totals.gst,
@@ -131,7 +173,7 @@ export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
     const effectiveCustomerId = existingCustomer.data?.customer_id ?? customerId;
 
     if (!existingCustomer.data) {
-      await supabase.schema("slicematic").from("customer").insert({
+      const { error: customerError } = await supabase.schema("slicematic").from("customer").insert({
         customer_id: effectiveCustomerId,
         first_name: firstName,
         last_name: lastName,
@@ -143,9 +185,13 @@ export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
         preferred_contact_channel: "Phone",
         marketing_opt_in: false
       });
+      if (customerError) {
+        console.error("Customer insert error:", customerError);
+        throw new Error("Customer insert failed: " + customerError.message);
+      }
     }
 
-    await supabase.schema("slicematic").from("orders").insert({
+    const { error: orderError } = await supabase.schema("slicematic").from("orders").insert({
       order_id: uuidOrderId,
       customer_id: effectiveCustomerId,
       order_datetime: now,
@@ -160,15 +206,24 @@ export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
       coupon_code: totals.discount > 0 ? "GROUP-SAVER" : null,
       delivery_address: payload.customer.address,
       delivery_zone: payload.customer.deliveryZone ?? null,
-      customer_note: payload.customer.note ?? null
+      customer_note: payload.customer.note ?? null,
+      razorpay_order_id: paymentMeta.razorpayOrderId ?? null,
+      razorpay_payment_id: paymentMeta.razorpayPaymentId ?? null,
+      cashfree_order_id: paymentMeta.cashfreeOrderId ?? null,
+      cashfree_payment_id: paymentMeta.cashfreePaymentId ?? null,
+      payment_status: paymentMeta.paymentStatus ?? "confirmed"
     });
+    if (orderError) {
+      console.error("Order insert error:", orderError);
+      throw new Error("Order insert failed: " + orderError.message);
+    }
 
     for (const line of payload.lines) {
       const orderItemId = randomUUID();
       const pizza = menu.pizzas.find((item) => item.id === line.pizzaId);
       const base = menu.bases.find((item) => item.id === line.baseId);
       const unitPrice = getLineUnitPrice(line, menu);
-      await supabase.schema("slicematic").from("order_item").insert({
+      const { error: lineError } = await supabase.schema("slicematic").from("order_item").insert({
         order_item_id: orderItemId,
         order_id: uuidOrderId,
         pizza_type_id: line.pizzaId,
@@ -179,6 +234,10 @@ export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
         pizza_price: pizza?.price ?? 0,
         line_total: unitPrice * line.quantity
       });
+      if (lineError) {
+        console.error("Order line insert error:", lineError);
+        throw new Error("Order line insert failed: " + lineError.message);
+      }
       const toppingRows = line.toppingIds.map((toppingId) => {
         const topping = menu.toppings.find((item) => item.id === toppingId);
         return {
@@ -188,7 +247,11 @@ export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
         };
       });
       if (toppingRows.length) {
-        await supabase.schema("slicematic").from("order_item_topping").insert(toppingRows);
+        const { error: toppingError } = await supabase.schema("slicematic").from("order_item_topping").insert(toppingRows);
+        if (toppingError) {
+          console.error("Topping insert error:", toppingError);
+          throw new Error("Topping insert failed: " + toppingError.message);
+        }
       }
     }
 
@@ -201,7 +264,8 @@ export async function saveOrder(payload: OrderPayload): Promise<SavedOrder> {
     }
 
     return { ...savedOrder, id: uuidOrderId };
-  } catch {
+  } catch (err) {
+    console.error("saveOrder caught an error:", err);
     return savedOrder;
   }
 }

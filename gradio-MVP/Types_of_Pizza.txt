@@ -1,8 +1,0 @@
-P1;Classic Margherita;299
-P2;Farmhouse Veg;329
-P3;Paneer Tikka;349
-P4;Tandoori Paneer;369
-P5;Spicy Veg Fiesta;339
-P6;Veggie Supreme;359
-P7;Barbecue Chicken;389
-P8;Chicken Tikka;399
