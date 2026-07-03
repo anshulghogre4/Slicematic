@@ -50,6 +50,7 @@ export type BillTotals = {
   discount: number;
   taxable: number;
   gst: number;
+  deliveryCharge: number;
   finalTotal: number;
   totalQuantity: number;
 };
