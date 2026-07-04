@@ -36,7 +36,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { calculateBill, defaultPricingConfig, getLineUnitPrice, money, validateCustomer } from "../lib/pricing";
 import { buildSeedSummary, seedMenu } from "../lib/seed-data";
-import { applyOrderToSession, syncSessionCustomerId, syncSessionCustomerRecord } from "../lib/session-customer";
+import { applyOrderToSession, syncSessionCustomerId } from "../lib/session-customer";
 import { AdminSummary, CartLine, CustomerDetails, MenuItem, MenuPayload, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "../lib/types";
 import { useStore } from "../lib/store";
 import { useRouter } from "next/navigation";
@@ -164,7 +164,6 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   const [customerOrdersLoading, setCustomerOrdersLoading] = useState(false);
   const [customerOrdersError, setCustomerOrdersError] = useState("");
   const ordersRefreshInFlight = useRef(false);
-  const ordersRefreshRetry = useRef(false);
   const ordersRequestSeq = useRef(0);
   const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [brand, setBrand] = useState({
@@ -283,33 +282,11 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     if (typeof window === "undefined") return;
     if (!force && ordersRefreshInFlight.current) return;
 
-    let customerId = window.sessionStorage.getItem("slicematic_customer_id") ?? "";
-    const customerJson = window.sessionStorage.getItem("slicematic_customer");
-    const email = window.sessionStorage.getItem("slicematic_customer_email") || customerSessionEmail || "";
-    let phone = "";
-    if (customerJson) {
-      try {
-        const parsed = JSON.parse(customerJson) as Partial<CustomerDetails>;
-        phone = parsed.phone ?? "";
-      } catch { /* ignore */ }
-    }
-    if (!customerId && !phone && !email) return;
-
-    const syncedId = await syncSessionCustomerRecord();
-    if (syncedId) customerId = syncedId;
-
-    if (!customerId && (email || phone)) {
-      try {
-        const profileRes = await fetch(
-          `/api/customer/profile?identifier=${encodeURIComponent(email || phone)}`,
-          { cache: "no-store" }
-        );
-        const profileData = await profileRes.json();
-        if (profileData.ok && profileData.profile?.customerId) {
-          customerId = profileData.profile.customerId;
-          syncSessionCustomerId(customerId);
-        }
-      } catch { /* ignore */ }
+    const customerId = window.sessionStorage.getItem("slicematic_customer_id")?.trim() ?? "";
+    if (!customerId) {
+      setCustomerOrders([]);
+      setCustomerOrdersError("No customer ID in session. Place an order or sign in again.");
+      return;
     }
 
     const requestSeq = ++ordersRequestSeq.current;
@@ -317,48 +294,18 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     setCustomerOrdersLoading(true);
     setCustomerOrdersError("");
     try {
-      const buildParams = (omitCustomerId = false) => {
-        const params = new URLSearchParams();
-        if (email) params.set("identifier", email);
-        if (phone) params.set("phone", phone);
-        if (customerId && !omitCustomerId) params.set("customer_id", customerId);
-        return params;
-      };
-
-      const loadOrders = async (omitCustomerId = false) => {
-        const res = await fetch(`/api/customer/orders?${buildParams(omitCustomerId).toString()}`, { cache: "no-store" });
-        const data = await res.json();
-        if (requestSeq !== ordersRequestSeq.current) return null;
-        if (!res.ok || !data.ok) {
-          setCustomerOrdersError(data.error ?? "Could not load order history.");
-          return null;
-        }
-        setCustomerOrders(Array.isArray(data.orders) ? data.orders : []);
-        if (data.customer_id) syncSessionCustomerId(data.customer_id);
-        return data;
-      };
-
-      let data = await loadOrders();
-      if (
-        force &&
-        data &&
-        (!data.orders || data.orders.length === 0) &&
-        customerId &&
-        (email || phone)
-      ) {
-        data = await loadOrders(true);
+      const res = await fetch(
+        `/api/customer/orders?customer_id=${encodeURIComponent(customerId)}`,
+        { cache: "no-store" }
+      );
+      const data = await res.json();
+      if (requestSeq !== ordersRequestSeq.current) return;
+      if (!res.ok || !data.ok) {
+        setCustomerOrdersError(data.error ?? "Could not load order history.");
+        return;
       }
-      if (
-        force &&
-        data &&
-        (!data.orders || data.orders.length === 0) &&
-        !ordersRefreshRetry.current
-      ) {
-        ordersRefreshRetry.current = true;
-        await new Promise((resolve) => setTimeout(resolve, 600));
-        await loadOrders(customerId && (email || phone) ? true : false);
-        ordersRefreshRetry.current = false;
-      }
+      setCustomerOrders(Array.isArray(data.orders) ? data.orders : []);
+      if (data.customer_id) syncSessionCustomerId(data.customer_id);
     } catch (err) {
       if (requestSeq === ordersRequestSeq.current) {
         console.error("Error refreshing customer orders", err);

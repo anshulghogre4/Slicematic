@@ -1,18 +1,23 @@
 import { NextResponse } from "next/server";
-import { loadCustomerOrderHistory } from "../../../../lib/data-service";
+import { loadCustomerOrderHistoryByCustomerId } from "../../../../lib/data-service";
 import { hasSupabaseEnv } from "../../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+const CUSTOMER_ID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
-    const customerId = searchParams.get("customer_id");
-    const identifier = searchParams.get("identifier");
-    const phone = searchParams.get("phone");
+    const customerId = searchParams.get("customer_id")?.trim() ?? "";
 
-    if (!customerId && !identifier && !phone) {
-      return NextResponse.json({ ok: false, error: "customer_id or identifier (mobile or email) is required" }, { status: 400 });
+    if (!customerId) {
+      return NextResponse.json({ ok: false, error: "customer_id is required" }, { status: 400 });
+    }
+
+    if (!CUSTOMER_ID_RE.test(customerId)) {
+      return NextResponse.json({ ok: false, error: "customer_id must be a valid UUID" }, { status: 400 });
     }
 
     if (!hasSupabaseEnv()) {
@@ -22,7 +27,7 @@ export async function GET(request: Request) {
       );
     }
 
-    const { orders, customer_id } = await loadCustomerOrderHistory({ customerId, identifier, phone });
+    const { orders, customer_id } = await loadCustomerOrderHistoryByCustomerId(customerId);
     return NextResponse.json({ ok: true, orders, customer_id });
   } catch (error: unknown) {
     console.error("API error:", error);
