@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadCustomerOrderHistoryByCustomerId } from "../../../../lib/data-service";
-import { hasSupabaseEnv } from "../../../../lib/supabase";
+import { hasSupabaseEnv, hasSupabaseAdminEnv } from "../../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -27,10 +27,17 @@ export async function GET(request: Request) {
       );
     }
 
+    // Log which Supabase key is being used (for debugging Vercel vs local)
+    const usingAdmin = hasSupabaseAdminEnv();
+    console.log("[customer/orders] customer_id:", customerId, "usingAdminKey:", usingAdmin);
+
     const { orders, customer_id } = await loadCustomerOrderHistoryByCustomerId(customerId);
+
+    console.log("[customer/orders] result:", { orderCount: orders.length, hasCustomerId: !!customer_id });
+
     return NextResponse.json({ ok: true, orders, customer_id });
   } catch (error: unknown) {
-    console.error("API error:", error);
+    console.error("[customer/orders] API error:", error);
     const message = error instanceof Error ? error.message : "Unexpected error";
     return NextResponse.json({ ok: false, error: message }, { status: 500 });
   }
