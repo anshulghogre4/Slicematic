@@ -342,10 +342,6 @@ function describeLine(line: CartLine, menu: MenuPayload): SavedOrder["lines"][nu
   };
 }
 
-function normalizeCustomerId(value: string) {
-  return value.trim().toLowerCase();
-}
-
 export async function resolveCustomerId(params: { customerId?: string | null; identifier?: string | null }) {
   const supabase = getSupabaseAdminClient() ?? getSupabaseServerClient();
   if (!supabase) return null;
@@ -472,40 +468,21 @@ export async function registerCustomer(input: {
   return customerId;
 }
 
-async function collectCustomerIdCandidates(params: {
-  customerId?: string | null;
-  identifier?: string | null;
-  phone?: string | null;
-}) {
-  const candidates: string[] = [];
-  const seen = new Set<string>();
-  const add = (id: string | null | undefined) => {
-    const trimmed = (id ?? "").trim();
-    if (!trimmed) return;
-    const normalized = normalizeCustomerId(trimmed);
-    if (seen.has(normalized)) return;
-    seen.add(normalized);
-    candidates.push(trimmed);
-  };
-
-  if (params.customerId?.trim()) {
-    add(await resolveCustomerId({ customerId: params.customerId }));
-  }
-  if (params.phone?.trim()) {
-    add(await resolveCustomerId({ identifier: params.phone }));
-  }
-  if (params.identifier?.trim()) {
-    add(await resolveCustomerId({ identifier: params.identifier }));
-    const profile = await lookupCustomerProfile(params.identifier.trim());
-    if (profile?.phone) add(await resolveCustomerId({ identifier: profile.phone }));
-  }
-  return candidates;
-}
-
 const ORDER_HISTORY_SELECT =
   "order_id, customer_id, order_datetime, order_status, payment_method, subtotal_amount, discount_amount, tax_amount, final_amount";
 
-function mapOrderHistoryRow(row: {
+const ORDER_HISTORY_NESTED_SELECT = `
+  ${ORDER_HISTORY_SELECT},
+  order_item (
+    quantity,
+    line_total,
+    pizza_types ( pizza_name ),
+    pizza_bases ( base_name ),
+    pizza_sizes ( size_name )
+  )
+`;
+
+type NestedOrderRow = {
   order_id: string;
   customer_id?: string | null;
   order_datetime: string;
@@ -515,163 +492,27 @@ function mapOrderHistoryRow(row: {
   discount_amount: number;
   tax_amount: number;
   final_amount: number;
-}, resolvedCustomerId: string) {
-  return {
-    order_id: row.order_id,
-    customer_id: row.customer_id ?? resolvedCustomerId,
-    order_datetime: row.order_datetime,
-    order_status: row.order_status,
-    payment_method: row.payment_method,
-    subtotal_amount: row.subtotal_amount,
-    discount_amount: row.discount_amount,
-    tax_amount: row.tax_amount,
-    final_amount: row.final_amount
-  };
+  order_item: Array<{
+    quantity: number;
+    line_total: number;
+    pizza_types: { pizza_name: string } | Array<{ pizza_name: string }> | null;
+    pizza_bases: { base_name: string } | Array<{ base_name: string }> | null;
+    pizza_sizes: { size_name: string } | Array<{ size_name: string }> | null;
+  }> | null;
+};
+
+function nestedRelationName<T extends { [key: string]: unknown }>(
+  relation: T | T[] | null | undefined,
+  field: keyof T
+): string {
+  const row = Array.isArray(relation) ? relation[0] : relation;
+  if (!row) return "";
+  const value = row[field];
+  return value == null ? "" : String(value);
 }
 
-async function fetchOrdersForCustomer(
-  supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
-  resolvedCustomerId: string,
-  profile?: { phone?: string; email?: string } | null
-) {
-  const normalizedId = normalizeCustomerId(resolvedCustomerId);
-  const normalizedPhone = (profile?.phone ?? "").trim();
-  const normalizedEmail = (profile?.email ?? "").trim().toLowerCase();
-
-  const { data: directData, error: directError } = await supabase
-    .schema("slicematic")
-    .from("orders")
-    .select(ORDER_HISTORY_SELECT)
-    .eq("customer_id", resolvedCustomerId)
-    .order("order_datetime", { ascending: false })
-    .limit(20);
-
-  if (directError) {
-    console.error("Customer orders direct lookup error:", directError);
-  }
-  if (directData?.length) {
-    return directData.map((row) => mapOrderHistoryRow(row, resolvedCustomerId));
-  }
-
-  const { data, error } = await supabase
-    .schema("slicematic")
-    .from("orders")
-    .select(`${ORDER_HISTORY_SELECT}, customer:customer_id(mobile_number, email)`)
-    .order("order_datetime", { ascending: false })
-    .limit(200);
-
-  if (error || !data?.length) {
-    if (error) console.error("Customer orders lookup error:", error);
-    return [];
-  }
-
-  return data
-    .filter((row) => {
-      const directId = row.customer_id ? normalizeCustomerId(String(row.customer_id)) : "";
-      if (directId && directId === normalizedId) return true;
-
-      const customer = Array.isArray(row.customer) ? row.customer[0] : row.customer;
-      if (normalizedPhone && String(customer?.mobile_number ?? "") === normalizedPhone) return true;
-      if (normalizedEmail && String(customer?.email ?? "").toLowerCase() === normalizedEmail) return true;
-      return false;
-    })
-    .map((row) => mapOrderHistoryRow(row, resolvedCustomerId))
-    .slice(0, 20);
-}
-
-export async function loadCustomerOrderHistory(params: {
-  customerId?: string | null;
-  identifier?: string | null;
-  phone?: string | null;
-}): Promise<{ orders: CustomerOrderHistoryItem[]; customer_id: string | null }> {
-  const supabase = getSupabaseServerClient();
-  if (!supabase) {
-    console.error("Supabase is not configured for customer order history.");
-    return { orders: [], customer_id: null };
-  }
-
-  const candidates = await collectCustomerIdCandidates(params);
-  if (!candidates.length) {
-    return { orders: [], customer_id: null };
-  }
-
-  let profile: Awaited<ReturnType<typeof lookupCustomerProfile>> = null;
-  if (params.identifier?.trim()) {
-    profile = await lookupCustomerProfile(params.identifier.trim());
-  } else if (params.phone?.trim()) {
-    profile = await lookupCustomerProfile(params.phone.trim());
-  } else if (candidates[0]) {
-    profile = await lookupCustomerProfile(candidates[0]);
-  }
-
-  const mergedOrders: Awaited<ReturnType<typeof fetchOrdersForCustomer>> = [];
-  const seenOrderIds = new Set<string>();
-  let resolvedCustomerId = profile?.customerId ?? candidates[0];
-
-  for (const candidateId of candidates) {
-    const candidateOrders = await fetchOrdersForCustomer(supabase, candidateId, profile);
-    if (candidateOrders.length && mergedOrders.length === 0) {
-      resolvedCustomerId = candidateId;
-    }
-    for (const row of candidateOrders) {
-      if (seenOrderIds.has(row.order_id)) continue;
-      seenOrderIds.add(row.order_id);
-      mergedOrders.push(row);
-    }
-  }
-
-  mergedOrders.sort((a, b) => String(b.order_datetime).localeCompare(String(a.order_datetime)));
-  const ordersData = mergedOrders.slice(0, 20);
-
-  if (!ordersData.length) {
-    return { orders: [], customer_id: profile?.customerId ?? resolvedCustomerId };
-  }
-
-  const orderIds = ordersData.map((row) => row.order_id);
-  const { data: itemsData, error: itemsError } = await supabase
-    .schema("slicematic")
-    .from("order_item")
-    .select("order_item_id, order_id, pizza_type_id, base_id, size_id, quantity, line_total")
-    .in("order_id", orderIds);
-
-  if (itemsError) {
-    console.error("Order items lookup error:", itemsError);
-  }
-
-  const pizzaIds = [...new Set((itemsData || []).map((item) => item.pizza_type_id))];
-  const baseIds = [...new Set((itemsData || []).map((item) => item.base_id))];
-  const sizeIds = [...new Set((itemsData || []).map((item) => item.size_id))];
-
-  const [pizzasRes, basesRes, sizesRes] = await Promise.all([
-    pizzaIds.length
-      ? supabase.schema("slicematic").from("pizza_types").select("pizza_type_id, pizza_name").in("pizza_type_id", pizzaIds)
-      : Promise.resolve({ data: [], error: null }),
-    baseIds.length
-      ? supabase.schema("slicematic").from("pizza_bases").select("base_id, base_name").in("base_id", baseIds)
-      : Promise.resolve({ data: [], error: null }),
-    sizeIds.length
-      ? supabase.schema("slicematic").from("pizza_sizes").select("size_id, size_name").in("size_id", sizeIds)
-      : Promise.resolve({ data: [], error: null })
-  ]);
-
-  const pizzaMap = new Map((pizzasRes.data || []).map((pizza) => [pizza.pizza_type_id, pizza.pizza_name]));
-  const baseMap = new Map((basesRes.data || []).map((base) => [base.base_id, base.base_name]));
-  const sizeMap = new Map((sizesRes.data || []).map((size) => [size.size_id, size.size_name]));
-
-  const itemsByOrder = new Map<string, CustomerOrderHistoryItem["lines"]>();
-  for (const item of itemsData || []) {
-    const lines = itemsByOrder.get(item.order_id) || [];
-    lines.push({
-      pizzaName: pizzaMap.get(item.pizza_type_id) || "Unknown Pizza",
-      baseName: baseMap.get(item.base_id) || "Unknown Base",
-      sizeName: sizeMap.get(item.size_id) || "Regular",
-      quantity: item.quantity,
-      lineTotal: item.line_total
-    });
-    itemsByOrder.set(item.order_id, lines);
-  }
-
-  const orders: CustomerOrderHistoryItem[] = ordersData.map((row) => ({
+function mapNestedOrderRows(rows: NestedOrderRow[]): CustomerOrderHistoryItem[] {
+  return rows.map((row) => ({
     id: row.order_id,
     createdAt: row.order_datetime,
     paymentMode: row.payment_method,
@@ -680,10 +521,54 @@ export async function loadCustomerOrderHistory(params: {
     discount: row.discount_amount,
     gst: row.tax_amount,
     finalTotal: row.final_amount,
-    lines: itemsByOrder.get(row.order_id) || []
+    lines: (row.order_item ?? []).map((item) => ({
+      pizzaName: nestedRelationName(item.pizza_types, "pizza_name") || "Unknown Pizza",
+      baseName: nestedRelationName(item.pizza_bases, "base_name") || "Unknown Base",
+      sizeName: nestedRelationName(item.pizza_sizes, "size_name") || "Regular",
+      quantity: item.quantity,
+      lineTotal: item.line_total
+    }))
   }));
+}
 
-  return { orders, customer_id: resolvedCustomerId };
+/**
+ * Order history — lookup filter is orders.customer_id only.
+ * Schema: customer.customer_id <- orders.customer_id
+ *         orders.order_id <- order_item.order_id
+ *         order_item -> pizza_types | pizza_bases | pizza_sizes
+ */
+async function fetchOrderHistoryByCustomerId(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
+  customerId: string
+): Promise<CustomerOrderHistoryItem[]> {
+  const { data, error } = await supabase
+    .schema("slicematic")
+    .from("orders")
+    .select(ORDER_HISTORY_NESTED_SELECT)
+    .eq("customer_id", customerId)
+    .order("order_datetime", { ascending: false })
+    .limit(20);
+
+  if (error) {
+    console.error("Customer orders lookup error:", error);
+    return [];
+  }
+
+  return mapNestedOrderRows((data ?? []) as NestedOrderRow[]);
+}
+
+export async function loadCustomerOrderHistoryByCustomerId(
+  customerId: string
+): Promise<{ orders: CustomerOrderHistoryItem[]; customer_id: string | null }> {
+  const supabase = getSupabaseServerClient();
+  const trimmedId = customerId.trim();
+  if (!supabase || !trimmedId) {
+    console.error("Supabase is not configured for customer order history.");
+    return { orders: [], customer_id: null };
+  }
+
+  const orders = await fetchOrderHistoryByCustomerId(supabase, trimmedId);
+  return { orders, customer_id: trimmedId };
 }
 
 export async function loadAdminSummary(): Promise<AdminSummary> {
