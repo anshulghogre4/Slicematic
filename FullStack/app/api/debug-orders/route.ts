@@ -19,6 +19,17 @@ export async function GET(request: Request) {
   const client = serverClient;
   if (!client) return NextResponse.json({ ...results, error: "no supabase client" });
 
+  // 1. Check customer exists
+  const custRes = await client
+    .schema("slicematic")
+    .from("customer")
+    .select("customer_id")
+    .eq("customer_id", customerId)
+    .maybeSingle();
+  results.customerExists = !!custRes.data;
+  results.customerError = custRes.error ? { message: custRes.error.message, code: custRes.error.code } : null;
+
+  // 2. Query orders by customer_id
   const ordersRes = await client
     .schema("slicematic")
     .from("orders")
@@ -26,9 +37,24 @@ export async function GET(request: Request) {
     .eq("customer_id", customerId)
     .order("order_datetime", { ascending: false })
     .limit(20);
-
   results.ordersCount = ordersRes.data?.length ?? 0;
   results.ordersError = ordersRes.error ? { message: ordersRes.error.message, code: ordersRes.error.code } : null;
+
+  // 3. Latest 3 orders in DB regardless of customer (sanity check — do we see any rows at all?)
+  const latestRes = await client
+    .schema("slicematic")
+    .from("orders")
+    .select("order_id, customer_id, order_datetime")
+    .order("order_datetime", { ascending: false })
+    .limit(3);
+  results.latestOrdersCount = latestRes.data?.length ?? 0;
+  results.latestOrders = (latestRes.data ?? []).map((r) => ({
+    order_id: r.order_id,
+    customer_id: r.customer_id,
+    order_datetime: r.order_datetime,
+    matches: r.customer_id === customerId,
+  }));
+  results.latestOrdersError = latestRes.error ? { message: latestRes.error.message, code: latestRes.error.code } : null;
 
   if (ordersRes.data?.length) {
     const orderIds = ordersRes.data.map((r) => r.order_id);
@@ -37,7 +63,6 @@ export async function GET(request: Request) {
       .from("order_item")
       .select("order_id, pizza_type_id, base_id, size_id, quantity, line_total")
       .in("order_id", orderIds);
-
     results.itemsCount = itemsRes.data?.length ?? 0;
     results.itemsError = itemsRes.error ? { message: itemsRes.error.message, code: itemsRes.error.code } : null;
   }
