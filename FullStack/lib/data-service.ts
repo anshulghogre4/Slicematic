@@ -289,7 +289,17 @@ function describeLine(line: CartLine, menu: MenuPayload): SavedOrder["lines"][nu
 
 export async function loadAdminSummary(): Promise<AdminSummary> {
   const supabase = getSupabaseServerClient();
-  if (!supabase) return buildSeedSummary();
+  if (!supabase) return {
+    totalRevenue: 0,
+    orderCount: 0,
+    avgOrderValue: 0,
+    topPizza: "N/A",
+    busiestHour: "N/A",
+    paymentMix: [],
+    hourlyDemand: [],
+    recentOrders: [],
+    forecast: []
+  };
 
   try {
     const ordersResult = await supabase
@@ -298,9 +308,12 @@ export async function loadAdminSummary(): Promise<AdminSummary> {
       .select("order_id, order_datetime, order_status, payment_method, subtotal_amount, discount_amount, tax_amount, final_amount, delivery_address, delivery_zone, customer:customer_id(first_name,last_name,mobile_number)")
       .order("order_datetime", { ascending: false });
 
-    if (ordersResult.error || !ordersResult.data?.length) return buildSeedSummary();
+    if (ordersResult.error) {
+      console.error("Error fetching orders:", ordersResult.error);
+    }
+    const data = ordersResult.data || [];
 
-    const recentOrders: SavedOrder[] = ordersResult.data.map((row) => {
+    const recentOrders: SavedOrder[] = data.map((row) => {
       const customer = Array.isArray(row.customer) ? row.customer[0] : row.customer;
       return {
         id: String(row.order_id),
@@ -350,8 +363,19 @@ export async function loadAdminSummary(): Promise<AdminSummary> {
       recentOrders,
       forecast: forecastFromHourlyDemand(hourlyDemand)
     };
-  } catch {
-    return buildSeedSummary();
+  } catch (err) {
+    console.error("Exception in loadAdminSummary:", err);
+    return {
+      totalRevenue: 0,
+      orderCount: 0,
+      avgOrderValue: 0,
+      topPizza: "N/A",
+      busiestHour: "N/A",
+      paymentMix: [],
+      hourlyDemand: [],
+      recentOrders: [],
+      forecast: []
+    };
   }
 }
 
