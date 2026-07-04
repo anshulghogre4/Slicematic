@@ -502,6 +502,33 @@ async function collectCustomerIdCandidates(params: {
   return candidates;
 }
 
+const ORDER_HISTORY_SELECT =
+  "order_id, customer_id, order_datetime, order_status, payment_method, subtotal_amount, discount_amount, tax_amount, final_amount";
+
+function mapOrderHistoryRow(row: {
+  order_id: string;
+  customer_id?: string | null;
+  order_datetime: string;
+  order_status: string;
+  payment_method: string;
+  subtotal_amount: number;
+  discount_amount: number;
+  tax_amount: number;
+  final_amount: number;
+}, resolvedCustomerId: string) {
+  return {
+    order_id: row.order_id,
+    customer_id: row.customer_id ?? resolvedCustomerId,
+    order_datetime: row.order_datetime,
+    order_status: row.order_status,
+    payment_method: row.payment_method,
+    subtotal_amount: row.subtotal_amount,
+    discount_amount: row.discount_amount,
+    tax_amount: row.tax_amount,
+    final_amount: row.final_amount
+  };
+}
+
 async function fetchOrdersForCustomer(
   supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
   resolvedCustomerId: string,
@@ -511,10 +538,25 @@ async function fetchOrdersForCustomer(
   const normalizedPhone = (profile?.phone ?? "").trim();
   const normalizedEmail = (profile?.email ?? "").trim().toLowerCase();
 
+  const { data: directData, error: directError } = await supabase
+    .schema("slicematic")
+    .from("orders")
+    .select(ORDER_HISTORY_SELECT)
+    .eq("customer_id", resolvedCustomerId)
+    .order("order_datetime", { ascending: false })
+    .limit(20);
+
+  if (directError) {
+    console.error("Customer orders direct lookup error:", directError);
+  }
+  if (directData?.length) {
+    return directData.map((row) => mapOrderHistoryRow(row, resolvedCustomerId));
+  }
+
   const { data, error } = await supabase
     .schema("slicematic")
     .from("orders")
-    .select("order_id, customer_id, order_datetime, order_status, payment_method, subtotal_amount, discount_amount, tax_amount, final_amount, customer:customer_id(mobile_number, email)")
+    .select(`${ORDER_HISTORY_SELECT}, customer:customer_id(mobile_number, email)`)
     .order("order_datetime", { ascending: false })
     .limit(200);
 
@@ -533,17 +575,7 @@ async function fetchOrdersForCustomer(
       if (normalizedEmail && String(customer?.email ?? "").toLowerCase() === normalizedEmail) return true;
       return false;
     })
-    .map((row) => ({
-      order_id: row.order_id,
-      customer_id: row.customer_id ?? resolvedCustomerId,
-      order_datetime: row.order_datetime,
-      order_status: row.order_status,
-      payment_method: row.payment_method,
-      subtotal_amount: row.subtotal_amount,
-      discount_amount: row.discount_amount,
-      tax_amount: row.tax_amount,
-      final_amount: row.final_amount
-    }))
+    .map((row) => mapOrderHistoryRow(row, resolvedCustomerId))
     .slice(0, 20);
 }
 
@@ -552,9 +584,9 @@ export async function loadCustomerOrderHistory(params: {
   identifier?: string | null;
   phone?: string | null;
 }): Promise<{ orders: CustomerOrderHistoryItem[]; customer_id: string | null }> {
-  const supabase = getSupabaseAdminClient();
+  const supabase = getSupabaseServerClient();
   if (!supabase) {
-    console.error("SUPABASE_SERVICE_ROLE_KEY is required for customer order history.");
+    console.error("Supabase is not configured for customer order history.");
     return { orders: [], customer_id: null };
   }
 

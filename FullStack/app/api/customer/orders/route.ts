@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { loadCustomerOrderHistory } from "../../../../lib/data-service";
-import { hasSupabaseAdminEnv } from "../../../../lib/supabase";
+import { hasSupabaseEnv } from "../../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
 
@@ -15,9 +15,9 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: false, error: "customer_id or identifier (mobile or email) is required" }, { status: 400 });
     }
 
-    if (!hasSupabaseAdminEnv()) {
+    if (!hasSupabaseEnv()) {
       return NextResponse.json(
-        { ok: false, error: "Server missing SUPABASE_SERVICE_ROLE_KEY — order history unavailable." },
+        { ok: false, error: "Supabase is not configured — order history unavailable." },
         { status: 503 }
       );
     }
