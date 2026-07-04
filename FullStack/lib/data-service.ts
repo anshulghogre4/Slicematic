@@ -471,20 +471,8 @@ export async function registerCustomer(input: {
 const ORDER_HISTORY_SELECT =
   "order_id, customer_id, order_datetime, order_status, payment_method, subtotal_amount, discount_amount, tax_amount, final_amount";
 
-const ORDER_HISTORY_NESTED_SELECT = `
-  ${ORDER_HISTORY_SELECT},
-  order_item (
-    quantity,
-    line_total,
-    pizza_types ( pizza_name ),
-    pizza_bases ( base_name ),
-    pizza_sizes ( size_name )
-  )
-`;
-
-type NestedOrderRow = {
+type OrderHistoryRow = {
   order_id: string;
-  customer_id?: string | null;
   order_datetime: string;
   order_status: string;
   payment_method: string;
@@ -492,26 +480,87 @@ type NestedOrderRow = {
   discount_amount: number;
   tax_amount: number;
   final_amount: number;
-  order_item: Array<{
-    quantity: number;
-    line_total: number;
-    pizza_types: { pizza_name: string } | Array<{ pizza_name: string }> | null;
-    pizza_bases: { base_name: string } | Array<{ base_name: string }> | null;
-    pizza_sizes: { size_name: string } | Array<{ size_name: string }> | null;
-  }> | null;
 };
 
-function nestedRelationName<T extends { [key: string]: unknown }>(
-  relation: T | T[] | null | undefined,
-  field: keyof T
-): string {
-  const row = Array.isArray(relation) ? relation[0] : relation;
-  if (!row) return "";
-  const value = row[field];
-  return value == null ? "" : String(value);
-}
+/**
+ * Order history — flat queries only (no nested PostgREST embeds).
+ * Nested joins fail under RLS on hosted Supabase; fetch orders, items, and names separately.
+ */
+async function fetchOrderHistoryByCustomerId(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
+  customerId: string
+): Promise<CustomerOrderHistoryItem[]> {
+  const { data: ordersData, error: ordersError } = await supabase
+    .schema("slicematic")
+    .from("orders")
+    .select(ORDER_HISTORY_SELECT)
+    .eq("customer_id", customerId)
+    .order("order_datetime", { ascending: false })
+    .limit(20);
 
-function mapNestedOrderRows(rows: NestedOrderRow[]): CustomerOrderHistoryItem[] {
+  if (ordersError) {
+    console.error("Customer orders lookup error:", ordersError);
+    return [];
+  }
+
+  const rows = (ordersData ?? []) as OrderHistoryRow[];
+  if (!rows.length) return [];
+
+  const orderIds = rows.map((row) => row.order_id);
+  const { data: itemsData, error: itemsError } = await supabase
+    .schema("slicematic")
+    .from("order_item")
+    .select("order_id, pizza_type_id, base_id, size_id, quantity, line_total")
+    .in("order_id", orderIds);
+
+  if (itemsError) {
+    console.error("Customer order items lookup error:", itemsError);
+    return rows.map((row) => ({
+      id: row.order_id,
+      createdAt: row.order_datetime,
+      paymentMode: row.payment_method,
+      status: row.order_status,
+      subtotal: row.subtotal_amount,
+      discount: row.discount_amount,
+      gst: row.tax_amount,
+      finalTotal: row.final_amount,
+      lines: []
+    }));
+  }
+
+  const pizzaIds = [...new Set((itemsData ?? []).map((item) => item.pizza_type_id))];
+  const baseIds = [...new Set((itemsData ?? []).map((item) => item.base_id))];
+  const sizeIds = [...new Set((itemsData ?? []).map((item) => item.size_id))];
+
+  const [pizzasRes, basesRes, sizesRes] = await Promise.all([
+    pizzaIds.length
+      ? supabase.schema("slicematic").from("pizza_types").select("pizza_type_id, pizza_name").in("pizza_type_id", pizzaIds)
+      : Promise.resolve({ data: [], error: null }),
+    baseIds.length
+      ? supabase.schema("slicematic").from("pizza_bases").select("base_id, base_name").in("base_id", baseIds)
+      : Promise.resolve({ data: [], error: null }),
+    sizeIds.length
+      ? supabase.schema("slicematic").from("pizza_sizes").select("size_id, size_name").in("size_id", sizeIds)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  const pizzaMap = new Map((pizzasRes.data ?? []).map((pizza) => [pizza.pizza_type_id, pizza.pizza_name]));
+  const baseMap = new Map((basesRes.data ?? []).map((base) => [base.base_id, base.base_name]));
+  const sizeMap = new Map((sizesRes.data ?? []).map((size) => [size.size_id, size.size_name]));
+
+  const itemsByOrder = new Map<string, CustomerOrderHistoryItem["lines"]>();
+  for (const item of itemsData ?? []) {
+    const lines = itemsByOrder.get(item.order_id) ?? [];
+    lines.push({
+      pizzaName: pizzaMap.get(item.pizza_type_id) ?? "Unknown Pizza",
+      baseName: baseMap.get(item.base_id) ?? "Unknown Base",
+      sizeName: sizeMap.get(item.size_id) ?? "Regular",
+      quantity: item.quantity,
+      lineTotal: item.line_total
+    });
+    itemsByOrder.set(item.order_id, lines);
+  }
+
   return rows.map((row) => ({
     id: row.order_id,
     createdAt: row.order_datetime,
@@ -521,40 +570,8 @@ function mapNestedOrderRows(rows: NestedOrderRow[]): CustomerOrderHistoryItem[] 
     discount: row.discount_amount,
     gst: row.tax_amount,
     finalTotal: row.final_amount,
-    lines: (row.order_item ?? []).map((item) => ({
-      pizzaName: nestedRelationName(item.pizza_types, "pizza_name") || "Unknown Pizza",
-      baseName: nestedRelationName(item.pizza_bases, "base_name") || "Unknown Base",
-      sizeName: nestedRelationName(item.pizza_sizes, "size_name") || "Regular",
-      quantity: item.quantity,
-      lineTotal: item.line_total
-    }))
+    lines: itemsByOrder.get(row.order_id) ?? []
   }));
-}
-
-/**
- * Order history — lookup filter is orders.customer_id only.
- * Schema: customer.customer_id <- orders.customer_id
- *         orders.order_id <- order_item.order_id
- *         order_item -> pizza_types | pizza_bases | pizza_sizes
- */
-async function fetchOrderHistoryByCustomerId(
-  supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
-  customerId: string
-): Promise<CustomerOrderHistoryItem[]> {
-  const { data, error } = await supabase
-    .schema("slicematic")
-    .from("orders")
-    .select(ORDER_HISTORY_NESTED_SELECT)
-    .eq("customer_id", customerId)
-    .order("order_datetime", { ascending: false })
-    .limit(20);
-
-  if (error) {
-    console.error("Customer orders lookup error:", error);
-    return [];
-  }
-
-  return mapNestedOrderRows((data ?? []) as NestedOrderRow[]);
 }
 
 export async function loadCustomerOrderHistoryByCustomerId(
