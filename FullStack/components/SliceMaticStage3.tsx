@@ -36,7 +36,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { calculateBill, defaultPricingConfig, getLineUnitPrice, money, validateCustomer } from "../lib/pricing";
 import { buildSeedSummary, seedMenu } from "../lib/seed-data";
-import { applyOrderToSession, syncSessionCustomerId } from "../lib/session-customer";
+import { applyOrderToSession, syncSessionCustomerId, syncSessionCustomerRecord } from "../lib/session-customer";
 import { AdminSummary, CartLine, CustomerDetails, MenuItem, MenuPayload, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "../lib/types";
 import { useStore } from "../lib/store";
 import { useRouter } from "next/navigation";
@@ -294,6 +294,9 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       } catch { /* ignore */ }
     }
     if (!customerId && !phone && !email) return;
+
+    const syncedId = await syncSessionCustomerRecord();
+    if (syncedId) customerId = syncedId;
 
     if (!customerId && (email || phone)) {
       try {

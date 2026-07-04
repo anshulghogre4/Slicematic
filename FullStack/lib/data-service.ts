@@ -243,7 +243,7 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
         .from("customer")
         .update({ email: accountEmail })
         .eq("customer_id", effectiveCustomerId)
-        .is("email", null);
+        .or("email.is.null,email.eq.");
     }
 
     const { error: orderError } = await supabase.schema("slicematic").from("orders").insert({
@@ -446,7 +446,7 @@ export async function registerCustomer(input: {
         .from("customer")
         .update({ email })
         .eq("customer_id", existingByPhone.data.customer_id)
-        .is("email", null);
+        .or("email.is.null,email.eq.");
     }
     return String(existingByPhone.data.customer_id);
   }
@@ -488,16 +488,16 @@ async function collectCustomerIdCandidates(params: {
     candidates.push(trimmed);
   };
 
-  if (params.identifier?.trim()) {
-    add(await resolveCustomerId({ identifier: params.identifier }));
-    const profile = await lookupCustomerProfile(params.identifier.trim());
-    if (profile?.phone) add(await resolveCustomerId({ identifier: profile.phone }));
+  if (params.customerId?.trim()) {
+    add(await resolveCustomerId({ customerId: params.customerId }));
   }
   if (params.phone?.trim()) {
     add(await resolveCustomerId({ identifier: params.phone }));
   }
-  if (params.customerId?.trim()) {
-    add(await resolveCustomerId({ customerId: params.customerId }));
+  if (params.identifier?.trim()) {
+    add(await resolveCustomerId({ identifier: params.identifier }));
+    const profile = await lookupCustomerProfile(params.identifier.trim());
+    if (profile?.phone) add(await resolveCustomerId({ identifier: profile.phone }));
   }
   return candidates;
 }

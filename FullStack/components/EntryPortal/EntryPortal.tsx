@@ -330,6 +330,30 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
         ? `${customerObj.address || ""}, ${customerObj.city}`.trim().replace(/^,\s*/, "")
         : customerObj.address || "";
 
+      const loginEmail = (customerObj.email || identifier.trim().toLowerCase() || "").trim().toLowerCase();
+      const isDemo = isDemoUser(loginEmail) || fallbackDemo;
+      if (!isDemo && loginEmail && customerObj.phone && customerObj.name) {
+        try {
+          const registerRes = await fetch("/api/customer/register", {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              name: customerObj.name,
+              phone: customerObj.phone,
+              email: loginEmail,
+              city: customerObj.city || "Delhi NCR",
+              address: displayAddress
+            })
+          });
+          const registerData = await registerRes.json();
+          if (registerData.ok && registerData.customer_id) {
+            customerObj = { ...customerObj, email: loginEmail, customerId: registerData.customer_id };
+          }
+        } catch {
+          /* proceed with session; Account tab will retry sync */
+        }
+      }
+
       sessionStorage.setItem(
         "slicematic_customer",
         JSON.stringify({
@@ -340,7 +364,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
           note: customerObj.note || ""
         })
       );
-      sessionStorage.setItem("slicematic_customer_email", customerObj.email || "");
+      sessionStorage.setItem("slicematic_customer_email", loginEmail || customerObj.email || "");
       sessionStorage.setItem("slicematic_customer_id", customerObj.customerId || "");
       sessionStorage.setItem("slicematic_customer_logged_in", "true");
 
