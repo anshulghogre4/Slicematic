@@ -5,6 +5,7 @@ import { Check, Utensils } from "lucide-react";
 import { useStore } from "../../lib/store";
 import { money } from "../../lib/pricing";
 import { PaymentMode } from "../../lib/types";
+import { markOrdersNeedRefresh } from "../../lib/session-customer";
 
 function paymentConfirmation(mode: PaymentMode) {
   if (mode === "UPI") return "UPI payment requested. Order processing will begin upon confirmation.";
@@ -20,7 +21,7 @@ export default function ConfirmationScreen() {
     return (
       <main className="app-frame" style={{ maxWidth: 1200, margin: "0 auto", padding: "1rem", textAlign: "center" }}>
         <h2>No active order found</h2>
-        <button className="primary" onClick={() => router.push("/")}>Return to menu</button>
+        <button className="primary" onClick={() => { markOrdersNeedRefresh(); router.push("/"); }}>Return to menu</button>
       </main>
     );
   }
@@ -34,7 +35,7 @@ export default function ConfirmationScreen() {
             <h1>Track your SliceMatic order</h1>
             <p>The cart is closed now. The customer sees fulfilment status, rider progress, and final bill on a dedicated page.</p>
           </div>
-          <button type="button" onClick={() => { clearCheckout(); router.push("/"); }}><Utensils /> New order</button>
+          <button type="button" onClick={() => { markOrdersNeedRefresh(); clearCheckout(); router.push("/"); }}><Utensils /> New order</button>
         </div>
         <section className="tracking-grid">
           <div className="map-card"><div className="route-line" /><span className="pin store">S</span><span className="pin home">H</span><div className="rider-card">Ravi assigned<br /><small>Arrives in 34 min</small></div></div>

@@ -1,8 +1,27 @@
 import { randomUUID } from "crypto";
 import { calculateBill, getLineUnitPrice, sanitizePricingConfig } from "./pricing";
 import { buildSeedSummary, seedMenu, seedOrders } from "./seed-data";
-import { getSupabaseServerClient } from "./supabase";
+import { getForecastForSummary } from "./forecast-service";
+import { getSupabaseAdminClient, getSupabaseServerClient } from "./supabase";
 import { AdminSummary, CartLine, MenuItem, MenuPayload, OrderPayload, PaymentMeta, SavedOrder } from "./types";
+
+export type CustomerOrderHistoryItem = {
+  id: string;
+  createdAt: string;
+  paymentMode: string;
+  status: string;
+  subtotal: number;
+  discount: number;
+  gst: number;
+  finalTotal: number;
+  lines: Array<{
+    pizzaName: string;
+    baseName: string;
+    sizeName: string;
+    quantity: number;
+    lineTotal: number;
+  }>;
+};
 
 const NULL_LIKE = new Set(["na", "nan", "none", "null", "n/a", "undefined", ""]);
 function isNullLike(val: string) {
@@ -154,31 +173,58 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
     lines: payload.lines.map((line) => describeLine(line, menu))
   };
 
-  const supabase = getSupabaseServerClient();
+  const supabase = getSupabaseAdminClient() ?? getSupabaseServerClient();
   if (!supabase) return savedOrder;
 
   try {
-    const customerId = randomUUID();
     const uuidOrderId = randomUUID();
     const [firstName, ...rest] = payload.customer.name.trim().split(/\s+/);
     const lastName = rest.join(" ");
-
-    const existingCustomer = await supabase
-      .schema("slicematic")
-      .from("customer")
-      .select("customer_id")
-      .eq("mobile_number", payload.customer.phone.trim())
-      .maybeSingle();
-
-    const effectiveCustomerId = existingCustomer.data?.customer_id ?? customerId;
     const accountEmail = (payload.customerAccountEmail ?? "").trim().toLowerCase() || null;
+    const phone = payload.customer.phone.trim();
+    const sessionCustomerId = (payload.customerId ?? "").trim() || null;
 
-    if (!existingCustomer.data) {
+    let effectiveCustomerId: string | null = null;
+
+    if (sessionCustomerId) {
+      const byId = await supabase
+        .schema("slicematic")
+        .from("customer")
+        .select("customer_id")
+        .eq("customer_id", sessionCustomerId)
+        .maybeSingle();
+      if (byId.data?.customer_id) {
+        effectiveCustomerId = byId.data.customer_id;
+      }
+    }
+
+    if (!effectiveCustomerId) {
+      const byPhone = await supabase
+        .schema("slicematic")
+        .from("customer")
+        .select("customer_id")
+        .eq("mobile_number", phone)
+        .maybeSingle();
+      effectiveCustomerId = byPhone.data?.customer_id ?? null;
+    }
+
+    if (!effectiveCustomerId && accountEmail) {
+      const byEmail = await supabase
+        .schema("slicematic")
+        .from("customer")
+        .select("customer_id")
+        .eq("email", accountEmail)
+        .maybeSingle();
+      effectiveCustomerId = byEmail.data?.customer_id ?? null;
+    }
+
+    if (!effectiveCustomerId) {
+      effectiveCustomerId = randomUUID();
       const { error: customerError } = await supabase.schema("slicematic").from("customer").insert({
         customer_id: effectiveCustomerId,
         first_name: firstName,
         last_name: lastName,
-        mobile_number: payload.customer.phone.trim(),
+        mobile_number: phone,
         email: accountEmail,
         city: "Delhi NCR",
         state: "Delhi",
@@ -192,7 +238,6 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
         throw new Error("Customer insert failed: " + customerError.message);
       }
     } else if (accountEmail) {
-      // Patch email onto existing customer if they logged in with email but it's missing from DB
       await supabase
         .schema("slicematic")
         .from("customer")
@@ -273,7 +318,7 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
         .eq("recommendation_id", payload.recommendationId);
     }
 
-    return { ...savedOrder, id: uuidOrderId };
+    return { ...savedOrder, id: uuidOrderId, linkedCustomerId: effectiveCustomerId };
   } catch (err) {
     console.error("saveOrder caught an error:", err);
     return savedOrder;
@@ -295,6 +340,318 @@ function describeLine(line: CartLine, menu: MenuPayload): SavedOrder["lines"][nu
     quantity: line.quantity,
     lineTotal: getLineUnitPrice(line, menu) * line.quantity
   };
+}
+
+function normalizeCustomerId(value: string) {
+  return value.trim().toLowerCase();
+}
+
+export async function resolveCustomerId(params: { customerId?: string | null; identifier?: string | null }) {
+  const supabase = getSupabaseAdminClient() ?? getSupabaseServerClient();
+  if (!supabase) return null;
+
+  const explicitId = (params.customerId ?? "").trim();
+  if (explicitId) {
+    const byId = await supabase
+      .schema("slicematic")
+      .from("customer")
+      .select("customer_id")
+      .eq("customer_id", explicitId)
+      .maybeSingle();
+    if (byId.data?.customer_id) return String(byId.data.customer_id);
+  }
+
+  const identifier = (params.identifier ?? "").trim();
+  if (!identifier) return null;
+
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+  const queryField = isEmail ? "email" : "mobile_number";
+  const lookupValue = isEmail ? identifier.toLowerCase() : identifier;
+
+  const { data, error } = await supabase
+    .schema("slicematic")
+    .from("customer")
+    .select("customer_id")
+    .eq(queryField, lookupValue)
+    .maybeSingle();
+
+  if (error) {
+    console.error("Customer lookup error:", error);
+    return null;
+  }
+
+  return data?.customer_id ? String(data.customer_id) : null;
+}
+
+export async function lookupCustomerProfile(identifier: string) {
+  const supabase = getSupabaseAdminClient() ?? getSupabaseServerClient();
+  if (!supabase) return null;
+
+  const trimmed = identifier.trim();
+  const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(trimmed);
+  const customerId = await resolveCustomerId(isUuid ? { customerId: trimmed } : { identifier: trimmed });
+  if (!customerId) return null;
+
+  const { data, error } = await supabase
+    .schema("slicematic")
+    .from("customer")
+    .select("customer_id, first_name, last_name, mobile_number, email, city")
+    .eq("customer_id", customerId)
+    .maybeSingle();
+
+  if (error || !data) {
+    if (error) console.error("Customer profile lookup error:", error);
+    return null;
+  }
+
+  return {
+    customerId: String(data.customer_id),
+    name: `${data.first_name ?? ""} ${data.last_name ?? ""}`.trim(),
+    phone: String(data.mobile_number ?? ""),
+    email: String(data.email ?? ""),
+    city: String(data.city ?? "Delhi NCR")
+  };
+}
+
+export async function registerCustomer(input: {
+  name: string;
+  phone: string;
+  email: string;
+  city: string;
+  address?: string;
+}): Promise<string | null> {
+  const supabase = getSupabaseAdminClient() ?? getSupabaseServerClient();
+  if (!supabase) return null;
+
+  const email = input.email.trim().toLowerCase();
+  const phone = input.phone.trim();
+  const [firstName, ...rest] = input.name.trim().split(/\s+/);
+  const lastName = rest.join(" ");
+
+  const existingByEmail = email
+    ? await supabase.schema("slicematic").from("customer").select("customer_id").eq("email", email).maybeSingle()
+    : { data: null, error: null };
+  if (existingByEmail.data?.customer_id) return String(existingByEmail.data.customer_id);
+
+  const existingByPhone = await supabase
+    .schema("slicematic")
+    .from("customer")
+    .select("customer_id")
+    .eq("mobile_number", phone)
+    .maybeSingle();
+  if (existingByPhone.data?.customer_id) {
+    if (email) {
+      await supabase
+        .schema("slicematic")
+        .from("customer")
+        .update({ email })
+        .eq("customer_id", existingByPhone.data.customer_id)
+        .is("email", null);
+    }
+    return String(existingByPhone.data.customer_id);
+  }
+
+  const customerId = randomUUID();
+  const { error } = await supabase.schema("slicematic").from("customer").insert({
+    customer_id: customerId,
+    first_name: firstName,
+    last_name: lastName || null,
+    mobile_number: phone,
+    email: email || null,
+    city: input.city.trim() || "Delhi NCR",
+    state: "Delhi",
+    country: "India",
+    registration_date: new Date().toISOString(),
+    preferred_contact_channel: "Phone",
+    marketing_opt_in: false
+  });
+  if (error) {
+    console.error("registerCustomer insert error:", error);
+    return null;
+  }
+  return customerId;
+}
+
+async function collectCustomerIdCandidates(params: {
+  customerId?: string | null;
+  identifier?: string | null;
+  phone?: string | null;
+}) {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const add = (id: string | null | undefined) => {
+    const trimmed = (id ?? "").trim();
+    if (!trimmed) return;
+    const normalized = normalizeCustomerId(trimmed);
+    if (seen.has(normalized)) return;
+    seen.add(normalized);
+    candidates.push(trimmed);
+  };
+
+  if (params.identifier?.trim()) {
+    add(await resolveCustomerId({ identifier: params.identifier }));
+    const profile = await lookupCustomerProfile(params.identifier.trim());
+    if (profile?.phone) add(await resolveCustomerId({ identifier: profile.phone }));
+  }
+  if (params.phone?.trim()) {
+    add(await resolveCustomerId({ identifier: params.phone }));
+  }
+  if (params.customerId?.trim()) {
+    add(await resolveCustomerId({ customerId: params.customerId }));
+  }
+  return candidates;
+}
+
+async function fetchOrdersForCustomer(
+  supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
+  resolvedCustomerId: string,
+  profile?: { phone?: string; email?: string } | null
+) {
+  const normalizedId = normalizeCustomerId(resolvedCustomerId);
+  const normalizedPhone = (profile?.phone ?? "").trim();
+  const normalizedEmail = (profile?.email ?? "").trim().toLowerCase();
+
+  const { data, error } = await supabase
+    .schema("slicematic")
+    .from("orders")
+    .select("order_id, customer_id, order_datetime, order_status, payment_method, subtotal_amount, discount_amount, tax_amount, final_amount, customer:customer_id(mobile_number, email)")
+    .order("order_datetime", { ascending: false })
+    .limit(200);
+
+  if (error || !data?.length) {
+    if (error) console.error("Customer orders lookup error:", error);
+    return [];
+  }
+
+  return data
+    .filter((row) => {
+      const directId = row.customer_id ? normalizeCustomerId(String(row.customer_id)) : "";
+      if (directId && directId === normalizedId) return true;
+
+      const customer = Array.isArray(row.customer) ? row.customer[0] : row.customer;
+      if (normalizedPhone && String(customer?.mobile_number ?? "") === normalizedPhone) return true;
+      if (normalizedEmail && String(customer?.email ?? "").toLowerCase() === normalizedEmail) return true;
+      return false;
+    })
+    .map((row) => ({
+      order_id: row.order_id,
+      customer_id: row.customer_id ?? resolvedCustomerId,
+      order_datetime: row.order_datetime,
+      order_status: row.order_status,
+      payment_method: row.payment_method,
+      subtotal_amount: row.subtotal_amount,
+      discount_amount: row.discount_amount,
+      tax_amount: row.tax_amount,
+      final_amount: row.final_amount
+    }))
+    .slice(0, 20);
+}
+
+export async function loadCustomerOrderHistory(params: {
+  customerId?: string | null;
+  identifier?: string | null;
+  phone?: string | null;
+}): Promise<{ orders: CustomerOrderHistoryItem[]; customer_id: string | null }> {
+  const supabase = getSupabaseAdminClient();
+  if (!supabase) {
+    console.error("SUPABASE_SERVICE_ROLE_KEY is required for customer order history.");
+    return { orders: [], customer_id: null };
+  }
+
+  const candidates = await collectCustomerIdCandidates(params);
+  if (!candidates.length) {
+    return { orders: [], customer_id: null };
+  }
+
+  let profile: Awaited<ReturnType<typeof lookupCustomerProfile>> = null;
+  if (params.identifier?.trim()) {
+    profile = await lookupCustomerProfile(params.identifier.trim());
+  } else if (params.phone?.trim()) {
+    profile = await lookupCustomerProfile(params.phone.trim());
+  } else if (candidates[0]) {
+    profile = await lookupCustomerProfile(candidates[0]);
+  }
+
+  const mergedOrders: Awaited<ReturnType<typeof fetchOrdersForCustomer>> = [];
+  const seenOrderIds = new Set<string>();
+  let resolvedCustomerId = profile?.customerId ?? candidates[0];
+
+  for (const candidateId of candidates) {
+    const candidateOrders = await fetchOrdersForCustomer(supabase, candidateId, profile);
+    if (candidateOrders.length && mergedOrders.length === 0) {
+      resolvedCustomerId = candidateId;
+    }
+    for (const row of candidateOrders) {
+      if (seenOrderIds.has(row.order_id)) continue;
+      seenOrderIds.add(row.order_id);
+      mergedOrders.push(row);
+    }
+  }
+
+  mergedOrders.sort((a, b) => String(b.order_datetime).localeCompare(String(a.order_datetime)));
+  const ordersData = mergedOrders.slice(0, 20);
+
+  if (!ordersData.length) {
+    return { orders: [], customer_id: profile?.customerId ?? resolvedCustomerId };
+  }
+
+  const orderIds = ordersData.map((row) => row.order_id);
+  const { data: itemsData, error: itemsError } = await supabase
+    .schema("slicematic")
+    .from("order_item")
+    .select("order_item_id, order_id, pizza_type_id, base_id, size_id, quantity, line_total")
+    .in("order_id", orderIds);
+
+  if (itemsError) {
+    console.error("Order items lookup error:", itemsError);
+  }
+
+  const pizzaIds = [...new Set((itemsData || []).map((item) => item.pizza_type_id))];
+  const baseIds = [...new Set((itemsData || []).map((item) => item.base_id))];
+  const sizeIds = [...new Set((itemsData || []).map((item) => item.size_id))];
+
+  const [pizzasRes, basesRes, sizesRes] = await Promise.all([
+    pizzaIds.length
+      ? supabase.schema("slicematic").from("pizza_types").select("pizza_type_id, pizza_name").in("pizza_type_id", pizzaIds)
+      : Promise.resolve({ data: [], error: null }),
+    baseIds.length
+      ? supabase.schema("slicematic").from("pizza_bases").select("base_id, base_name").in("base_id", baseIds)
+      : Promise.resolve({ data: [], error: null }),
+    sizeIds.length
+      ? supabase.schema("slicematic").from("pizza_sizes").select("size_id, size_name").in("size_id", sizeIds)
+      : Promise.resolve({ data: [], error: null })
+  ]);
+
+  const pizzaMap = new Map((pizzasRes.data || []).map((pizza) => [pizza.pizza_type_id, pizza.pizza_name]));
+  const baseMap = new Map((basesRes.data || []).map((base) => [base.base_id, base.base_name]));
+  const sizeMap = new Map((sizesRes.data || []).map((size) => [size.size_id, size.size_name]));
+
+  const itemsByOrder = new Map<string, CustomerOrderHistoryItem["lines"]>();
+  for (const item of itemsData || []) {
+    const lines = itemsByOrder.get(item.order_id) || [];
+    lines.push({
+      pizzaName: pizzaMap.get(item.pizza_type_id) || "Unknown Pizza",
+      baseName: baseMap.get(item.base_id) || "Unknown Base",
+      sizeName: sizeMap.get(item.size_id) || "Regular",
+      quantity: item.quantity,
+      lineTotal: item.line_total
+    });
+    itemsByOrder.set(item.order_id, lines);
+  }
+
+  const orders: CustomerOrderHistoryItem[] = ordersData.map((row) => ({
+    id: row.order_id,
+    createdAt: row.order_datetime,
+    paymentMode: row.payment_method,
+    status: row.order_status,
+    subtotal: row.subtotal_amount,
+    discount: row.discount_amount,
+    gst: row.tax_amount,
+    finalTotal: row.final_amount,
+    lines: itemsByOrder.get(row.order_id) || []
+  }));
+
+  return { orders, customer_id: resolvedCustomerId };
 }
 
 export async function loadAdminSummary(): Promise<AdminSummary> {
@@ -348,6 +705,10 @@ export async function loadAdminSummary(): Promise<AdminSummary> {
     const hourlyDemand = [...hourMap.values()].sort((a, b) => a.hour.localeCompare(b.hour));
     const busiestHour = [...hourMap.values()].sort((a, b) => b.orders - a.orders)[0]?.hour ?? "20:00";
     const topPizza = await loadTopSellingPizza();
+    const { forecast, topPeaks, forecastMeta } = await getForecastForSummary(
+      recentOrders.map((order) => ({ createdAt: order.createdAt, finalTotal: order.finalTotal })),
+      recentOrders.length
+    );
 
     return {
       totalRevenue,
@@ -358,7 +719,9 @@ export async function loadAdminSummary(): Promise<AdminSummary> {
       paymentMix: [...paymentMap.values()],
       hourlyDemand,
       recentOrders,
-      forecast: forecastFromHourlyDemand(hourlyDemand)
+      forecast,
+      topPeaks,
+      forecastMeta
     };
   } catch {
     return buildSeedSummary();
@@ -386,14 +749,4 @@ async function loadTopSellingPizza() {
   } catch {
     return buildSeedSummary().topPizza;
   }
-}
-
-function forecastFromHourlyDemand(hourlyDemand: Array<{ hour: string; orders: number }>) {
-  if (!hourlyDemand.length) return buildSeedSummary().forecast;
-  const mean = hourlyDemand.reduce((sum, item) => sum + item.orders, 0) / hourlyDemand.length;
-  return ["Fri 19:00", "Sat 20:00", "Sun 13:00", "Mon 20:00", "Tue 19:00", "Wed 21:00", "Thu 20:00"].map((label, index) => ({
-    label,
-    predictedOrders: Math.max(1, Math.round(mean * (1 + Math.sin(index + 1) * 0.22 + (index < 2 ? 0.35 : 0)))),
-    confidence: Number((0.78 + Math.max(0, 4 - index) * 0.03).toFixed(2))
-  }));
 }

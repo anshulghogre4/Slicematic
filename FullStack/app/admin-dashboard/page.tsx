@@ -39,6 +39,7 @@ import { buildSeedSummary, seedMenu } from "../../lib/seed-data";
 import { AdminSummary, CartLine, CustomerDetails, MenuItem, MenuPayload, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "../../lib/types";
 import { useStore } from "../../lib/store";
 import { useRouter } from "next/navigation";
+import ForecastPanel from "../../components/admin/ForecastPanel";
 
 type Step = "intake" | "recommendation" | "menu" | "checkout" | "tracking";
 type AdminTab = "overview" | "orders" | "forecast" | "menu" | "ai" | "settings";
@@ -274,17 +275,32 @@ export default function AdminDashboardPage() {
         }
       }
 
-      if (identifierToUse) {
-         setCustomerOrdersLoading(true);
-         fetch(`/api/customer/orders?identifier=${encodeURIComponent(identifierToUse)}`)
-           .then(res => res.json())
-           .then(data => {
-              if (data.ok && data.orders) {
-                 setCustomerOrders(data.orders);
-              }
-           })
-           .catch(err => console.error("Error fetching customer orders", err))
-           .finally(() => setCustomerOrdersLoading(false));
+      let phoneFromSession = "";
+      if (identifierToUse || window.sessionStorage.getItem("slicematic_customer_id")) {
+        setCustomerOrdersLoading(true);
+        const params = new URLSearchParams();
+        const customerId = window.sessionStorage.getItem("slicematic_customer_id") ?? "";
+        if (identifierToUse) params.set("identifier", identifierToUse);
+        if (customerJson) {
+          try {
+            const parsedCustomer = JSON.parse(customerJson) as Partial<CustomerDetails>;
+            phoneFromSession = parsedCustomer.phone ?? "";
+            if (phoneFromSession) params.set("phone", phoneFromSession);
+          } catch { /* ignore */ }
+        }
+        if (customerId) params.set("customer_id", customerId);
+        fetch(`/api/customer/orders?${params.toString()}`, { cache: "no-store" })
+          .then(res => res.json())
+          .then(data => {
+            if (data.ok && data.orders) {
+              setCustomerOrders(data.orders);
+            }
+            if (data.ok && data.customer_id) {
+              window.sessionStorage.setItem("slicematic_customer_id", data.customer_id);
+            }
+          })
+          .catch(err => console.error("Error fetching customer orders", err))
+          .finally(() => setCustomerOrdersLoading(false));
       }
 
       setCustomerLoggedIn(true);
@@ -1314,6 +1330,7 @@ export default function AdminDashboardPage() {
       if (supabase) await supabase.auth.signOut();
     } finally {
       sessionStorage.removeItem("slicematic_is_admin");
+      sessionStorage.removeItem("slicematic_admin_view_customer");
       sessionStorage.removeItem("slicematic_customer_logged_in");
       setAdminLoggedIn(false);
       router.replace("/");
@@ -1940,12 +1957,15 @@ export default function AdminDashboardPage() {
           </div>
         </a>
         <nav>
-          <button onClick={() => router.push("/")} type="button"><Utensils /> Customer app</button>
+          <button onClick={() => {
+            sessionStorage.setItem("slicematic_admin_view_customer", "true");
+            router.push("/");
+          }} type="button"><Utensils /> Customer app</button>
           <button className="active" onClick={() => setAdminTab("overview")} type="button"><Settings2 /> Admin console</button>
         </nav>
         {workspace === "customer" ? (
           <div className="top-customer-tools">
-            <button className={customerLoggedIn ? "customer-chip signed-in" : "customer-chip guest"} type="button" onClick={openAccount}>
+            <button className={customerLoggedIn ? "customer-chip signed-in" : "customer-chip guest"} type="button" onClick={customerLoggedIn ? openAccount : undefined} style={{ cursor: customerLoggedIn ? "pointer" : "default" }}>
               <UserRound />
               <span>{customerLoggedIn ? `Logged in as ${customerSessionEmail}` : "Guest checkout"}</span>
             </button>
@@ -2479,16 +2499,6 @@ function AdminOverview({ summary, opsBriefing, opsLoading, onRefreshOps }: { sum
           </>
         )}
       </div>
-    </section>
-  );
-}
-
-function ForecastPanel({ summary }: { summary: AdminSummary }) {
-  return (
-    <section className="admin-card forecast-card">
-      <div><p className="eyebrow">Demand intelligence</p><h2>Next 7 peak windows</h2><p>Lightweight regression-style forecast from historical hourly demand. This supports staffing, rider planning, and prep batching.</p></div>
-      <ResponsiveContainer width="100%" height={310}><AreaChart data={summary.forecast}><CartesianGrid strokeDasharray="3 3" /><XAxis dataKey="label" /><YAxis /><Tooltip /><Area dataKey="predictedOrders" fill="#2f6f98" stroke="#2f6f98" /></AreaChart></ResponsiveContainer>
-      <div className="forecast-list">{summary.forecast.slice(0, 3).map((item) => <div key={item.label}><strong>{item.label}</strong><span>{item.predictedOrders} orders / {Math.round(item.confidence * 100)}% confidence</span></div>)}</div>
     </section>
   );
 }

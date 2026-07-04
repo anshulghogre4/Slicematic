@@ -299,6 +299,15 @@ create policy "authenticated admin read order items" on slicematic.order_item fo
 create policy "authenticated admin read order toppings" on slicematic.order_item_topping for select to authenticated using (true);
 create policy "authenticated admin read recommendations" on slicematic.recommendation_event for select to authenticated using (true);
 
+-- Customer order history is loaded via server API using the service role (bypasses RLS).
+-- If the service role key is missing, these policies allow read access needed by /api/customer/orders.
+drop policy if exists "server read customers for order history" on slicematic.customer;
+drop policy if exists "server read orders for order history" on slicematic.orders;
+drop policy if exists "server read order items for order history" on slicematic.order_item;
+create policy "server read customers for order history" on slicematic.customer for select using (true);
+create policy "server read orders for order history" on slicematic.orders for select using (true);
+create policy "server read order items for order history" on slicematic.order_item for select using (true);
+
 -- API Role Permissions for Custom Schema
 grant usage on schema slicematic to anon, authenticated, service_role;
 grant all privileges on all tables in schema slicematic to anon, authenticated, service_role;

@@ -2004,6 +2004,48 @@ a.primary:hover {
   margin-top: 3px;
 }
 
+.recommendation-list {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.recommendation-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  background: var(--panel-soft);
+  display: grid;
+  gap: 8px;
+}
+
+.recommendation-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.recommendation-rank {
+  background: var(--ink);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.recommendation-card p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.recommendation-card button {
+  width: fit-content;
+}
+
 .order-pagination {
   display: flex;
   align-items: center;
@@ -2066,6 +2108,19 @@ a.primary:hover {
 
 .forecast-list span {
   margin-top: 5px;
+}
+
+.forecast-model-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  background: var(--panel-soft);
+}
+
+.forecast-model-card p {
+  margin: 0;
 }
 
 .menu-editor {

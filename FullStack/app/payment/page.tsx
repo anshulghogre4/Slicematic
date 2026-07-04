@@ -7,6 +7,7 @@ import { useStore } from "../../lib/store";
 import { calculateBill, getLineUnitPrice, money } from "../../lib/pricing";
 import { CartLine, MenuPayload, PaymentMode } from "../../lib/types";
 import { seedMenu } from "../../lib/seed-data";
+import { applyOrderToSession } from "../../lib/session-customer";
 
 const paymentModes: Array<{ mode: PaymentMode; icon: React.ReactNode; copy: string }> = [
   { 
@@ -68,14 +69,34 @@ export default function PaymentScreen() {
   const [placingOrder, setPlacingOrder] = useState(false);
   const [paymentStatusMessage, setPaymentStatusMessage] = useState("");
   const [toast, setToast] = useState("");
+  const [customerLoggedIn, setCustomerLoggedIn] = useState(false);
+  const [sessionEmail, setSessionEmail] = useState("");
+  const [sessionCustomerId, setSessionCustomerId] = useState<string | null>(null);
 
-  const brand = { name: "SliceMatic" }; // Minimal brand fallback, full brand should ideally be in store if needed
+  const brand = { name: "SliceMatic" };
 
-  // Assuming member if email is stored, else guest. SliceMaticStage3 didn't save this to store, so we infer from session
-  // For safety, we treat everyone as guest unless we extend the store. In this refactor, we just use the customer object.
-  const customerLoggedIn = !!customer.name; // In a real app we'd have `session` in store. Let's simplify.
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    setCustomerLoggedIn(window.sessionStorage.getItem("slicematic_customer_logged_in") === "true");
+    setSessionEmail(window.sessionStorage.getItem("slicematic_customer_email") ?? "");
+    setSessionCustomerId(window.sessionStorage.getItem("slicematic_customer_id") || null);
+  }, []);
+
   const customerOrderMode = customerLoggedIn ? "Member order" : "Guest order";
   const customerPaymentPolicy = customerLoggedIn || pricingConfig.guestCashAllowed ? "Cash, Card, and UPI available" : "Guest checkout requires UPI or Card";
+
+  function buildOrderPayload() {
+    return {
+      customer,
+      lines: cart,
+      paymentMode,
+      customerMode: customerLoggedIn ? "member" as const : "guest" as const,
+      customerAccountEmail: customerLoggedIn ? sessionEmail || null : null,
+      customerId: sessionCustomerId,
+      pricingConfig,
+      recommendationId: recommendation?.recommendationId ?? null
+    };
+  }
 
   // Fetch menu
   const [menu, setMenu] = useState<MenuPayload>(seedMenu);
@@ -128,6 +149,7 @@ export default function PaymentScreen() {
       }
       setLastOrder(result.order);
       setCart([]);
+      applyOrderToSession(result.order);
       router.push("/confirmation");
     } catch {
       setPaymentStatusMessage("Could not confirm UPI payment. Please retry.");
@@ -164,15 +186,7 @@ export default function PaymentScreen() {
       const response = await fetch("/api/orders", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          customer,
-          lines: cart,
-          paymentMode,
-          customerMode: customerLoggedIn ? "member" : "guest",
-          customerAccountEmail: customerLoggedIn ? customer.name : null,
-          pricingConfig,
-          recommendationId: recommendation?.recommendationId ?? null
-        })
+        body: JSON.stringify(buildOrderPayload())
       });
       const result = await response.json();
       if (!result.ok) {
@@ -181,6 +195,7 @@ export default function PaymentScreen() {
       }
       setLastOrder(result.order);
       setCart([]);
+      applyOrderToSession(result.order);
       router.push("/confirmation");
     } catch {
       showToast("Could not place order. Please retry.");
@@ -192,15 +207,7 @@ export default function PaymentScreen() {
   async function placeUpiOrder() {
     setPlacingOrder(true);
     setPaymentStatusMessage("");
-    const orderPayload = {
-      customer,
-      lines: cart,
-      paymentMode,
-      customerMode: customerLoggedIn ? "member" : "guest",
-      customerAccountEmail: customerLoggedIn ? customer.name : null,
-      pricingConfig,
-      recommendationId: recommendation?.recommendationId ?? null
-    };
+    const orderPayload = buildOrderPayload();
     try {
       const createRes = await fetch("/api/payments/cashfree/create-order", {
         method: "POST",
@@ -237,15 +244,7 @@ export default function PaymentScreen() {
   async function placeOnlineOrder() {
     setPlacingOrder(true);
     setPaymentStatusMessage("");
-    const orderPayload = {
-      customer,
-      lines: cart,
-      paymentMode,
-      customerMode: customerLoggedIn ? "member" : "guest",
-      customerAccountEmail: customerLoggedIn ? customer.name : null,
-      pricingConfig,
-      recommendationId: recommendation?.recommendationId ?? null
-    };
+    const orderPayload = buildOrderPayload();
     try {
       const createRes = await fetch("/api/payments/create-order", {
         method: "POST",
@@ -319,6 +318,7 @@ export default function PaymentScreen() {
       }
       setLastOrder(result.order);
       setCart([]);
+      applyOrderToSession(result.order);
       router.push("/confirmation");
     } catch {
       setPaymentStatusMessage("Could not confirm payment. Please contact support.");
@@ -342,7 +342,7 @@ export default function PaymentScreen() {
             <div className="cart-head"><div><p className="eyebrow">Order review</p><h2>Basket</h2></div><ShoppingBag /></div>
             <div className={customerLoggedIn ? "order-mode member" : "order-mode guest"}>
               <div><UserRound /><strong>{customerOrderMode}</strong></div>
-              <span>{customerLoggedIn ? `Logged in as ${customer.name}` : "Guest checkout. UPI/Card required unless owner enables guest cash."}</span>
+              <span>{customerLoggedIn ? `Logged in as ${sessionEmail || customer.name}` : "Guest checkout. UPI/Card required unless owner enables guest cash."}</span>
             </div>
             {cart.length ? cart.map((line, idx) => renderLine(line, menu, idx, (id) => setCart((current) => current.filter((item) => item.id !== id)))) : <div className="empty-cart">Your cart is empty.<br /><span>Go back to menu and build a pizza.</span></div>}
             <div className="summary">

@@ -1,0 +1,67 @@
+{
+  "trainedAt": "2026-07-04T17:36:18.760400+05:30",
+  "orderCount": 22,
+  "bucketCount": 10,
+  "model": "RandomForestRegressor",
+  "features": [
+    "weekday",
+    "hour",
+    "is_weekend",
+    "hourly_revenue"
+  ],
+  "rmse": null,
+  "forecast": [
+    {
+      "label": "Mon 14:00",
+      "predictedOrders": 3,
+      "confidence": 0.67
+    },
+    {
+      "label": "Tue 14:00",
+      "predictedOrders": 3,
+      "confidence": 0.64
+    },
+    {
+      "label": "Wed 14:00",
+      "predictedOrders": 3,
+      "confidence": 0.61
+    },
+    {
+      "label": "Thu 14:00",
+      "predictedOrders": 3,
+      "confidence": 0.58
+    },
+    {
+      "label": "Fri 14:00",
+      "predictedOrders": 3,
+      "confidence": 0.55
+    },
+    {
+      "label": "Mon 12:00",
+      "predictedOrders": 3,
+      "confidence": 0.55
+    },
+    {
+      "label": "Mon 13:00",
+      "predictedOrders": 3,
+      "confidence": 0.55
+    }
+  ],
+  "topPeaks": [
+    {
+      "label": "Mon 14:00",
+      "predictedOrders": 3,
+      "confidence": 0.67
+    },
+    {
+      "label": "Tue 14:00",
+      "predictedOrders": 3,
+      "confidence": 0.64
+    },
+    {
+      "label": "Wed 14:00",
+      "predictedOrders": 3,
+      "confidence": 0.61
+    }
+  ]
+}

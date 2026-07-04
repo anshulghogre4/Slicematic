@@ -204,6 +204,19 @@ export const seedForecast: ForecastPoint[] = [
   { label: "Thu 20:00", predictedOrders: 16, confidence: 0.86 }
 ];
 
+export const seedForecastMeta = {
+  model: "RandomForestRegressor",
+  features: ["weekday", "hour", "is_weekend", "hourly_revenue"],
+  rmse: 1.84,
+  trainedAt: "2026-01-15T18:00:00+05:30",
+  orderCount: seedOrders.length,
+  bucketCount: 24
+};
+
+export const seedTopPeaks: ForecastPoint[] = [...seedForecast]
+  .sort((a, b) => b.predictedOrders - a.predictedOrders)
+  .slice(0, 3);
+
 export function buildSeedSummary(): AdminSummary {
   const totalRevenue = seedOrders.reduce((sum, order) => sum + order.finalTotal, 0);
   return {
@@ -225,6 +238,8 @@ export function buildSeedSummary(): AdminSummary {
       { hour: "21:00", orders: 14, revenue: 12600 }
     ],
     recentOrders: seedOrders,
-    forecast: seedForecast
+    forecast: seedForecast,
+    topPeaks: seedTopPeaks,
+    forecastMeta: seedForecastMeta
   };
 }

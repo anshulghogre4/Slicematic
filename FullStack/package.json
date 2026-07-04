@@ -11,7 +11,8 @@
     "start": "next start",
     "lint": "next lint",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "forecast:refresh": "node scripts/refresh-forecast.mjs"
   },
   "dependencies": {
     "@cashfreepayments/cashfree-js": "^1.0.7",

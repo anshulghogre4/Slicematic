@@ -150,26 +150,50 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
 
   const checkCustomerInDb = async (verifiedIdentifier: string) => {
     let foundCustomer: any = null;
-    const supabase = getSupabaseBrowserClient();
-    if (supabase) {
-      const queryField = isEmail(verifiedIdentifier) ? "email" : "mobile_number";
-      const { data, error } = await supabase
-        .schema("slicematic")
-        .from("customer")
-        .select("*")
-        .eq(queryField, verifiedIdentifier)
-        .maybeSingle();
+    const normalizedIdentifier = isEmail(verifiedIdentifier)
+      ? verifiedIdentifier.trim().toLowerCase()
+      : verifiedIdentifier.trim();
 
-      if (!error && data) {
+    try {
+      const profileRes = await fetch(`/api/customer/profile?identifier=${encodeURIComponent(normalizedIdentifier)}`);
+      const profileData = await profileRes.json();
+      if (profileData.ok && profileData.profile) {
         foundCustomer = {
-          name: `${data.first_name || ""} ${data.last_name || ""}`.trim(),
-          phone: data.mobile_number || "",
-          email: data.email || "",
+          name: profileData.profile.name,
+          phone: profileData.profile.phone,
+          email: profileData.profile.email || (isEmail(normalizedIdentifier) ? normalizedIdentifier : ""),
           address: "",
-          city: data.city || "Delhi NCR",
+          city: profileData.profile.city || "Delhi NCR",
           age: 25,
-          customerId: data.customer_id || ""
+          customerId: profileData.profile.customerId || ""
         };
+      }
+    } catch {
+      /* fall through to local/seed lookup */
+    }
+
+    if (!foundCustomer) {
+      const supabase = getSupabaseBrowserClient();
+      if (supabase) {
+        const queryField = isEmail(normalizedIdentifier) ? "email" : "mobile_number";
+        const { data, error } = await supabase
+          .schema("slicematic")
+          .from("customer")
+          .select("*")
+          .eq(queryField, normalizedIdentifier)
+          .maybeSingle();
+
+        if (!error && data) {
+          foundCustomer = {
+            name: `${data.first_name || ""} ${data.last_name || ""}`.trim(),
+            phone: data.mobile_number || "",
+            email: data.email || "",
+            address: "",
+            city: data.city || "Delhi NCR",
+            age: 25,
+            customerId: data.customer_id || ""
+          };
+        }
       }
     }
 
@@ -213,19 +237,49 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
       setErrorMsg("Full name is required.");
       return;
     }
-    if (!/^[A-Za-z][A-Za-z .'\\-]{1,39}$/.test(nameVal)) {
-      setErrorMsg("Name must be 2–40 characters and contain only letters, spaces, hyphens, or dots.");
+    if (!/^[A-Za-z][A-Za-z ]{1,39}$/.test(nameVal)) {
+      setErrorMsg("Name must be 2–40 characters and contain only letters and spaces.");
       return;
     }
 
-    // Other fields: generic check
-    if (!mobileVal || !emailVal || !addressVal || !cityVal || !isMobile(mobileVal) || !isEmail(emailVal)) {
-      setErrorMsg("Please fill in all fields with valid data.");
+    if (!mobileVal) {
+      setErrorMsg("Mobile number is required.");
+      return;
+    }
+    if (!/^[6-9]\d{9}$/.test(mobileVal)) {
+      setErrorMsg("Mobile number must be 10 digits and start with 6, 7, 8, or 9.");
+      return;
+    }
+
+    if (!emailVal) {
+      setErrorMsg("Email address is required.");
+      return;
+    }
+    if (!isEmail(emailVal)) {
+      setErrorMsg("Please enter a valid email address.");
+      return;
+    }
+
+    if (!cityVal) {
+      setErrorMsg("City is required.");
+      return;
+    }
+
+    if (!addressVal) {
+      setErrorMsg("Delivery address is required.");
       return;
     }
 
     setLoading(true);
-    const newCustomer = {
+    let newCustomer: {
+      name: string;
+      phone: string;
+      email: string;
+      address: string;
+      city: string;
+      age: number;
+      customerId?: string;
+    } = {
       name: nameVal,
       phone: mobileVal,
       email: emailVal.toLowerCase(),
@@ -236,22 +290,23 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
 
     try {
       const isDemo = isDemoUser(identifier.trim().toLowerCase());
-      const supabase = getSupabaseBrowserClient();
-      if (supabase && !isDemo && !fallbackDemo) {
-        const [firstName, ...rest] = newCustomer.name.split(/\s+/);
-        const lastName = rest.join(" ");
-
-        const { error } = await supabase.schema("slicematic").from("customer").insert({
-          first_name: firstName,
-          last_name: lastName || null,
-          mobile_number: newCustomer.phone,
-          email: newCustomer.email || null,
-          city: newCustomer.city,
-          registration_date: new Date().toISOString()
+      if (!isDemo && !fallbackDemo) {
+        const registerRes = await fetch("/api/customer/register", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            name: newCustomer.name,
+            phone: newCustomer.phone,
+            email: newCustomer.email,
+            city: newCustomer.city,
+            address: newCustomer.address
+          })
         });
-        
-        if (error) {
-           throw new Error(error.message);
+        const registerData = await registerRes.json();
+        if (registerData.ok && registerData.customer_id) {
+          newCustomer = { ...newCustomer, customerId: registerData.customer_id };
+        } else if (!registerRes.ok) {
+          throw new Error(registerData.error || "Could not register customer account.");
         }
       }
 
@@ -289,16 +344,37 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
       sessionStorage.setItem("slicematic_customer_id", customerObj.customerId || "");
       sessionStorage.setItem("slicematic_customer_logged_in", "true");
 
+      if (!customerObj.customerId && customerObj.email) {
+        try {
+          const res = await fetch(`/api/customer/profile?identifier=${encodeURIComponent(customerObj.email)}`);
+          const data = await res.json();
+          if (data.ok && data.profile?.customerId) {
+            sessionStorage.setItem("slicematic_customer_id", data.profile.customerId);
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+
       // Admin check
       let isAdmin = false;
       const email = (customerObj.email || "").toLowerCase();
-      if (email === "demo@slicematic.in") {
+      const demoAdminEmail = (process.env.NEXT_PUBLIC_DEMO_ADMIN_EMAIL ?? "admin@slicematic.in").toLowerCase();
+      if (email === "demo@slicematic.in" || email === demoAdminEmail) {
         isAdmin = true;
       } else {
         const supabase = getSupabaseBrowserClient();
         if (supabase) {
-          const { data: roleData } = await supabase.schema("slicematic").from("user_roles").select("role").maybeSingle();
-          if (roleData && roleData.role === "admin") isAdmin = true;
+          const { data: { user } } = await supabase.auth.getUser();
+          if (user) {
+            const { data: roleData } = await supabase
+              .schema("slicematic")
+              .from("user_roles")
+              .select("role")
+              .eq("user_id", user.id)
+              .maybeSingle();
+            if (roleData?.role === "admin") isAdmin = true;
+          }
         }
       }
 
