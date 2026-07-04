@@ -275,21 +275,10 @@ export default function AdminDashboardPage() {
         }
       }
 
-      let phoneFromSession = "";
-      if (identifierToUse || window.sessionStorage.getItem("slicematic_customer_id")) {
+      const customerId = window.sessionStorage.getItem("slicematic_customer_id")?.trim() ?? "";
+      if (customerId) {
         setCustomerOrdersLoading(true);
-        const params = new URLSearchParams();
-        const customerId = window.sessionStorage.getItem("slicematic_customer_id") ?? "";
-        if (identifierToUse) params.set("identifier", identifierToUse);
-        if (customerJson) {
-          try {
-            const parsedCustomer = JSON.parse(customerJson) as Partial<CustomerDetails>;
-            phoneFromSession = parsedCustomer.phone ?? "";
-            if (phoneFromSession) params.set("phone", phoneFromSession);
-          } catch { /* ignore */ }
-        }
-        if (customerId) params.set("customer_id", customerId);
-        fetch(`/api/customer/orders?${params.toString()}`, { cache: "no-store" })
+        fetch(`/api/customer/orders?customer_id=${encodeURIComponent(customerId)}`, { cache: "no-store" })
           .then(res => res.json())
           .then(data => {
             if (data.ok && data.orders) {
