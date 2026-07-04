@@ -241,17 +241,21 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       const orderIdentifier = customerId || phoneFromSession || email;
 
       if (orderIdentifier) {
-        setCustomerOrdersLoading(true);
-        const queryParam = customerId ? `customer_id=${encodeURIComponent(customerId)}` : `identifier=${encodeURIComponent(orderIdentifier)}`;
-        fetch(`/api/customer/orders?${queryParam}`)
-          .then(res => res.json())
-          .then(data => {
-            if (data.ok && data.orders) {
-              setCustomerOrders(data.orders);
-            }
-          })
-          .catch(err => console.error("Error fetching customer orders", err))
-          .finally(() => setCustomerOrdersLoading(false));
+         setCustomerOrdersLoading(true);
+         const queryParam = customerId ? `customer_id=${encodeURIComponent(customerId)}` : `identifier=${encodeURIComponent(orderIdentifier)}`;
+         fetch(`/api/customer/orders?${queryParam}`)
+           .then(res => res.json())
+           .then(data => {
+              if (data.ok && data.orders) {
+                 setCustomerOrders(data.orders);
+              }
+              // Self-heal: store customer_id from API response so future calls use it directly
+              if (data.ok && data.customer_id) {
+                window.sessionStorage.setItem("slicematic_customer_id", data.customer_id);
+              }
+           })
+           .catch(err => console.error("Error fetching customer orders", err))
+           .finally(() => setCustomerOrdersLoading(false));
       }
 
       setCustomerLoggedIn(true);
@@ -285,6 +289,10 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       .then(res => res.json())
       .then(data => {
         if (data.ok && data.orders) setCustomerOrders(data.orders);
+        // Self-heal: store customer_id from API response so future calls use it directly
+        if (data.ok && data.customer_id) {
+          window.sessionStorage.setItem("slicematic_customer_id", data.customer_id);
+        }
       })
       .catch(err => console.error("Error refreshing customer orders", err))
       .finally(() => setCustomerOrdersLoading(false));
@@ -989,6 +997,27 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
           return;
         }
         const email = data.user?.email ?? customerAuthEmail.trim();
+        // Fetch customer_id from DB by email so order history uses the primary key
+        try {
+          const { data: customerRow } = await supabase
+            .schema("slicematic")
+            .from("customer")
+            .select("customer_id, first_name, last_name, mobile_number")
+            .eq("email", email)
+            .maybeSingle();
+          if (customerRow?.customer_id) {
+            sessionStorage.setItem("slicematic_customer_id", customerRow.customer_id);
+            sessionStorage.setItem("slicematic_customer_email", email);
+            sessionStorage.setItem("slicematic_customer", JSON.stringify({
+              name: `${customerRow.first_name ?? ""} ${customerRow.last_name ?? ""}`.trim(),
+              phone: customerRow.mobile_number ?? "",
+              address: "",
+              deliveryZone: "2-4",
+              note: ""
+            }));
+            sessionStorage.setItem("slicematic_customer_logged_in", "true");
+          }
+        } catch { /* ignore lookup errors */ }
         setCustomerLoggedIn(true);
         setCustomerSessionEmail(email);
         setWorkspace("customer");
@@ -996,17 +1025,21 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
         setCustomerAuthView("login");
         setCustomerAuthMessage("");
         showToast("Customer account signed in.");
+        refreshCustomerOrders();
         return;
       }
 
       if (customerAuthEmail.trim() === demoCustomerEmail && customerAuthPassword === demoCustomerSessionPassword) {
         setCustomerLoggedIn(true);
         setCustomerSessionEmail(demoCustomerEmail);
+        sessionStorage.setItem("slicematic_customer_email", demoCustomerEmail);
+        sessionStorage.setItem("slicematic_customer_logged_in", "true");
         setWorkspace("customer");
         setStep("menu");
         setCustomerAuthView("login");
         setCustomerAuthMessage("");
         showToast("Demo customer account signed in.");
+        refreshCustomerOrders();
       } else {
         setCustomerAuthMessage("Use the demo customer credentials or configure Supabase Auth.");
         showToast("Use the demo customer credentials or configure Supabase Auth.");

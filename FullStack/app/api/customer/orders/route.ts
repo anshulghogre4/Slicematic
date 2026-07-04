@@ -44,52 +44,68 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: true, orders: [], customer_id: null });
     }
 
-    // Fetch the orders for this customer directly by customer_id
+    // Fetch orders first (without nested joins to avoid RLS/PostgREST issues)
     const { data: ordersData, error: ordersError } = await supabase
       .schema("slicematic")
       .from("orders")
-      .select(`
-        order_id,
-        order_datetime,
-        order_status,
-        payment_method,
-        subtotal_amount,
-        discount_amount,
-        tax_amount,
-        final_amount,
-        order_item (
-          quantity,
-          pizza_price,
-          line_total,
-          pizza:pizza_type_id(pizza_name),
-          base:base_id(base_name),
-          size:size_id(size_name)
-        )
-      `)
+      .select("order_id, order_datetime, order_status, payment_method, subtotal_amount, discount_amount, tax_amount, final_amount")
       .eq("customer_id", resolvedCustomerId)
       .order("order_datetime", { ascending: false })
       .limit(20);
 
     if (ordersError) {
       console.error("Orders lookup error:", ordersError);
-      return NextResponse.json({ ok: false, error: "Error looking up orders" }, { status: 500 });
+      return NextResponse.json({ ok: false, error: "Error looking up orders: " + ordersError.message }, { status: 500 });
+    }
+
+    if (!ordersData || ordersData.length === 0) {
+      return NextResponse.json({ ok: true, orders: [], customer_id: resolvedCustomerId });
+    }
+
+    // Fetch order items separately for all order IDs
+    const orderIds = ordersData.map((o: any) => o.order_id);
+    const { data: itemsData, error: itemsError } = await supabase
+      .schema("slicematic")
+      .from("order_item")
+      .select("order_item_id, order_id, pizza_type_id, base_id, size_id, quantity, pizza_price, line_total")
+      .in("order_id", orderIds);
+
+    if (itemsError) {
+      console.error("Order items lookup error:", itemsError);
+      // Don't fail — return orders without line items
+    }
+
+    // Fetch pizza names, base names, and size names separately
+    const pizzaIds = [...new Set((itemsData || []).map((i: any) => i.pizza_type_id))];
+    const baseIds = [...new Set((itemsData || []).map((i: any) => i.base_id))];
+    const sizeIds = [...new Set((itemsData || []).map((i: any) => i.size_id))];
+
+    const [pizzasRes, basesRes, sizesRes] = await Promise.all([
+      pizzaIds.length ? supabase.schema("slicematic").from("pizza_types").select("pizza_type_id, pizza_name").in("pizza_type_id", pizzaIds) : Promise.resolve({ data: [], error: null }),
+      baseIds.length ? supabase.schema("slicematic").from("pizza_bases").select("base_id, base_name").in("base_id", baseIds) : Promise.resolve({ data: [], error: null }),
+      sizeIds.length ? supabase.schema("slicematic").from("pizza_sizes").select("size_id, size_name").in("size_id", sizeIds) : Promise.resolve({ data: [], error: null }),
+    ]);
+
+    const pizzaMap = new Map((pizzasRes.data || []).map((p: any) => [p.pizza_type_id, p.pizza_name]));
+    const baseMap = new Map((basesRes.data || []).map((b: any) => [b.base_id, b.base_name]));
+    const sizeMap = new Map((sizesRes.data || []).map((s: any) => [s.size_id, s.size_name]));
+
+    // Group items by order_id
+    const itemsByOrder = new Map<string, any[]>();
+    for (const item of (itemsData || [])) {
+      const arr = itemsByOrder.get(item.order_id) || [];
+      arr.push({
+        pizzaName: pizzaMap.get(item.pizza_type_id) || "Unknown Pizza",
+        baseName: baseMap.get(item.base_id) || "Unknown Base",
+        sizeName: sizeMap.get(item.size_id) || "Regular",
+        quantity: item.quantity,
+        lineTotal: item.line_total
+      });
+      itemsByOrder.set(item.order_id, arr);
     }
 
     // Format the orders
-    const formattedOrders = (ordersData || []).map((row: any) => {
-       const lines = (row.order_item || []).map((item: any) => {
-         const pizza = Array.isArray(item.pizza) ? item.pizza[0] : item.pizza;
-         const base = Array.isArray(item.base) ? item.base[0] : item.base;
-         const size = Array.isArray(item.size) ? item.size[0] : item.size;
-         return {
-           pizzaName: pizza?.pizza_name || "Unknown Pizza",
-           baseName: base?.base_name || "Unknown Base",
-           sizeName: size?.size_name || "Regular",
-           quantity: item.quantity,
-           lineTotal: item.line_total
-         };
-       });
-
+    const formattedOrders = ordersData.map((row: any) => {
        return {
          id: row.order_id,
          createdAt: row.order_datetime,
@@ -99,7 +115,7 @@ export async function GET(request: Request) {
          discount: row.discount_amount,
          gst: row.tax_amount,
          finalTotal: row.final_amount,
-         lines
+         lines: itemsByOrder.get(row.order_id) || []
        };
     });
 

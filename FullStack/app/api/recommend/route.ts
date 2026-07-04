@@ -151,32 +151,59 @@ async function getCustomerHistory(phone: string, menu: MenuPayload): Promise<His
       .maybeSingle();
     if (!customer.data?.customer_id) return [];
 
+    // Fetch orders without nested joins (same RLS fix as customer orders API)
     const orders = await supabase
       .schema("slicematic")
       .from("orders")
-      .select("order_id, order_datetime, final_amount, order_item(pizza_type_id, base_id, quantity, order_item_topping(topping_id))")
+      .select("order_id, order_datetime, final_amount")
       .eq("customer_id", customer.data.customer_id)
       .order("order_datetime", { ascending: false })
       .limit(8);
 
-    return ((orders.data ?? []) as Array<Record<string, any>>).flatMap((order) => {
-      const items = Array.isArray(order.order_item) ? order.order_item : [];
-      return items.map((item) => {
-        const pizza = menu.pizzas.find((entry) => entry.id === Number(item.pizza_type_id));
-        const toppingRows = (Array.isArray(item.order_item_topping) ? item.order_item_topping : []) as Array<{ topping_id: number | string }>;
-        const toppingIds = toppingRows
-          .map((row) => Number(row.topping_id))
-          .filter((id) => Number.isFinite(id));
-        return {
-          pizzaId: pizza?.id,
-          pizzaName: pizza?.name ?? "Unknown pizza",
-          toppingIds,
-          toppingNames: toppingIds.map((id) => menu.toppings.find((entry) => entry.id === id)?.name ?? `Topping ${id}`),
-          quantity: Number(item.quantity ?? 1),
-          orderedAt: String(order.order_datetime ?? ""),
-          finalAmount: Number(order.final_amount ?? 0)
-        };
-      });
+    if (!orders.data?.length) return [];
+
+    // Fetch order items separately
+    const orderIds = orders.data.map((o: any) => o.order_id);
+    const { data: itemsData } = await supabase
+      .schema("slicematic")
+      .from("order_item")
+      .select("order_item_id, order_id, pizza_type_id, quantity")
+      .in("order_id", orderIds);
+
+    if (!itemsData?.length) return [];
+
+    // Fetch toppings for those order items separately
+    const orderItemIds = itemsData.map((i: any) => i.order_item_id);
+    const { data: toppingsData } = await supabase
+      .schema("slicematic")
+      .from("order_item_topping")
+      .select("order_item_id, topping_id")
+      .in("order_item_id", orderItemIds);
+
+    // Build topping lookup by order_item_id
+    const toppingsByItem = new Map<string, number[]>();
+    for (const t of (toppingsData || [])) {
+      const arr = toppingsByItem.get(t.order_item_id) || [];
+      arr.push(Number(t.topping_id));
+      toppingsByItem.set(t.order_item_id, arr);
+    }
+
+    // Build order lookup for datetime/amount
+    const orderMap = new Map(orders.data.map((o: any) => [o.order_id, o]));
+
+    return itemsData.map((item: any) => {
+      const order = orderMap.get(item.order_id);
+      const pizza = menu.pizzas.find((entry) => entry.id === Number(item.pizza_type_id));
+      const toppingIds = (toppingsByItem.get(item.order_item_id) || []).filter((id) => Number.isFinite(id));
+      return {
+        pizzaId: pizza?.id,
+        pizzaName: pizza?.name ?? "Unknown pizza",
+        toppingIds,
+        toppingNames: toppingIds.map((id) => menu.toppings.find((entry) => entry.id === id)?.name ?? `Topping ${id}`),
+        quantity: Number(item.quantity ?? 1),
+        orderedAt: String(order?.order_datetime ?? ""),
+        finalAmount: Number(order?.final_amount ?? 0)
+      };
     });
   } catch {
     return [];
