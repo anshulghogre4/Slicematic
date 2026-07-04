@@ -8,18 +8,21 @@ import { MenuPayload, Recommendation } from "../../../lib/types";
 export const dynamic = "force-dynamic";
 
 const SYSTEM_PROMPT = `You are SliceMatic's in-app pizza recommendation assistant for a single outlet in Delhi.
-Recommend exactly one pizza and one topping the customer is likely to enjoy.
+Recommend exactly 3 different pizza + topping combinations the customer is likely to enjoy.
 Hard rules:
 - Only choose from the menu IDs provided. Never invent menu items.
 - Return strict JSON only.
+- Each recommendation must be a DIFFERENT pizza (no duplicates).
 - If history exists, personalize using favourite pizza, topping, spend, veg/non-veg lean, spicy lean, quantity pattern, and recency.
-- If the customer is new, recommend a popular crowd-pleaser and say it is a safe first pick.
+- If the customer is new, use the popularity data provided — these are proven crowd-pleasers based on real order history from ALL customers.
+- Vary the recommendations: one based on personal history (if returning), one based on global popularity, and one exploratory/different pick.
 - Prefer combinations that improve customer fit and contribution margin without pushing unnecessary discounts.
-- Keep the reason under 20 words, friendly, and without emojis.`;
+- Keep each reason under 20 words, friendly, and without emojis.`;
 
 type RecommendRequest = {
   name: string;
-  phone: string;
+  phone?: string;
+  customer_id?: string;
 };
 
 type HistoryLine = {
@@ -35,16 +38,25 @@ type HistoryLine = {
 export async function POST(request: Request) {
   const body = (await request.json()) as RecommendRequest;
   const menu = await loadMenu();
-  const history = await getCustomerHistory(body.phone, menu);
+  const history = await getCustomerHistory(body.customer_id, body.phone, menu);
   const customerTier = history.length ? "returning" : "new";
   const customerProfile = buildCustomerProfile(history, menu);
-  const menuSignals = buildMenuSignals(menu);
+  const popularity = await getGlobalPopularity(menu);
+  const menuSignals = buildMenuSignals(menu, popularity);
 
-  const fallback = buildFallbackRecommendation(menu, customerTier, customerProfile);
+  const fallbacks = buildFallbackRecommendations(menu, customerTier, customerProfile, popularity);
+  const fallback = fallbacks[0];
 
   if (!process.env.OPENROUTER_API_KEY) {
-    const logged = await logRecommendation(body.phone, fallback);
-    return NextResponse.json({ ...fallback, recommendationId: logged ?? fallback.recommendationId });
+    const logged = await logRecommendation(body.customer_id, body.phone, fallback);
+    return NextResponse.json({
+      ok: true,
+      recommendations: fallbacks,
+      primary: fallback,
+      recommendationId: logged ?? fallback.recommendationId,
+      source: "fallback",
+      customerTier
+    });
   }
 
   try {
@@ -74,10 +86,7 @@ export async function POST(request: Request) {
               },
               recent_history: history.slice(0, 8),
               output_schema: {
-                pizza_id: "number",
-                topping_id: "number",
-                reason: "string",
-                confidence: "number 0..1"
+                recommendations: "array of 3 objects, each with: pizza_id (number), topping_id (number), reason (string under 20 words), confidence (number 0..1)"
               }
             })
           }
@@ -85,34 +94,68 @@ export async function POST(request: Request) {
       })
     });
 
-    if (!response.ok) throw new Error("OpenRouter request failed");
+    if (!response.ok) {
+      const errText = await response.text().catch(() => "");
+      console.error("OpenRouter API error:", response.status, errText.slice(0, 300));
+      throw new Error(`OpenRouter request failed (${response.status})`);
+    }
     const data = await response.json();
     const content = data.choices?.[0]?.message?.content ?? "{}";
     const parsed = JSON.parse(stripJsonFence(content));
-    const pizza = menu.pizzas.find((item) => item.id === Number(parsed.pizza_id) && item.available);
-    const topping = menu.toppings.find((item) => item.id === Number(parsed.topping_id) && item.available);
-    if (!pizza || !topping) throw new Error("Ungrounded recommendation");
 
-    const recommendation: Recommendation = {
-      recommendationId: randomUUID(),
-      pizzaId: pizza.id,
-      toppingId: topping.id,
-      pizzaName: pizza.name,
-      toppingName: topping.name,
-      reason: String(parsed.reason ?? fallback.reason).slice(0, 140),
-      confidence: clampConfidence(Number(parsed.confidence ?? 0.82)),
+    // Support both array format and single-object format (backward compat)
+    const rawRecs = Array.isArray(parsed.recommendations) ? parsed.recommendations : [parsed];
+    const recommendations: Recommendation[] = [];
+    const usedPizzaIds = new Set<number>();
+
+    for (const raw of rawRecs) {
+      if (recommendations.length >= 3) break;
+      const pizza = menu.pizzas.find((item) => item.id === Number(raw.pizza_id) && item.available);
+      const topping = menu.toppings.find((item) => item.id === Number(raw.topping_id) && item.available);
+      if (!pizza || !topping || usedPizzaIds.has(pizza.id)) continue;
+      usedPizzaIds.add(pizza.id);
+      recommendations.push({
+        recommendationId: randomUUID(),
+        pizzaId: pizza.id,
+        toppingId: topping.id,
+        pizzaName: pizza.name,
+        toppingName: topping.name,
+        reason: String(raw.reason ?? "Recommended based on your taste profile.").slice(0, 140),
+        confidence: clampConfidence(Number(raw.confidence ?? 0.82)),
+        source: "openrouter",
+        customerTier
+      });
+    }
+
+    if (recommendations.length === 0) {
+      console.error("Ungrounded recommendation:", { parsed, availablePizzaIds: menu.pizzas.filter(p => p.available).map(p => p.id), availableToppingIds: menu.toppings.filter(t => t.available).map(t => t.id) });
+      throw new Error("Ungrounded recommendation");
+    }
+
+    // Log the primary recommendation
+    const logged = await logRecommendation(body.customer_id, body.phone, recommendations[0]);
+    return NextResponse.json({
+      ok: true,
+      recommendations,
+      primary: recommendations[0],
+      recommendationId: logged ?? recommendations[0].recommendationId,
       source: "openrouter",
       customerTier
-    };
-    const logged = await logRecommendation(body.phone, recommendation);
-    return NextResponse.json({ ...recommendation, recommendationId: logged ?? recommendation.recommendationId });
+    });
   } catch {
-    const logged = await logRecommendation(body.phone, fallback);
-    return NextResponse.json({ ...fallback, recommendationId: logged ?? fallback.recommendationId });
+    const logged = await logRecommendation(body.customer_id, body.phone, fallback);
+    return NextResponse.json({
+      ok: true,
+      recommendations: fallbacks,
+      primary: fallback,
+      recommendationId: logged ?? fallback.recommendationId,
+      source: "fallback",
+      customerTier
+    });
   }
 }
 
-async function getCustomerHistory(phone: string, menu: MenuPayload): Promise<HistoryLine[]> {
+async function getCustomerHistory(customerId: string | undefined, phone: string | undefined, menu: MenuPayload): Promise<HistoryLine[]> {
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     return seedOrders
@@ -135,44 +178,165 @@ async function getCustomerHistory(phone: string, menu: MenuPayload): Promise<His
   }
 
   try {
-    const customer = await supabase
-      .schema("slicematic")
-      .from("customer")
-      .select("customer_id")
-      .eq("mobile_number", phone)
-      .maybeSingle();
-    if (!customer.data?.customer_id) return [];
+    let resolvedCustomerId = customerId;
 
+    // If customer_id not provided, look it up by phone
+    if (!resolvedCustomerId && phone) {
+      const customer = await supabase
+        .schema("slicematic")
+        .from("customer")
+        .select("customer_id")
+        .eq("mobile_number", phone)
+        .maybeSingle();
+      resolvedCustomerId = customer.data?.customer_id ?? undefined;
+    }
+
+    if (!resolvedCustomerId) return [];
+
+    // Fetch orders without nested joins (same RLS fix as customer orders API)
     const orders = await supabase
       .schema("slicematic")
       .from("orders")
-      .select("order_id, order_datetime, final_amount, order_item(pizza_type_id, base_id, quantity, order_item_topping(topping_id))")
-      .eq("customer_id", customer.data.customer_id)
+      .select("order_id, order_datetime, final_amount")
+      .eq("customer_id", resolvedCustomerId)
       .order("order_datetime", { ascending: false })
       .limit(8);
 
-    return ((orders.data ?? []) as Array<Record<string, any>>).flatMap((order) => {
-      const items = Array.isArray(order.order_item) ? order.order_item : [];
-      return items.map((item) => {
-        const pizza = menu.pizzas.find((entry) => entry.id === Number(item.pizza_type_id));
-        const toppingRows = (Array.isArray(item.order_item_topping) ? item.order_item_topping : []) as Array<{ topping_id: number | string }>;
-        const toppingIds = toppingRows
-          .map((row) => Number(row.topping_id))
-          .filter((id) => Number.isFinite(id));
-        return {
-          pizzaId: pizza?.id,
-          pizzaName: pizza?.name ?? "Unknown pizza",
-          toppingIds,
-          toppingNames: toppingIds.map((id) => menu.toppings.find((entry) => entry.id === id)?.name ?? `Topping ${id}`),
-          quantity: Number(item.quantity ?? 1),
-          orderedAt: String(order.order_datetime ?? ""),
-          finalAmount: Number(order.final_amount ?? 0)
-        };
-      });
+    if (!orders.data?.length) return [];
+
+    // Fetch order items separately
+    const orderIds = orders.data.map((o: any) => o.order_id);
+    const { data: itemsData } = await supabase
+      .schema("slicematic")
+      .from("order_item")
+      .select("order_item_id, order_id, pizza_type_id, quantity")
+      .in("order_id", orderIds);
+
+    if (!itemsData?.length) return [];
+
+    // Fetch toppings for those order items separately
+    const orderItemIds = itemsData.map((i: any) => i.order_item_id);
+    const { data: toppingsData } = await supabase
+      .schema("slicematic")
+      .from("order_item_topping")
+      .select("order_item_id, topping_id")
+      .in("order_item_id", orderItemIds);
+
+    // Build topping lookup by order_item_id
+    const toppingsByItem = new Map<string, number[]>();
+    for (const t of (toppingsData || [])) {
+      const arr = toppingsByItem.get(t.order_item_id) || [];
+      arr.push(Number(t.topping_id));
+      toppingsByItem.set(t.order_item_id, arr);
+    }
+
+    // Build order lookup for datetime/amount
+    const orderMap = new Map(orders.data.map((o: any) => [o.order_id, o]));
+
+    return itemsData.map((item: any) => {
+      const order = orderMap.get(item.order_id);
+      const pizza = menu.pizzas.find((entry) => entry.id === Number(item.pizza_type_id));
+      const toppingIds = (toppingsByItem.get(item.order_item_id) || []).filter((id) => Number.isFinite(id));
+      return {
+        pizzaId: pizza?.id,
+        pizzaName: pizza?.name ?? "Unknown pizza",
+        toppingIds,
+        toppingNames: toppingIds.map((id) => menu.toppings.find((entry) => entry.id === id)?.name ?? `Topping ${id}`),
+        quantity: Number(item.quantity ?? 1),
+        orderedAt: String(order?.order_datetime ?? ""),
+        finalAmount: Number(order?.final_amount ?? 0)
+      };
     });
   } catch {
     return [];
   }
+}
+
+type PopularityData = {
+  topPizzas: { id: number; name: string; totalOrdered: number }[];
+  topToppings: { id: number; name: string; totalOrdered: number }[];
+};
+
+async function getGlobalPopularity(menu: MenuPayload): Promise<PopularityData> {
+  const supabase = getSupabaseServerClient();
+  if (!supabase) return buildPopularityFromSeed(menu);
+
+  try {
+    const items = await supabase
+      .schema("slicematic")
+      .from("order_item")
+      .select("pizza_type_id, quantity");
+    const toppingRows = await supabase
+      .schema("slicematic")
+      .from("order_item_topping")
+      .select("topping_id");
+
+    if (!items.data?.length) return buildPopularityFromSeed(menu);
+
+    const pizzaCounts = new Map<number, number>();
+    for (const row of items.data) {
+      const id = Number(row.pizza_type_id);
+      pizzaCounts.set(id, (pizzaCounts.get(id) ?? 0) + Number(row.quantity ?? 1));
+    }
+    const topPizzas = [...pizzaCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, total]) => ({
+        id,
+        name: menu.pizzas.find((p) => p.id === id)?.name ?? `Pizza ${id}`,
+        totalOrdered: total
+      }));
+
+    const toppingCounts = new Map<number, number>();
+    for (const row of (toppingRows.data ?? [])) {
+      const id = Number(row.topping_id);
+      toppingCounts.set(id, (toppingCounts.get(id) ?? 0) + 1);
+    }
+    const topToppings = [...toppingCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5)
+      .map(([id, total]) => ({
+        id,
+        name: menu.toppings.find((t) => t.id === id)?.name ?? `Topping ${id}`,
+        totalOrdered: total
+      }));
+
+    return { topPizzas, topToppings };
+  } catch {
+    return buildPopularityFromSeed(menu);
+  }
+}
+
+function buildPopularityFromSeed(menu: MenuPayload): PopularityData {
+  const pizzaCounts = new Map<string, number>();
+  const toppingCounts = new Map<string, number>();
+  for (const order of seedOrders) {
+    for (const line of order.lines) {
+      pizzaCounts.set(line.pizzaName, (pizzaCounts.get(line.pizzaName) ?? 0) + line.quantity);
+      for (const t of line.toppings) {
+        toppingCounts.set(t, (toppingCounts.get(t) ?? 0) + 1);
+      }
+    }
+  }
+  const topPizzas = [...pizzaCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, total]) => ({
+      id: menu.pizzas.find((p) => p.name === name)?.id ?? 0,
+      name,
+      totalOrdered: total
+    }))
+    .filter((p) => p.id > 0);
+  const topToppings = [...toppingCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 5)
+    .map(([name, total]) => ({
+      id: menu.toppings.find((t) => t.name === name)?.id ?? 0,
+      name,
+      totalOrdered: total
+    }))
+    .filter((t) => t.id > 0);
+  return { topPizzas, topToppings };
 }
 
 function buildCustomerProfile(history: HistoryLine[], menu: MenuPayload) {
@@ -227,7 +391,7 @@ function buildCustomerProfile(history: HistoryLine[], menu: MenuPayload) {
   };
 }
 
-function buildMenuSignals(menu: MenuPayload) {
+function buildMenuSignals(menu: MenuPayload, popularity: PopularityData) {
   const availablePizzas = menu.pizzas.filter((item) => item.available);
   const availableToppings = menu.toppings.filter((item) => item.available);
   return {
@@ -236,35 +400,89 @@ function buildMenuSignals(menu: MenuPayload) {
       .sort((a, b) => b.price - a.price)
       .slice(0, 3)
       .map((item) => ({ id: item.id, name: item.name, price: item.price })),
-    localFavourites: availablePizzas
-      .filter((item) => item.tags?.some((tag) => ["Paneer", "Spicy", "Cheese", "Chicken"].includes(tag)))
-      .map((item) => ({ id: item.id, name: item.name, tags: item.tags, price: item.price })),
-    safeDefaultPizzaId: availablePizzas.find((item) => item.name.includes("Paneer"))?.id ?? availablePizzas[0]?.id
+    topPizzas: popularity.topPizzas,
+    topToppings: popularity.topToppings,
+    safeDefaultPizzaId: popularity.topPizzas[0]?.id ?? availablePizzas[0]?.id
   };
 }
 
-function buildFallbackRecommendation(menu: MenuPayload, customerTier: Recommendation["customerTier"], profile: ReturnType<typeof buildCustomerProfile>): Recommendation {
-  const pizza = (profile.favouritePizzaId ? menu.pizzas.find((item) => item.id === profile.favouritePizzaId && item.available) : null)
-    ?? menu.pizzas.find((item) => item.name.includes("Paneer") && item.available)
-    ?? menu.pizzas.find((item) => item.available)
-    ?? menu.pizzas[0];
-  const topping = (profile.favouriteToppingId ? menu.toppings.find((item) => item.id === profile.favouriteToppingId && item.available) : null)
-    ?? menu.toppings.find((item) => item.name.includes("Extra Cheese") && item.available)
-    ?? menu.toppings.find((item) => item.available)
-    ?? menu.toppings[0];
-  return {
+function buildFallbackRecommendations(menu: MenuPayload, customerTier: Recommendation["customerTier"], profile: ReturnType<typeof buildCustomerProfile>, popularity: PopularityData): Recommendation[] {
+  const availablePizzas = menu.pizzas.filter((p) => p.available);
+  const availableToppings = menu.toppings.filter((t) => t.available);
+  const recs: Recommendation[] = [];
+  const usedPizzaIds = new Set<number>();
+
+  // 1. Personal favourite or most popular
+  const favPizza = (profile.favouritePizzaId ? availablePizzas.find((p) => p.id === profile.favouritePizzaId) : null)
+    ?? (popularity.topPizzas[0] ? availablePizzas.find((p) => p.id === popularity.topPizzas[0].id) : null)
+    ?? availablePizzas[0];
+  const favTopping = (profile.favouriteToppingId ? availableToppings.find((t) => t.id === profile.favouriteToppingId) : null)
+    ?? (popularity.topToppings[0] ? availableToppings.find((t) => t.id === popularity.topToppings[0].id) : null)
+    ?? availableToppings[0];
+  if (favPizza && favTopping) {
+    usedPizzaIds.add(favPizza.id);
+    recs.push({
+      recommendationId: randomUUID(),
+      pizzaId: favPizza.id,
+      toppingId: favTopping.id,
+      pizzaName: favPizza.name,
+      toppingName: favTopping.name,
+      reason: customerTier === "returning"
+        ? "Based on your previous SliceMatic favourites and high-repeat add-ons."
+        : `Our most popular combo — loved by ${popularity.topPizzas[0]?.totalOrdered ?? "many"} customers.`,
+      confidence: customerTier === "returning" ? 0.86 : 0.76,
+      source: "fallback",
+      customerTier
+    });
+  }
+
+  // 2. Second most popular (different pizza)
+  const popular2 = popularity.topPizzas.find((p) => !usedPizzaIds.has(p.id));
+  const popular2Pizza = popular2 ? availablePizzas.find((p) => p.id === popular2.id) : null;
+  const popular2Topping = popularity.topToppings[1] ? availableToppings.find((t) => t.id === popularity.topToppings[1].id) : availableToppings[0];
+  if (popular2Pizza && popular2Topping) {
+    usedPizzaIds.add(popular2Pizza.id);
+    recs.push({
+      recommendationId: randomUUID(),
+      pizzaId: popular2Pizza.id,
+      toppingId: popular2Topping.id,
+      pizzaName: popular2Pizza.name,
+      toppingName: popular2Topping.name,
+      reason: `Popular with ${popular2?.totalOrdered ?? "many"} orders — a proven crowd favourite.`,
+      confidence: 0.74,
+      source: "fallback",
+      customerTier
+    });
+  }
+
+  // 3. Exploratory pick (a different pizza not yet recommended)
+  const exploratoryPizza = availablePizzas.find((p) => !usedPizzaIds.has(p.id));
+  const exploratoryTopping = availableToppings.find((t) => t.id !== favTopping?.id) ?? availableToppings[0];
+  if (exploratoryPizza && exploratoryTopping) {
+    recs.push({
+      recommendationId: randomUUID(),
+      pizzaId: exploratoryPizza.id,
+      toppingId: exploratoryTopping.id,
+      pizzaName: exploratoryPizza.name,
+      toppingName: exploratoryTopping.name,
+      reason: "Try something new — a different flavour you haven't explored yet.",
+      confidence: 0.68,
+      source: "fallback",
+      customerTier
+    });
+  }
+
+  return recs.length ? recs : [{
     recommendationId: randomUUID(),
-    pizzaId: pizza.id,
-    toppingId: topping.id,
-    pizzaName: pizza.name,
-    toppingName: topping.name,
-    reason: customerTier === "returning"
-      ? "Built from your previous SliceMatic favourites and high-repeat add-ons."
-      : "A reliable first pick with strong repeat-order appeal.",
-    confidence: customerTier === "returning" ? 0.86 : 0.76,
+    pizzaId: availablePizzas[0]?.id ?? 1,
+    toppingId: availableToppings[0]?.id ?? 1,
+    pizzaName: availablePizzas[0]?.name ?? "Margherita",
+    toppingName: availableToppings[0]?.name ?? "Extra Cheese",
+    reason: "A classic choice to start your SliceMatic journey.",
+    confidence: 0.7,
     source: "fallback",
     customerTier
-  };
+  }];
 }
 
 function stripJsonFence(content: string) {
@@ -276,20 +494,27 @@ function clampConfidence(value: number) {
   return Math.min(0.99, Math.max(0.01, value));
 }
 
-async function logRecommendation(phone: string, recommendation: Recommendation) {
+async function logRecommendation(customerId: string | undefined, phone: string | undefined, recommendation: Recommendation) {
   const supabase = getSupabaseServerClient();
   if (!supabase) return recommendation.recommendationId;
   try {
-    const customer = await supabase
-      .schema("slicematic")
-      .from("customer")
-      .select("customer_id")
-      .eq("mobile_number", phone)
-      .maybeSingle();
+    let resolvedCustomerId = customerId;
+
+    // If customer_id not provided, look it up by phone
+    if (!resolvedCustomerId && phone) {
+      const customer = await supabase
+        .schema("slicematic")
+        .from("customer")
+        .select("customer_id")
+        .eq("mobile_number", phone)
+        .maybeSingle();
+      resolvedCustomerId = customer.data?.customer_id ?? undefined;
+    }
+
     const id = recommendation.recommendationId ?? randomUUID();
     await supabase.schema("slicematic").from("recommendation_event").insert({
       recommendation_id: id,
-      customer_id: customer.data?.customer_id ?? null,
+      customer_id: resolvedCustomerId ?? null,
       recommended_item_type: "PIZZA_TOPPING_COMBO",
       recommended_item_id: recommendation.pizzaId,
       recommended_topping_id: recommendation.toppingId,

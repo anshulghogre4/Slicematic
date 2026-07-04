@@ -271,10 +271,41 @@ Reason: the task needs low-latency structured JSON, light personalization, and r
 
 ## Demand Forecast ML
 
-The admin forecast panel estimates upcoming peak demand from historical hourly orders. For the live app, the API computes a lightweight forecast from Supabase order history with a demo fallback. The included `scripts/forecast_model.py` can be used to present a scikit-learn training workflow during Q&A.
+The admin **Forecast** tab reads a scikit-learn cache trained on Supabase order history. Training runs offline; the dashboard serves the cached predictions on Vercel without needing Python at request time.
+
+### Model choice
+
+**RandomForestRegressor** (not LinearRegression) because order volume has non-linear lunch/dinner peaks and weekend bumps that a single linear plane underfits.
+
+### Features and target
+
+| Feature | Description |
+|---|---|
+| `weekday` | Day of week (0=Mon … 6=Sun, IST) |
+| `hour` | Hour of day (0–23, IST) |
+| `is_weekend` | 1 if Saturday/Sunday else 0 |
+| `hourly_revenue` | Total revenue in that hour bucket |
+
+**Target:** orders per hour.
+
+### Evaluation metric
+
+Hold-out **RMSE** (root mean squared error) in orders/hour on 22% of hourly buckets when at least 20 buckets exist. Shown in the dashboard model card and CLI output.
+
+### Refresh workflow
 
 ```bash
 python -m pip install -r requirements-ml.txt
+npm run forecast:refresh
+```
+
+`forecast:refresh` pulls `order_datetime` + `final_amount` from Supabase, trains via `scripts/forecast_model.py`, and writes `lib/generated/forecast-cache.json`. Re-run after meaningful order activity before deploy so Vercel serves fresh peaks.
+
+Local-only retrain from the admin session: `POST /api/admin/forecast/refresh` (requires Python + scikit-learn on the machine).
+
+Q&A demo (synthetic data, prints RMSE + top windows):
+
+```bash
 python scripts/forecast_model.py
 ```
 

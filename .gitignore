@@ -11,3 +11,6 @@ CLAUDE.md
 __pycache__/
 .vercel
 .env*.local
+
+# Graphify knowledge graph outputs
+graphify-out/

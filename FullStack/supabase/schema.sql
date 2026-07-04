@@ -261,6 +261,14 @@ on conflict (size_id) do update set
   sort_order = excluded.sort_order,
   is_available = excluded.is_available;
 
+create table if not exists slicematic.user_roles (
+  user_id uuid primary key,
+  role text not null check (role in ('admin', 'customer'))
+);
+alter table slicematic.user_roles enable row level security;
+drop policy if exists "Users can read own role" on slicematic.user_roles;
+create policy "Users can read own role" on slicematic.user_roles for select using (auth.uid() = user_id);
+
 alter table slicematic.pizza_bases enable row level security;
 alter table slicematic.pizza_types enable row level security;
 alter table slicematic.toppings enable row level security;
@@ -290,6 +298,15 @@ create policy "authenticated admin read orders" on slicematic.orders for select 
 create policy "authenticated admin read order items" on slicematic.order_item for select to authenticated using (true);
 create policy "authenticated admin read order toppings" on slicematic.order_item_topping for select to authenticated using (true);
 create policy "authenticated admin read recommendations" on slicematic.recommendation_event for select to authenticated using (true);
+
+-- Customer order history is loaded via server API using the service role (bypasses RLS).
+-- If the service role key is missing, these policies allow read access needed by /api/customer/orders.
+drop policy if exists "server read customers for order history" on slicematic.customer;
+drop policy if exists "server read orders for order history" on slicematic.orders;
+drop policy if exists "server read order items for order history" on slicematic.order_item;
+create policy "server read customers for order history" on slicematic.customer for select using (true);
+create policy "server read orders for order history" on slicematic.orders for select using (true);
+create policy "server read order items for order history" on slicematic.order_item for select using (true);
 
 -- API Role Permissions for Custom Schema
 grant usage on schema slicematic to anon, authenticated, service_role;

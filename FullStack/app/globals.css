@@ -247,9 +247,10 @@ img {
 }
 
 .top-customer-tools {
-  display: grid;
-  grid-template-columns: minmax(130px, 190px) minmax(0, 1fr);
+  display: flex;
+  align-items: center;
   gap: 9px;
+  margin-left: auto;
   min-width: 0;
 }
 
@@ -1934,18 +1935,50 @@ a.primary:hover {
   margin-bottom: 12px;
 }
 
+.orders-console {
+  display: grid;
+  gap: 14px;
+}
+
+.orders-summary-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.orders-summary-actions strong {
+  padding: 10px 12px;
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+  border: 1px solid var(--line);
+}
+
+.admin-error,
+.empty-orders {
+  border: 1px solid rgba(197, 54, 44, 0.3);
+  border-radius: var(--radius);
+  background: rgba(197, 54, 44, 0.08);
+  color: var(--tomato-dark);
+  padding: 12px 14px;
+  font-weight: 750;
+}
+
 .order-table {
   display: grid;
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  overflow: hidden;
+  overflow-x: auto;
+  background: #fff;
 }
 
 .order-row {
   display: grid;
-  grid-template-columns: 1fr 1.4fr 0.8fr 0.9fr 0.9fr;
-  gap: 10px;
+  grid-template-columns: minmax(130px, 0.9fr) minmax(170px, 1fr) minmax(260px, 1.6fr) minmax(110px, 0.7fr) minmax(180px, 1fr) minmax(110px, 0.7fr);
+  gap: 12px;
   align-items: center;
+  min-width: 1080px;
   padding: 12px 14px;
   border-top: 1px solid var(--line);
 }
@@ -1960,9 +1993,89 @@ a.primary:hover {
   font-weight: 850;
 }
 
+.order-row strong,
 .order-row small {
   display: block;
+}
+
+.order-row small {
   color: var(--muted);
+  line-height: 1.35;
+  margin-top: 3px;
+}
+
+.recommendation-list {
+  display: grid;
+  gap: 12px;
+  margin: 14px 0;
+}
+
+.recommendation-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px;
+  background: var(--panel-soft);
+  display: grid;
+  gap: 8px;
+}
+
+.recommendation-card-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.recommendation-rank {
+  background: var(--ink);
+  color: #fff;
+  border-radius: var(--radius);
+  padding: 2px 8px;
+  font-size: 0.8rem;
+  font-weight: 800;
+}
+
+.recommendation-card p {
+  color: var(--muted);
+  font-size: 0.9rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+.recommendation-card button {
+  width: fit-content;
+}
+
+.order-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-soft);
+}
+
+.order-pagination > span,
+.order-pagination strong {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  font-size: 0.9rem;
+  font-weight: 800;
+}
+
+.order-pagination > div {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.order-pagination button {
+  min-height: 38px;
+  padding: 8px 11px;
 }
 
 .forecast-card {
@@ -1995,6 +2108,19 @@ a.primary:hover {
 
 .forecast-list span {
   margin-top: 5px;
+}
+
+.forecast-model-card {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  background: var(--panel-soft);
+}
+
+.forecast-model-card p {
+  margin: 0;
 }
 
 .menu-editor {

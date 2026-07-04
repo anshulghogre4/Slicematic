@@ -72,6 +72,7 @@ export type OrderPayload = {
   paymentMode: PaymentMode;
   customerMode?: "guest" | "member";
   customerAccountEmail?: string | null;
+  customerId?: string | null;
   pricingConfig?: PricingConfig;
   recommendationId?: string | null;
 };
@@ -102,6 +103,7 @@ export type SavedOrder = {
   discount: number;
   gst: number;
   finalTotal: number;
+  linkedCustomerId?: string;
   lines: Array<{
     pizzaName: string;
     baseName: string;
@@ -130,6 +132,15 @@ export type ForecastPoint = {
   confidence: number;
 };
 
+export type ForecastMeta = {
+  model: string;
+  features: string[];
+  rmse: number | null;
+  trainedAt: string;
+  orderCount: number;
+  bucketCount: number;
+};
+
 export type AdminSummary = {
   totalRevenue: number;
   orderCount: number;
@@ -140,4 +151,6 @@ export type AdminSummary = {
   hourlyDemand: Array<{ hour: string; orders: number; revenue: number }>;
   recentOrders: SavedOrder[];
   forecast: ForecastPoint[];
+  topPeaks?: ForecastPoint[];
+  forecastMeta?: ForecastMeta;
 };
