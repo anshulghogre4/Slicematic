@@ -167,7 +167,8 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
           email: data.email || "",
           address: "",
           city: data.city || "Delhi NCR",
-          age: 25
+          age: 25,
+          customerId: data.customer_id || ""
         };
       }
     }
@@ -201,18 +202,35 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
     e.preventDefault();
     setErrorMsg("");
 
-    if (!regName.trim() || !regAddress.trim() || !regCity.trim() || !isMobile(regMobile) || !isEmail(regEmail)) {
+    const nameVal = regName.trim();
+    const mobileVal = regMobile.trim();
+    const emailVal = regEmail.trim();
+    const addressVal = regAddress.trim();
+    const cityVal = regCity.trim();
+
+    // Name: 2–40 chars, letters/spaces/hyphens/dots/apostrophes
+    if (!nameVal) {
+      setErrorMsg("Full name is required.");
+      return;
+    }
+    if (!/^[A-Za-z][A-Za-z .'\\-]{1,39}$/.test(nameVal)) {
+      setErrorMsg("Name must be 2–40 characters and contain only letters, spaces, hyphens, or dots.");
+      return;
+    }
+
+    // Other fields: generic check
+    if (!mobileVal || !emailVal || !addressVal || !cityVal || !isMobile(mobileVal) || !isEmail(emailVal)) {
       setErrorMsg("Please fill in all fields with valid data.");
       return;
     }
 
     setLoading(true);
     const newCustomer = {
-      name: regName.trim(),
-      phone: regMobile.trim(),
-      email: regEmail.trim().toLowerCase(),
-      address: regAddress.trim(),
-      city: regCity.trim(),
+      name: nameVal,
+      phone: mobileVal,
+      email: emailVal.toLowerCase(),
+      address: addressVal,
+      city: cityVal,
       age: Number(regAge) || 25
     };
 
@@ -251,7 +269,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
     }
   };
 
-  const saveSessionAndProceed = (customerObj: any) => {
+  const saveSessionAndProceed = async (customerObj: any) => {
     if (typeof window !== "undefined") {
       const displayAddress = customerObj.city 
         ? `${customerObj.address || ""}, ${customerObj.city}`.trim().replace(/^,\s*/, "")
@@ -268,7 +286,24 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
         })
       );
       sessionStorage.setItem("slicematic_customer_email", customerObj.email || "");
+      sessionStorage.setItem("slicematic_customer_id", customerObj.customerId || "");
       sessionStorage.setItem("slicematic_customer_logged_in", "true");
+
+      // Admin check
+      let isAdmin = false;
+      const email = (customerObj.email || "").toLowerCase();
+      if (email === "demo@slicematic.in") {
+        isAdmin = true;
+      } else {
+        const supabase = getSupabaseBrowserClient();
+        if (supabase) {
+          const { data: roleData } = await supabase.schema("slicematic").from("user_roles").select("role").maybeSingle();
+          if (roleData && roleData.role === "admin") isAdmin = true;
+        }
+      }
+
+      if (isAdmin) sessionStorage.setItem("slicematic_is_admin", "true");
+      else sessionStorage.removeItem("slicematic_is_admin");
     }
     onComplete();
   };
@@ -277,6 +312,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
     if (typeof window !== "undefined") {
       sessionStorage.removeItem("slicematic_customer");
       sessionStorage.removeItem("slicematic_customer_email");
+      sessionStorage.removeItem("slicematic_customer_id");
       sessionStorage.setItem("slicematic_customer_logged_in", "false");
     }
     onComplete();

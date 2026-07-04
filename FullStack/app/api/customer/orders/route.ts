@@ -6,10 +6,11 @@ export const dynamic = "force-dynamic";
 export async function GET(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
+    const customerId = searchParams.get("customer_id");
     const identifier = searchParams.get("identifier");
 
-    if (!identifier) {
-      return NextResponse.json({ ok: false, error: "Identifier (mobile or email) is required" }, { status: 400 });
+    if (!customerId && !identifier) {
+      return NextResponse.json({ ok: false, error: "customer_id or identifier (mobile or email) is required" }, { status: 400 });
     }
 
     const supabase = getSupabaseServerClient();
@@ -17,39 +18,44 @@ export async function GET(request: Request) {
        return NextResponse.json({ ok: false, error: "Supabase client not configured" }, { status: 500 });
     }
 
-    // Determine if identifier is email or mobile
-    const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
-    const queryField = isEmail ? "email" : "mobile_number";
+    let resolvedCustomerId: string | null = customerId;
 
-    // First find the customer ID
-    const { data: customerData, error: customerError } = await supabase
-      .schema("slicematic")
-      .from("customer")
-      .select("customer_id")
-      .eq(queryField, identifier)
-      .maybeSingle();
+    // If customer_id not provided, look it up by email or phone
+    if (!resolvedCustomerId && identifier) {
+      const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(identifier);
+      const queryField = isEmail ? "email" : "mobile_number";
 
-    if (customerError) {
-      console.error("Customer lookup error:", customerError);
-      return NextResponse.json({ ok: false, error: "Error looking up customer" }, { status: 500 });
+      const { data: customerData, error: customerError } = await supabase
+        .schema("slicematic")
+        .from("customer")
+        .select("customer_id")
+        .eq(queryField, identifier)
+        .maybeSingle();
+
+      if (customerError) {
+        console.error("Customer lookup error:", customerError);
+        return NextResponse.json({ ok: false, error: "Error looking up customer" }, { status: 500 });
+      }
+
+      resolvedCustomerId = customerData?.customer_id ?? null;
     }
 
-    if (!customerData) {
-      return NextResponse.json({ ok: true, orders: [] });
+    if (!resolvedCustomerId) {
+      return NextResponse.json({ ok: true, orders: [], customer_id: null });
     }
 
-    // Fetch the orders for this customer
+    // Fetch the orders for this customer directly by customer_id
     const { data: ordersData, error: ordersError } = await supabase
       .schema("slicematic")
       .from("orders")
       .select(`
-        order_id, 
-        order_datetime, 
-        order_status, 
-        payment_method, 
-        subtotal_amount, 
-        discount_amount, 
-        tax_amount, 
+        order_id,
+        order_datetime,
+        order_status,
+        payment_method,
+        subtotal_amount,
+        discount_amount,
+        tax_amount,
         final_amount,
         order_item (
           quantity,
@@ -60,7 +66,7 @@ export async function GET(request: Request) {
           size:size_id(size_name)
         )
       `)
-      .eq("customer_id", customerData.customer_id)
+      .eq("customer_id", resolvedCustomerId)
       .order("order_datetime", { ascending: false })
       .limit(20);
 
@@ -97,7 +103,7 @@ export async function GET(request: Request) {
        };
     });
 
-    return NextResponse.json({ ok: true, orders: formattedOrders });
+    return NextResponse.json({ ok: true, orders: formattedOrders, customer_id: resolvedCustomerId });
 
   } catch (error: any) {
     console.error("API error:", error);

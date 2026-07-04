@@ -171,6 +171,7 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
       .maybeSingle();
 
     const effectiveCustomerId = existingCustomer.data?.customer_id ?? customerId;
+    const accountEmail = (payload.customerAccountEmail ?? "").trim().toLowerCase() || null;
 
     if (!existingCustomer.data) {
       const { error: customerError } = await supabase.schema("slicematic").from("customer").insert({
@@ -178,6 +179,7 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
         first_name: firstName,
         last_name: lastName,
         mobile_number: payload.customer.phone.trim(),
+        email: accountEmail,
         city: "Delhi NCR",
         state: "Delhi",
         country: "India",
@@ -189,6 +191,14 @@ export async function saveOrder(payload: OrderPayload, paymentMeta: PaymentMeta 
         console.error("Customer insert error:", customerError);
         throw new Error("Customer insert failed: " + customerError.message);
       }
+    } else if (accountEmail) {
+      // Patch email onto existing customer if they logged in with email but it's missing from DB
+      await supabase
+        .schema("slicematic")
+        .from("customer")
+        .update({ email: accountEmail })
+        .eq("customer_id", effectiveCustomerId)
+        .is("email", null);
     }
 
     const { error: orderError } = await supabase.schema("slicematic").from("orders").insert({

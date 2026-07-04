@@ -13,3 +13,6 @@ pnpm-debug.log*
 
 .vercel
 .env*.local
+
+# Graphify knowledge graph outputs
+graphify-out/

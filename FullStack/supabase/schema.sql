@@ -261,6 +261,14 @@ on conflict (size_id) do update set
   sort_order = excluded.sort_order,
   is_available = excluded.is_available;
 
+create table if not exists slicematic.user_roles (
+  user_id uuid primary key,
+  role text not null check (role in ('admin', 'customer'))
+);
+alter table slicematic.user_roles enable row level security;
+drop policy if exists "Users can read own role" on slicematic.user_roles;
+create policy "Users can read own role" on slicematic.user_roles for select using (auth.uid() = user_id);
+
 alter table slicematic.pizza_bases enable row level security;
 alter table slicematic.pizza_types enable row level security;
 alter table slicematic.toppings enable row level security;
