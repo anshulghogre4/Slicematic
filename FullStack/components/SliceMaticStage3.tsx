@@ -445,6 +445,10 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   }
 
   function openAccount() {
+    if (!customerLoggedIn && onUnauthorize) {
+      onUnauthorize();
+      return;
+    }
     setSelectedPizza(null);
     setWorkspace("account");
     void refreshCustomerOrders(true);
