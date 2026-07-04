@@ -4,11 +4,22 @@ This file maintains a timestamp-based record of the modifications, debugging ses
 
 ---
 
+### [2026-07-04 22:45:00] - Documentation updates in README.md
+**Context:** Expanded documentation in `README.md` to cover system architecture, the AI features engine, model choices, and the Admin Console workspace.
+**Changes & Fixes:**
+* Updated the Customer Authentication section to cover the new `EntryPortal` flow and guest redirections.
+* Expanded the Payments section to outline both Razorpay and Cashfree Sandbox payment integrations.
+* Revamped the Architecture diagram (Mermaid flowchart) to map the entire system data flow (UI, API routes, and persistence/infrastructure layers).
+* Elaborated on the AI engine mechanics, closed-loop attribution, and the default **`openai/gpt-oss-20b`** model choice (detailing its semantic reasoning for flavor profiling, dietary constraint mapping, JSON output stability, and sub-second latency targets).
+* Added a detailed breakdown of the Admin Operations Console features (Pulse Strip, order management, dynamic configurations, and reports).
+
+
 ### [2026-07-04 21:35:00] - Redirect guest checkout sign-in to new login portal
 **Context:** When checking out as guest, the "Sign in for Cash" button and account redirection were taking users to the old customer account login screen instead of the new EntryPortal OTP-based login screen.
 **Changes & Fixes:**
 * Updated `openAccount()` in [SliceMaticStage3.tsx](file:///d:/FDE/FDEGit/Slicematic/FullStack/components/SliceMaticStage3.tsx) to check if the user is not logged in and `onUnauthorize` exists.
 * If so, redirect the user by triggering `onUnauthorize()`, which returns them to the glassmorphic `EntryPortal` (new login screen).
+
 
 
 ### [2026-07-03 14:30:00] - Customer session and member checkout restoration

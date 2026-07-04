@@ -2,23 +2,72 @@
 
 SliceMatic is a full-stack PizzaFlow delivery application built for the Stage 3 live demo. It includes a customer ordering flow, Supabase-backed menu/orders schema, admin dashboard, CSV export, and an OpenRouter-powered recommendation engine.
 
-## Architecture
+## Architecture & System Data Flow
 
 ```mermaid
-flowchart LR
-  Customer["Customer UI (Next.js on Vercel)"] --> MenuAPI["/api/menu"]
-  Customer --> RecommendAPI["/api/recommend"]
-  Customer --> OrdersAPI["/api/orders"]
-  Admin["Admin Dashboard + Supabase Auth"] --> AdminAPI["/api/admin/orders"]
-  Admin --> MenuAdminAPI["/api/admin/menu"]
-  MenuAPI --> Supabase["Supabase PostgreSQL"]
+flowchart TD
+  %% Workspaces
+  subgraph ClientWorkspaces["Client Workspaces (Next.js / Vercel)"]
+    CustomerUI["Customer Portal (EntryPortal & SliceMaticStage3)"]
+    AdminUI["Admin Operations Console (Dashboard & Controls)"]
+  end
+
+  %% API Routing
+  subgraph APIRoutes["Next.js Route Handlers (/app/api)"]
+    MenuAPI["/api/menu"]
+    OrdersAPI["/api/orders"]
+    RecommendAPI["/api/recommend"]
+    PaymentsAPI["/api/payments (Razorpay & Cashfree)"]
+    
+    AdminOrdersAPI["/api/admin/orders"]
+    AdminMenuAPI["/api/admin/menu"]
+    ForecastAPI["/api/admin/forecast/refresh"]
+    
+    AIOpsAPI["/api/ai/ops-briefing"]
+    AICartAPI["/api/ai/cart-insight"]
+    AIMenuAPI["/api/ai/menu-copy"]
+  end
+
+  %% Data & Services
+  subgraph DataLayer["Persistence & Infrastructure"]
+    Supabase["Supabase (PostgreSQL)"]
+    OpenRouter["OpenRouter API (AI Completion)"]
+    MLCache["scikit-learn RandomForest Cache"]
+  end
+
+  %% UI Connections
+  CustomerUI --> MenuAPI
+  CustomerUI --> RecommendAPI
+  CustomerUI --> OrdersAPI
+  CustomerUI --> PaymentsAPI
+  CustomerUI --> AICartAPI
+
+  AdminUI --> AdminOrdersAPI
+  AdminUI --> AdminMenuAPI
+  AdminUI --> ForecastAPI
+  AdminUI --> AIOpsAPI
+  AdminUI --> AIMenuAPI
+
+  %% API to DB Connections
+  MenuAPI --> Supabase
   OrdersAPI --> Supabase
-  AdminAPI --> Supabase
-  MenuAdminAPI --> Supabase
   RecommendAPI --> Supabase
-  RecommendAPI --> OpenRouter["OpenRouter Chat Completions"]
-  Supabase --> Tables["pizza_types, pizza_bases, toppings, pizza_sizes, customer, orders, order_item, order_item_topping, recommendation_event"]
+  AdminOrdersAPI --> Supabase
+  AdminMenuAPI --> Supabase
+  
+  %% AI to OpenRouter
+  RecommendAPI --> OpenRouter
+  AIOpsAPI --> OpenRouter
+  AICartAPI --> OpenRouter
+  AIMenuAPI --> OpenRouter
+  
+  %% ML Forecast
+  ForecastAPI --> MLCache
+  AdminOrdersAPI -.->|Reads Order History| ForecastAPI
 ```
+
+The application separates concerns cleanly: the **Customer Workspace** runs on a state-aware custom storefront while the **Admin Operations Console** isolates configurations, forecasts, and live-metrics to prevent layout clutter and operational overlap.
+
 
 ## Application Workspaces
 
@@ -89,82 +138,70 @@ The admin console is built like a secure application workspace:
 - Local demo fallback that can reset the demo password for the current browser session.
 - Admin APIs remain protected with bearer-token checks when Supabase admin env keys exist.
 
-## Customer Authentication
+## Customer Authentication & Entry Portal
 
-Customer accounts are supported without blocking guest checkout:
-
-- Customer login screen.
-- Customer logout action.
-- Forgot password screen using Supabase recovery when env keys are configured.
-- Reset password screen using Supabase recovery sessions.
-- Local demo customer account with session-only password reset fallback.
-- Continue-as-guest action for quick ordering.
-- Clear customer mode indicator in the order workspace: guest vs logged-in member.
-- Guest checkout is online-payment only: UPI or Card.
-- Logged-in customers can use UPI, Card, or Cash.
-- Signed-in customers can apply a saved delivery profile.
-- Signed-in customers can rebuild a favourite order into the cart.
+Customer accounts are supported via two routes depending on flow:
+- **New OTP Entry Portal**: Users start in a unified glassmorphic `EntryPortal` (`components/EntryPortal/EntryPortal.tsx`) requiring email/OTP sign-in, with a automatic demo fallback for local/no-key development.
+- **Continue-as-guest**: Guests can enter the workspace immediately. If they want to unlock cash payment, clicking "Sign in for Cash" in the Cart redirects them back to the new OTP-based `EntryPortal`.
+- **Saved session restoration**: The app retains user sessions (emails/profile names) in sessionStorage and automatically pulls past order history and recommendations.
+- **Account Workspace**: Logged-in customers gain access to their account workspace (`workspace === "account"`) to manage their order history, personal AI recommendations, and password recovery.
 
 Demo customer credentials:
-
 ```text
 Email: customer@slicematic.in
 Password: slice-customer
 ```
 
-## Payments (Razorpay test mode)
+## Payments (Razorpay & Cashfree Sandbox)
 
-Card and UPI payments use Razorpay's `checkout.js` modal in test mode. Cash orders follow the existing direct path.
+SliceMatic supports both Razorpay and Cashfree SDK integrations for online payments:
 
-**How it works:**
+### Razorpay Integration
+- Card and UPI payments use Razorpay's `checkout.js` modal in test mode.
+- Cash orders follow the direct path.
+- The server creates a Razorpay order (`POST /api/payments/create-order`) after recomputing the bill server-side.
+- Signature validation is checked via HMAC-SHA256 (`POST /api/payments/verify`).
 
-1. Customer selects Card or UPI and clicks "Pay & place order".
-2. The server creates a Razorpay order (`POST /api/payments/create-order`) after recomputing the bill server-side.
-3. The Razorpay checkout modal opens in the browser.
-4. After payment, the server verifies the HMAC-SHA256 signature (`POST /api/payments/verify`) and only then saves the order to Supabase.
-5. Cash orders skip Razorpay entirely and save immediately via `/api/orders`.
+### Cashfree Integration
+- Uses Cashfree JS SDK (`@cashfreepayments/cashfree-js`).
+- Creates order on Cashfree (`POST /api/payments/cashfree/create-order`) and redirects user to verify payment state (`POST /api/payments/cashfree/verify`).
+- Restricted to sandbox mode by default unless `CASHFREE_ENV` is set to `production`.
 
-**Server-only keys:** `RAZORPAY_KEY_SECRET` never leaves the server. `RAZORPAY_KEY_ID` is sent to the browser only as needed by `checkout.js`.
-
-**When keys are missing:** Card/UPI returns a friendly "Online payment is not configured" message (HTTP 503). The app does not crash.
-
-**Test credentials (Razorpay test mode):**
-
-- Test card: `4100 2800 0000 1007`, any CVV, any future expiry
-- Test UPI: `success@razorpay`
+**Server-only keys:** `RAZORPAY_KEY_SECRET` and `CASHFREE_SECRET_KEY` never leave the server.
 
 **Guest vs member:**
-
-- Guest checkout: UPI or Card only (no Cash).
+- Guest checkout: UPI or Card only (no Cash) unless explicitly permitted by the owner settings.
 - Logged-in member: Cash, Card, or UPI.
 
-## Business Owner Controls
 
-The admin overview includes an owner action board, not only passive metrics:
+## Admin Operations Console & Owner Controls
 
-- Outlet pulse strip: readiness, peak load, online payment mix, and AI briefing state.
-- Protect peak: highlights the busiest hour and forecast window for staffing/prep.
-- Push winner: uses the top pizza as the merchandising/menu focus.
-- Payment risk: explains online-payment share and guest/member payment controls.
-- Margin lever: turns AOV into a cart-AI/topping upsell action.
+The Admin Console (`app/admin-dashboard/page.tsx`) provides a premium workspace designed for store owners to manage operations, review performance metrics, and dynamically alter business rules:
 
-The customer ordering workspace includes a promise strip that makes the experience clear before checkout: live bill visibility, guest/member payment policy, and the value of signing in for saved profile/favourites.
+### 1. Operations Dashboard & Live Metrics
+- **Outlet Pulse Strip**: Provides at-a-glance information on outlet readiness, peak load statuses, card/UPI online payment mix, and AI briefing alerts.
+- **Aggregated Financials**: Computes Total Revenue, Order Count, Average Order Value (AOV), and busiest sales hour in real-time from active database records.
+- **Interactive Action Board**: Converts passive data points into actionable tasks:
+  - **Protect Peak**: Suggests staffing changes based on busiest times.
+  - **Push Winner**: Identifies the highest-volume pizza to adjust marketing focus.
+  - **Payment Risk**: Monitors the share of Cash vs. Online payments.
+  - **Margin Lever**: Uses current AOV to optimize upselling strategies in the AI Cart Strategist.
 
-## Owner Settings
+### 2. Order Filters & Management
+- Admins can query orders dynamically by payment mode (Cash, Card, UPI) and filter by specific order dates.
+- Status management controls allow changing order states (Pending, In Transit, Delivered, Cancelled) with immediate persistence in Supabase.
 
-The Settings tab is a live configuration console:
+### 3. Dynamic Business Rule Configurator (Settings Tab)
+Store policies can be modified in real-time, instantly propagating changes to the storefront and backend API validations:
+- **Brand Identity**: Customize outlet name, open/closed status, and promotional copywriting.
+- **Financial Controls**: Set specific GST percentages and maximum order capacities.
+- **Loyalty/Discounts**: Customize bulk discount percentages and minimum quantity requirements.
+- **Logistics**: Change delivery fees, free delivery order thresholds, and maximum delivery radius limits (in kilometers).
+- **Security & Risk**: Toggle `guestCashAllowed` to dictate whether guest accounts can place Cash-on-Delivery orders or require online payment methods.
 
-- Brand, outlet, open status, delivery promise, hero headline, and customer promise copy.
-- GST percentage.
-- Bulk discount percentage.
-- Bulk discount quantity threshold.
-- Maximum pizzas per order.
-- Delivery fee.
-- Free delivery threshold.
-- Active delivery radius.
-- Guest Cash payment policy.
+### 4. CSV Reports & Auditing
+- Includes a dedicated endpoint (`GET /api/admin/orders?format=csv`) to compile and download all order records as standardized CSV logs for offline auditing.
 
-These settings update the customer app preview immediately and are sent to the order API for billing and validation.
 
 ## Local Setup
 
@@ -216,58 +253,63 @@ The required core tables are:
 - `slicematic.order_item_topping`
 - `slicematic.recommendation_event`
 
-## AI Features
+## AI Features & LLM Integration
 
-The application includes multiple AI features for Stage 3 and bonus coverage:
+SliceMatic integrates advanced language model (LLM) agents using the **OpenRouter TypeScript SDK** and raw HTTP route handlers. These features bridge customer storefront customization with back-of-house operations management:
 
-1. AI Recommendation Engine
-   - Trigger point: after name and phone, before menu browsing.
-   - Data used: customer phone, past Supabase order history, current menu IDs, toppings, and popularity fallback.
-   - Feature profile: favourite pizza, favourite topping, order count, average quantity, average spend, vegetarian lean, spicy lean, and recency.
-   - Menu signals: available menu IDs, local favourites, and high-value topping signals so recommendations improve fit and AOV.
-   - Output: one pizza ID, one topping ID, reason, and confidence.
-   - Guardrail: the server validates that returned IDs exist in the current available menu.
-   - Persistence: every shown recommendation is written to `recommendation_event`; if purchased, `/api/orders` marks it as `Purchased`.
+### 1. Customer AI Recommendation Engine
+* **Trigger Point**: Triggers automatically after the customer submits their name and phone number on the intake step.
+* **Mechanism**:
+  - The route handler `/api/recommend` fetches past orders for the customer's phone number from Supabase.
+  - It compiles a structured profile: total orders, total spend, vegetarian ratio, average quantity, spicy preferences, and top items.
+  - It passes this profile along with the *currently available* menu item IDs to the LLM.
+  - **Output**: JSON payload specifying `pizzaId`, `toppingId`, `confidence`, and a short `reason`.
+  - **Guardrail**: If the model suggests a non-existent or currently deactivated pizza/topping ID, the server intercepts the response and applies a popularity fallback before sending it to the UI.
+  - **Closed-Loop Attribution**: Every recommendation is logged to `slicematic.recommendation_event`. If the user adds the recommended pair to the cart and checks out, `/api/orders` links the purchase back to the recommendation event, marking the status as `Purchased` for conversion tracking.
 
-2. AI Cart Strategist
-   - Trigger point: customer cart panel.
-   - Data used: current cart, totals, discount threshold, menu, and delivery context.
-   - Output: one concise cart improvement, discount cue, pairing, or checkout reassurance.
-   - Business value: improves conversion and AOV without pushing random upsells.
+### 2. Customer AI Cart Strategist
+* **Trigger Point**: Cart drawer/panel preview.
+* **Mechanism**:
+  - Evaluates the current cart contents, total cart value, and owner-configured bulk discount thresholds (e.g., "10% off for 5+ pizzas").
+  - **Output**: A micro-copy banner displaying custom upsell recommendations, combo ideas, or proximity notifications to help the user hit discount thresholds or free delivery margins.
+  - **Business Impact**: Improves Average Order Value (AOV) by providing contextual value (e.g., "Add 1 more pizza to get 10% off your total order!") instead of generic spam.
 
-3. AI Menu Copywriter
-   - Trigger point: admin menu lifecycle studio.
-   - Data used: new item type, name, price, and draft tags.
-   - Output: customer-facing description, badge, tags, prep time, and merchandising note.
-   - Business value: helps launch new menu items consistently.
+### 3. Admin AI Menu Copywriter
+* **Trigger Point**: Menu creation panel in the admin studio.
+* **Mechanism**:
+  - When an admin inputs a raw draft name, base price, and category tags, the copywriter drafts premium marketing assets.
+  - **Output**: A structured description, promotional tags (e.g. "Signature", "Spicy"), an urgency badge (e.g. "Chef's Special", "New"), and preparation times.
 
-4. AI Operations Briefing
-   - Trigger point: admin overview.
-   - Data used: revenue, AOV, top pizza, busiest hour, payment mix, hourly demand, and forecast.
-   - Output: shift briefing, staffing cue, prep list, revenue watch, and prioritized actions.
-   - Business value: turns order data into kitchen/rider decisions.
+### 4. Admin AI Operations Briefing
+* **Trigger Point**: Admin Dashboard landing view.
+* **Mechanism**:
+  - Reads total revenue, average order value, payment mix, peak sales hour, and the demand forecast matrix.
+  - **Output**: A daily briefing including staff management recommendations, kitchen prep prioritization lists, and prioritized revenue-driving tasks.
 
-All AI endpoints have deterministic fallbacks so the app continues working if OpenRouter is unavailable.
+---
 
-### OpenRouter System Prompt
+## AI Model Selection & Rationale
 
-```text
-You are SliceMatic's in-app pizza recommendation assistant for a single outlet in Delhi.
-Recommend exactly one pizza and one topping the customer is likely to enjoy.
-Hard rules:
-- Only choose from the menu IDs provided. Never invent menu items.
-- Return strict JSON only.
-- If history exists, personalize using favourite pizza, topping, spend, veg/non-veg lean, spicy lean, quantity pattern, and recency.
-- If the customer is new, recommend a popular crowd-pleaser and say it is a safe first pick.
-- Prefer combinations that improve customer fit and contribution margin without pushing unnecessary discounts.
-- Keep the reason under 20 words, friendly, and without emojis.
-```
+### Model Choice: `openai/gpt-oss-20b` (via OpenRouter)
+The recommendation engine is configured to use the **`openai/gpt-oss-20b`** model by default (configurable via the `OPENROUTER_MODEL` environment variable).
 
-### Model Choice
+### Why this Model is Used for Customer Recommendations:
+1. **Flavour Profiling & Semantic Pairing**:
+   - The model acts as a virtual pizza sommelier. Rather than just doing a basic database join, it performs **semantic reasoning** on the customer's order history.
+   - For example, if a customer's history shows a strong pattern of vegetarian orders, the model understands the semantic relationship and avoids recommending non-veg toppings like pepperoni or chicken.
+   - If the history indicates a preference for spicy profiles, it connects this to toppings like jalapenos or peri-peri drizzle, creating high-context recommendations (e.g., "We paired your favourite Farm House pizza with a spicy Peri-Peri drizzle since you love bold flavours.").
+2. **Strict JSON Schema Adherence**:
+   - Our storefront parses the recommendation payload dynamically in Javascript. A malformed response or conversational fluff would break the layout or crash the storefront.
+   - Using the `response_format: { type: "json_object" }` flag, the `gpt-oss-20b` model strictly outputs key-value pairs (`pizzaId`, `toppingId`, `reason`, `confidence`) without conversational introductions or markdown wraps.
+3. **Optimized Latency (Speed)**:
+   - Recommendations are rendered immediately after customer intake. If the API request takes 5+ seconds, the customer will navigate away, resulting in lost conversions.
+   - The 20B parameters model operates with sub-second API execution, returning highly personalized suggestions almost instantly.
+4. **Cost-Efficiency & Scale**:
+   - Running full-scale personalization calls for every guest or returning user using large models (like GPT-4) would generate significant token usage fees. The 20B model provides the necessary reasoning capabilities at a fraction of the cost, making it ideal for high-throughput, student-scale production runs.
+5. **Resilience & Graceful Failures**:
+   - If the OpenRouter service becomes unavailable or rate-limited, the handler catches the exception and falls back to a deterministic recommendation service (`lib/pricing.ts` rules) that recommends the overall best-selling items, ensuring a smooth customer experience.
 
-Default model: `openai/gpt-oss-20b` via OpenRouter.
 
-Reason: the task needs low-latency structured JSON, light personalization, and reliable instruction following. The model is strong enough for grounded menu recommendations while staying cost-conscious for a student demo. The model can be changed by editing `OPENROUTER_MODEL`.
 
 ## Demand Forecast ML
 
