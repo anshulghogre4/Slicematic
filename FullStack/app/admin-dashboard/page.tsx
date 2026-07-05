@@ -1686,6 +1686,15 @@ export default function AdminDashboardPage() {
       setQuery("");
       setCategory("All");
       showToast(`${item.name} added to ${menuDraftSection}.`);
+
+      // confirm with server (catches any DB-side discrepancy or edge-cache stale hit)
+      fetch("/api/menu")
+        .then((r) => r.json())
+        .then((payload: MenuPayload) => {
+          setMenu(payload);
+          setMenuBaseline(snapshotMenuBaseline(payload));
+        })
+        .catch(() => { /* leave optimistic state on network error */ });
     } catch {
       showToast("Menu item could not be saved. Check admin access and Supabase settings.");
     } finally {
