@@ -8,6 +8,7 @@ import { calculateBill, getLineUnitPrice, money } from "../../lib/pricing";
 import { CartLine, MenuPayload, PaymentMode } from "../../lib/types";
 import { seedMenu } from "../../lib/seed-data";
 import { applyOrderToSession } from "../../lib/session-customer";
+import { fetchOutletPricingConfig } from "../../lib/customer-flow";
 
 const paymentModes: Array<{ mode: PaymentMode; icon: React.ReactNode; copy: string }> = [
   { 
@@ -65,7 +66,7 @@ function renderLine(line: CartLine, menu: MenuPayload, index: number, onRemove: 
 
 export default function PaymentScreen() {
   const router = useRouter();
-  const { cart, customer, pricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setCart } = useStore();
+  const { cart, customer, pricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setCart, setPricingConfig } = useStore();
   const [placingOrder, setPlacingOrder] = useState(false);
   const [paymentStatusMessage, setPaymentStatusMessage] = useState("");
   const [toast, setToast] = useState("");
@@ -74,6 +75,12 @@ export default function PaymentScreen() {
   const [sessionCustomerId, setSessionCustomerId] = useState<string | null>(null);
 
   const brand = { name: "SliceMatic" };
+
+  useEffect(() => {
+    void fetchOutletPricingConfig().then((config) => {
+      if (config) setPricingConfig(config);
+    });
+  }, [setPricingConfig]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;

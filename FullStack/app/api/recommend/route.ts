@@ -1,5 +1,9 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import {
+  RECOMMENDATION_DEFAULT_MODEL,
+  RECOMMENDATION_SYSTEM_PROMPT
+} from "../../../lib/recommendation-prompt";
 import { loadMenu } from "../../../lib/data-service";
 import { seedOrders } from "../../../lib/seed-data";
 import { getSupabaseServerClient } from "../../../lib/supabase";
@@ -7,17 +11,7 @@ import { MenuPayload, Recommendation } from "../../../lib/types";
 
 export const dynamic = "force-dynamic";
 
-const SYSTEM_PROMPT = `You are SliceMatic's in-app pizza recommendation assistant for a single outlet in Delhi.
-Recommend exactly 3 different pizza + topping combinations the customer is likely to enjoy.
-Hard rules:
-- Only choose from the menu IDs provided. Never invent menu items.
-- Return strict JSON only.
-- Each recommendation must be a DIFFERENT pizza (no duplicates).
-- If history exists, personalize using favourite pizza, topping, spend, veg/non-veg lean, spicy lean, quantity pattern, and recency.
-- If the customer is new, use the popularity data provided — these are proven crowd-pleasers based on real order history from ALL customers.
-- Vary the recommendations: one based on personal history (if returning), one based on global popularity, and one exploratory/different pick.
-- Prefer combinations that improve customer fit and contribution margin without pushing unnecessary discounts.
-- Keep each reason under 20 words, friendly, and without emojis.`;
+const SYSTEM_PROMPT = RECOMMENDATION_SYSTEM_PROMPT;
 
 type RecommendRequest = {
   name: string;
@@ -69,7 +63,7 @@ export async function POST(request: Request) {
         "x-title": "SliceMatic PizzaFlow"
       },
       body: JSON.stringify({
-        model: process.env.OPENROUTER_MODEL ?? "openai/gpt-oss-20b",
+        model: process.env.OPENROUTER_MODEL ?? RECOMMENDATION_DEFAULT_MODEL,
         temperature: 0.2,
         response_format: { type: "json_object" },
         messages: [

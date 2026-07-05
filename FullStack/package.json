@@ -13,7 +13,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "forecast:refresh": "node scripts/refresh-forecast.mjs",
-    "seed:synthetic-orders": "node scripts/seed-synthetic-orders.mjs"
+    "seed:synthetic-orders": "node scripts/seed-synthetic-orders.mjs",
+    "setup:storage": "node scripts/setup-storage-bucket.mjs"
   },
   "dependencies": {
     "@cashfreepayments/cashfree-js": "^1.0.7",

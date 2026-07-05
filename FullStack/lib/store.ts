@@ -1,7 +1,9 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { CartLine, CustomerDetails, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "./types";
 import { defaultPricingConfig } from "./pricing";
+
+const initialCustomer: CustomerDetails = { name: "", phone: "", address: "", deliveryZone: "2-4", note: "" };
 
 interface AppState {
   cart: CartLine[];
@@ -18,13 +20,19 @@ interface AppState {
   setLastOrder: (updater: SavedOrder | null | ((prev: SavedOrder | null) => SavedOrder | null)) => void;
   setRecommendation: (updater: Recommendation | null | ((prev: Recommendation | null) => Recommendation | null)) => void;
   clearCheckout: () => void;
+  /**
+   * Clears cart/customer/lastOrder/recommendation so one identity's session data
+   * never leaks into the next login on the same browser tab. Call on every
+   * login and logout (customer and admin) for defense in depth alongside sessionStorage.
+   */
+  resetSession: () => void;
 }
 
 export const useStore = create<AppState>()(
   persist(
     (set) => ({
       cart: [],
-      customer: { name: "", phone: "", address: "", deliveryZone: "2-4", note: "" },
+      customer: initialCustomer,
       pricingConfig: defaultPricingConfig,
       paymentMode: "UPI",
       lastOrder: null,
@@ -37,9 +45,18 @@ export const useStore = create<AppState>()(
       setLastOrder: (updater) => set((state) => ({ lastOrder: typeof updater === "function" ? updater(state.lastOrder) : updater })),
       setRecommendation: (updater) => set((state) => ({ recommendation: typeof updater === "function" ? updater(state.recommendation) : updater })),
       clearCheckout: () => set({ cart: [] }),
+      resetSession: () =>
+        set({
+          cart: [],
+          customer: initialCustomer,
+          lastOrder: null,
+          recommendation: null,
+          pricingConfig: defaultPricingConfig,
+        }),
     }),
     {
       name: "slicematic-storage",
+      storage: createJSONStorage(() => sessionStorage),
     }
   )
 );

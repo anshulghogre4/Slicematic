@@ -1,10 +1,10 @@
-import { mkdir, writeFile } from "fs/promises";
-import path from "path";
 import { NextResponse } from "next/server";
 import { requireAdminSession } from "../../../../lib/admin-auth";
+import { getSupabaseServerClient } from "../../../../lib/supabase";
 
 export const dynamic = "force-dynamic";
 
+const BUCKET = "menu-images";
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 const maxBytes = 4 * 1024 * 1024;
 
@@ -27,6 +27,14 @@ export async function POST(request: Request) {
       return NextResponse.json({ ok: false, error: "Image must be 4 MB or smaller." }, { status: 400 });
     }
 
+    const supabase = getSupabaseServerClient();
+    if (!supabase) {
+      return NextResponse.json(
+        { ok: false, error: "Image upload needs Supabase Storage configured for this environment." },
+        { status: 400 }
+      );
+    }
+
     const extension = extensionFor(file.type);
     const safeName = file.name
       .replace(/\.[^/.]+$/, "")
@@ -35,15 +43,18 @@ export async function POST(request: Request) {
       .replace(/(^-|-$)/g, "")
       .slice(0, 42) || "menu-image";
     const fileName = `${Date.now()}-${safeName}.${extension}`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "menu");
-    await mkdir(uploadDir, { recursive: true });
 
     const bytes = Buffer.from(await file.arrayBuffer());
-    await writeFile(path.join(uploadDir, fileName), bytes);
+    const uploaded = await supabase.storage.from(BUCKET).upload(fileName, bytes, { contentType: file.type });
+    if (uploaded.error) {
+      return NextResponse.json({ ok: false, error: "Image upload failed." }, { status: 500 });
+    }
+
+    const { data } = supabase.storage.from(BUCKET).getPublicUrl(uploaded.data.path);
 
     return NextResponse.json({
       ok: true,
-      url: `/uploads/menu/${fileName}`,
+      url: data.publicUrl,
       name: file.name,
       size: file.size,
       type: file.type

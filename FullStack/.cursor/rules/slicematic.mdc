@@ -1,0 +1,66 @@
+---
+description: SliceMatic project rules — applies to ALL files
+globs: ["**/*.tsx", "**/*.ts", "**/*.css"]
+alwaysApply: true
+---
+
+# SliceMatic — Cursor Rules
+
+## 🧠 Start Every Session by Reading the Wiki
+
+The wiki at `wiki/` (relative to repo root `Slicematic/`) is the shared brain.
+**Always read `wiki/index.md` and `wiki/handoff.md` before starting any task.**
+
+## ⚡ Non-Negotiable Rules
+
+### Dual-File Rule (CRITICAL)
+Two files must ALWAYS stay in sync for shared UI sections:
+- `FullStack/components/SliceMaticStage3.tsx`
+- `FullStack/app/admin-dashboard/page.tsx`
+
+Shared sections: `renderCustomerAccount()`, 3-info-cards, auth views, order history widget.
+**If you edit one, you MUST edit the other.**
+
+### CSS Rules
+- **NO Tailwind** — not a single class
+- All CSS goes in `FullStack/app/globals.css`
+- Design tokens: use existing `:root` variables (--tomato, --bg, --line, --radius, etc.)
+- Check `wiki/css-system.md` for existing layout classes before writing new CSS
+- The `.account-grid` uses `repeat(3, minmax(0, 1fr))` — 3 equal columns
+
+### TypeScript & State
+- Types are in `lib/types.ts` — never redeclare inline
+- Global state via Zustand (`lib/store.ts`) — sessionStorage persisted
+- Auth state via manual sessionStorage keys — see `wiki/auth-flows.md`
+- Never use `localStorage` for session data
+
+### Supabase
+- Guard all DB calls: `if (!hasSupabaseEnv()) return fallback`
+- Fall back to `lib/seed-data.ts` for menu data
+
+### Business Rules (lib/pricing.ts)
+- GST = 18%, Bulk discount = 10% at qty ≥ 5, Max qty = 10
+- Bill order: subtotal → discount → taxable → GST → delivery → total
+- Never change these constants without reading the PRD
+
+## 📋 After Every Session
+
+1. Add entry to `FullStack/CHANGELOG.md`
+2. Update `wiki/handoff.md`
+
+## 🚫 Never Do
+
+- Never use Tailwind
+- Never hardcode menu prices or item names
+- Never use localStorage for auth
+- Never let exceptions bubble to the UI uncaught
+- Never modify `gradio-MVP/` or `GRADIO-MVP-2/` for Stage 3 work
+
+## Commands
+
+```bash
+# Working dir: FullStack/
+npm run dev       # port 3000
+npm run test      # vitest
+npm run build     # production
+```

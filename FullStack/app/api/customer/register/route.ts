@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { registerCustomer } from "../../../../lib/data-service";
+import { requireCustomerOwnership } from "../../../../lib/customer-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -24,6 +25,9 @@ export async function POST(request: Request) {
     if (!/^[6-9]\d{9}$/.test(phone)) {
       return NextResponse.json({ ok: false, error: "Invalid mobile number" }, { status: 400 });
     }
+
+    const authError = await requireCustomerOwnership(request, { identifier: email });
+    if (authError) return authError;
 
     const customerId = await registerCustomer({
       name,

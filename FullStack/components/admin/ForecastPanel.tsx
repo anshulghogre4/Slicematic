@@ -34,14 +34,16 @@ export default function ForecastPanel({ summary }: { summary: AdminSummary }) {
           <Area dataKey="predictedOrders" fill="#2f6f98" stroke="#2f6f98" name="Predicted orders" />
         </AreaChart>
       </ResponsiveContainer>
-      <div className="forecast-list">
+      <div className="forecast-peaks">
         <p className="eyebrow">Top 3 peak hours (next 7 days)</p>
-        {topPeaks.map((item) => (
-          <div key={item.label}>
-            <strong>{item.label}</strong>
-            <span>{item.predictedOrders} predicted orders</span>
-          </div>
-        ))}
+        <div className="forecast-list">
+          {topPeaks.map((item) => (
+            <div key={item.label}>
+              <strong>{item.label}</strong>
+              <span>{item.predictedOrders} predicted orders</span>
+            </div>
+          ))}
+        </div>
       </div>
       <div className="forecast-model-card">
         <p className="eyebrow">Model documentation</p>

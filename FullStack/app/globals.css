@@ -1696,7 +1696,7 @@ a.primary:hover {
 
 .account-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
 }
 
@@ -2096,6 +2096,11 @@ a.primary:hover {
   max-width: 760px;
 }
 
+.forecast-peaks {
+  display: grid;
+  gap: 10px;
+}
+
 .forecast-list {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2242,6 +2247,7 @@ a.primary:hover {
 
 .image-preview-frame {
   min-height: 190px;
+  aspect-ratio: 16 / 10;
   border: 1px solid var(--line);
   border-radius: var(--radius);
   overflow: hidden;
@@ -2251,11 +2257,18 @@ a.primary:hover {
 }
 
 .image-preview-frame img {
+  display: block;
   width: 100%;
   height: 100%;
-  min-height: 190px;
   object-fit: cover;
-  aspect-ratio: 16 / 10;
+}
+
+.menu-editor .image-preview-frame img {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  max-width: none;
+  border-radius: 0;
 }
 
 .image-upload-controls {
@@ -2306,7 +2319,7 @@ a.primary:hover {
 
 .menu-editor article {
   display: grid;
-  grid-template-columns: 78px 1fr 110px 130px;
+  grid-template-columns: 78px 1fr 110px 130px 100px;
   gap: 10px;
   align-items: center;
   border: 1px solid var(--line);
@@ -2335,7 +2348,7 @@ a.primary:hover {
 }
 
 .menu-editor article.compact {
-  grid-template-columns: 58px 1fr 110px 130px;
+  grid-template-columns: 58px 1fr 110px 130px 100px;
 }
 
 .menu-editor article.compact strong {
@@ -2348,7 +2361,7 @@ a.primary:hover {
   color: var(--basil);
 }
 
-.menu-editor img {
+.menu-editor article img {
   width: 78px;
   height: 64px;
   object-fit: cover;
@@ -2368,6 +2381,40 @@ a.primary:hover {
   min-height: 16px;
   accent-color: var(--basil);
   box-shadow: none;
+}
+
+.row-save-btn {
+  min-height: 36px;
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  font-weight: 800;
+  border: 1px solid var(--line);
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+.row-save-btn.dirty {
+  border-color: rgba(217, 149, 50, 0.4);
+  background: rgba(217, 149, 50, 0.14);
+  color: #8a5a12;
+}
+
+.row-save-btn.saving {
+  border-color: rgba(47, 111, 152, 0.35);
+  background: rgba(47, 111, 152, 0.12);
+  color: var(--blue);
+}
+
+.row-save-btn.saved {
+  border-color: rgba(22, 109, 69, 0.3);
+  background: var(--basil-soft);
+  color: var(--basil);
+}
+
+.row-save-btn.error {
+  border-color: rgba(197, 54, 44, 0.3);
+  background: rgba(197, 54, 44, 0.08);
+  color: var(--tomato-dark);
 }
 
 .ai-panel {
@@ -2390,6 +2437,16 @@ a.primary:hover {
   padding: 15px;
   line-height: 1.55;
   overflow: auto;
+}
+
+.ai-prompt-meta {
+  display: grid;
+  gap: 8px;
+  font-size: 0.92rem;
+}
+
+.ai-prompt-meta code {
+  font-size: 0.88em;
 }
 
 .settings-console {

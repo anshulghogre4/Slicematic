@@ -173,6 +173,25 @@ create index if not exists idx_orders_payment_datetime on slicematic.orders(paym
 create index if not exists idx_order_item_pizza on slicematic.order_item(pizza_type_id);
 create index if not exists idx_recommendation_customer_time on slicematic.recommendation_event(customer_id, recommendation_timestamp desc);
 
+create table if not exists slicematic.outlet_settings (
+  setting_key text primary key,
+  setting_value jsonb not null,
+  updated_at timestamptz not null default now()
+);
+
+-- Locked down: no anon/authenticated policies. Only the service role (used by
+-- /api/outlet/pricing and /api/admin/outlet/pricing) can read/write, since the
+-- service role bypasses RLS. Without this, "grant all privileges ... to anon"
+-- below would let anyone with the public anon key overwrite GST/discount rules.
+alter table slicematic.outlet_settings enable row level security;
+
+insert into slicematic.outlet_settings (setting_key, setting_value)
+values (
+  'pricing_config',
+  '{"gstRate":0.18,"bulkDiscountRate":0.1,"bulkDiscountQty":5,"maxOrderQty":10,"deliveryFee":0,"freeDeliveryMin":0,"activeDeliveryZone":"2-4","guestCashAllowed":false}'::jsonb
+)
+on conflict (setting_key) do nothing;
+
 create or replace view slicematic.admin_order_export as
 select
   o.order_id,
