@@ -9,11 +9,9 @@ export type ForecastCache = ForecastMeta & {
   topPeaks: ForecastPoint[];
 };
 
-type OrderInput = { createdAt: string; finalTotal: number };
+type OrderInput = { createdAt: string };
 
 const CACHE_RELATIVE_PATH = path.join("lib", "generated", "forecast-cache.json");
-const STALE_MS = 24 * 60 * 60 * 1000;
-const REFRESH_TIMEOUT_MS = 8000;
 
 function cachePath() {
   return path.join(process.cwd(), CACHE_RELATIVE_PATH);
@@ -22,7 +20,7 @@ function cachePath() {
 function defaultForecastMeta(): ForecastMeta {
   return {
     model: "RandomForestRegressor",
-    features: ["weekday", "hour", "is_weekend", "hourly_revenue"],
+    features: ["weekday", "hour"],
     rmse: null,
     trainedAt: new Date(0).toISOString(),
     orderCount: 0,
@@ -46,10 +44,7 @@ function isValidCache(value: unknown): value is ForecastCache {
   return (
     Array.isArray(cache.forecast) &&
     cache.forecast.every(
-      (point) =>
-        typeof point.label === "string" &&
-        typeof point.predictedOrders === "number" &&
-        typeof point.confidence === "number"
+      (point) => typeof point.label === "string" && typeof point.predictedOrders === "number"
     ) &&
     typeof cache.model === "string" &&
     Array.isArray(cache.features)
@@ -73,56 +68,11 @@ export function loadForecastCache(): ForecastCache {
   }
 }
 
-function pythonCommand() {
-  return process.platform === "win32" ? "python" : "python3";
-}
-
-export function refreshForecastCache(orders: OrderInput[]): ForecastCache | null {
-  const scriptPath = path.join(process.cwd(), "scripts", "forecast_model.py");
-  const outputPath = cachePath();
-
-  if (!existsSync(scriptPath)) {
-    console.warn("Forecast refresh skipped: scripts/forecast_model.py not found.");
-    return null;
-  }
-
-  const payload = JSON.stringify(orders);
-  const result = spawnSync(
-    pythonCommand(),
-    [scriptPath, "--stdin-json", "--write-cache", outputPath],
-    {
-      cwd: process.cwd(),
-      input: payload,
-      encoding: "utf8",
-      timeout: REFRESH_TIMEOUT_MS,
-      maxBuffer: 10 * 1024 * 1024
-    }
-  );
-
-  if (result.error || result.status !== 0) {
-    console.warn(
-      "Forecast refresh failed:",
-      result.error?.message ?? result.stderr?.trim() ?? `exit ${result.status}`
-    );
-    return null;
-  }
-
-  return loadForecastCache();
-}
-
-function isCacheStale(cache: ForecastCache, orderCount: number) {
-  if (cache.orderCount !== orderCount) return true;
-  const trainedAt = Date.parse(cache.trainedAt);
-  if (Number.isNaN(trainedAt)) return true;
-  return Date.now() - trainedAt > STALE_MS;
-}
-
 function toSummaryPayload(cache: ForecastCache) {
-  const forecast = [...cache.forecast].sort((a, b) => b.predictedOrders - a.predictedOrders);
   const topPeaks =
     cache.topPeaks.length > 0
       ? cache.topPeaks
-      : forecast.slice(0, 3);
+      : [...cache.forecast].sort((a, b) => b.predictedOrders - a.predictedOrders).slice(0, 3);
 
   const forecastMeta: ForecastMeta = {
     model: cache.model,
@@ -133,21 +83,35 @@ function toSummaryPayload(cache: ForecastCache) {
     bucketCount: cache.bucketCount
   };
 
-  return { forecast, topPeaks, forecastMeta };
+  return { forecast: cache.forecast, topPeaks, forecastMeta };
 }
 
-export async function getForecastForSummary(orders: OrderInput[], orderCount: number) {
-  let cache = loadForecastCache();
+export async function getForecastForSummary() {
+  return toSummaryPayload(loadForecastCache());
+}
 
-  if (orders.length > 0 && isCacheStale(cache, orderCount)) {
-    const refreshed = refreshForecastCache(orders);
-    if (refreshed) cache = refreshed;
-  }
+function pythonCommand() {
+  return process.platform === "win32" ? "python" : "python3";
+}
 
-  const payload = toSummaryPayload(cache);
-  return {
-    forecast: payload.forecast,
-    topPeaks: payload.topPeaks,
-    forecastMeta: payload.forecastMeta
-  };
+export function refreshForecastCache(orders: OrderInput[]): ForecastCache | null {
+  const scriptPath = path.join(process.cwd(), "scripts", "forecast_model.py");
+  const outputPath = cachePath();
+
+  if (!existsSync(scriptPath)) return null;
+
+  const result = spawnSync(
+    pythonCommand(),
+    [scriptPath, "--stdin-json", "--write-cache", outputPath],
+    {
+      cwd: process.cwd(),
+      input: JSON.stringify(orders),
+      encoding: "utf8",
+      timeout: 30000,
+      maxBuffer: 10 * 1024 * 1024
+    }
+  );
+
+  if (result.error || result.status !== 0) return null;
+  return loadForecastCache();
 }

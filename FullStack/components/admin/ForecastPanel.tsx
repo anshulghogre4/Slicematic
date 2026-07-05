@@ -19,41 +19,40 @@ export default function ForecastPanel({ summary }: { summary: AdminSummary }) {
   return (
     <section className="admin-card forecast-card">
       <div>
-        <p className="eyebrow">Demand intelligence</p>
-        <h2>Next 7 peak windows</h2>
+        <p className="eyebrow">Demand forecast</p>
+        <h2>Next 7 days — predicted order volume</h2>
         <p>
-          scikit-learn RandomForestRegressor trained on Supabase hourly order history. Use this for staffing, rider planning, and prep batching.
+          Lightweight scikit-learn model trained on Supabase order history. Predicts orders per hour using day of week and hour of day.
         </p>
       </div>
       <ResponsiveContainer width="100%" height={310}>
         <AreaChart data={summary.forecast}>
           <CartesianGrid strokeDasharray="3 3" />
-          <XAxis dataKey="label" />
-          <YAxis />
+          <XAxis dataKey="label" interval="preserveStartEnd" angle={-35} textAnchor="end" height={70} />
+          <YAxis allowDecimals={false} />
           <Tooltip />
-          <Area dataKey="predictedOrders" fill="#2f6f98" stroke="#2f6f98" />
+          <Area dataKey="predictedOrders" fill="#2f6f98" stroke="#2f6f98" name="Predicted orders" />
         </AreaChart>
       </ResponsiveContainer>
       <div className="forecast-list">
+        <p className="eyebrow">Top 3 peak hours (next 7 days)</p>
         {topPeaks.map((item) => (
           <div key={item.label}>
             <strong>{item.label}</strong>
-            <span>
-              {item.predictedOrders} orders / {Math.round(item.confidence * 100)}% confidence
-            </span>
+            <span>{item.predictedOrders} predicted orders</span>
           </div>
         ))}
       </div>
       <div className="forecast-model-card">
         <p className="eyebrow">Model documentation</p>
         <p><strong>Model:</strong> {meta?.model ?? "RandomForestRegressor"} (scikit-learn)</p>
-        <p><strong>Features:</strong> {(meta?.features ?? ["weekday", "hour", "is_weekend", "hourly_revenue"]).join(", ")}</p>
+        <p><strong>Features:</strong> {(meta?.features ?? ["weekday", "hour"]).join(", ")}</p>
         <p>
-          <strong>Metric:</strong>{" "}
-          {meta?.rmse != null ? `RMSE = ${meta.rmse.toFixed(2)} orders/hour` : "RMSE unavailable (insufficient hourly buckets)"}
+          <strong>Evaluation:</strong>{" "}
+          {meta?.rmse != null ? `RMSE = ${meta.rmse.toFixed(2)} orders/hour (22% hold-out)` : "RMSE unavailable — need 20+ hourly buckets"}
         </p>
         <p>
-          <strong>Last trained:</strong> {formatTrainedAt(meta?.trainedAt ?? "")} on {meta?.orderCount ?? summary.orderCount} orders ({meta?.bucketCount ?? 0} hourly buckets)
+          <strong>Trained:</strong> {formatTrainedAt(meta?.trainedAt ?? "")} on {meta?.orderCount ?? summary.orderCount} orders ({meta?.bucketCount ?? 0} hourly buckets)
         </p>
       </div>
     </section>

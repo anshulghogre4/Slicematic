@@ -1,6 +1,35 @@
 # SliceMatic Stage 3
 
-SliceMatic is a full-stack PizzaFlow delivery application built for the Stage 3 live demo. It includes a customer ordering flow, Supabase-backed menu/orders schema, admin dashboard, CSV export, and an OpenRouter-powered recommendation engine.
+SliceMatic is a full-stack PizzaFlow delivery application built for the Stage 3 live demo. It includes a customer ordering flow, Supabase-backed menu/orders schema, admin dashboard, CSV export, OpenRouter-powered AI features, payment gateways (Razorpay + Cashfree), and an offline scikit-learn demand forecast.
+
+## Quick reference
+
+| Area | Location |
+| --- | --- |
+| Customer storefront | `app/page.tsx` → `EntryPortal` → `SliceMaticStage3` |
+| Admin console | `app/admin-dashboard/page.tsx` |
+| Billing rules (Stage 2 parity) | `lib/pricing.ts` |
+| Supabase data access | `lib/data-service.ts`, `lib/supabase.ts` |
+| Demand forecast trainer | `scripts/forecast_model.py` |
+| Forecast cache (served on Vercel) | `lib/generated/forecast-cache.json` |
+| DB schema | `supabase/schema.sql` |
+| Tests (Vitest) | `lib/*.test.ts`, `app/api/**/*.test.ts` |
+
+### NPM scripts
+
+```bash
+npm run dev                  # Next.js dev server (localhost:3000)
+npm run build                # Production build
+npm run test                 # Vitest — pricing, data-service, payments, store
+npm run forecast:refresh     # Pull orders from Supabase → train Python model → write cache
+npm run seed:synthetic-orders  # Append tagged demo orders for ML/dev (see below)
+```
+
+Python ML deps (forecast only):
+
+```bash
+python -m pip install -r requirements-ml.txt
+```
 
 ## Architecture & System Data Flow
 
@@ -61,9 +90,9 @@ flowchart TD
   AICartAPI --> OpenRouter
   AIMenuAPI --> OpenRouter
   
-  %% ML Forecast
-  ForecastAPI --> MLCache
-  AdminOrdersAPI -.->|Reads Order History| ForecastAPI
+  %% ML Forecast (offline train, online read)
+  AdminOrdersAPI -.->|Reads cache| MLCache
+  ForecastAPI -->|Local retrain only| MLCache
 ```
 
 The application separates concerns cleanly: the **Customer Workspace** runs on a state-aware custom storefront while the **Admin Operations Console** isolates configurations, forecasts, and live-metrics to prevent layout clutter and operational overlap.
@@ -91,7 +120,64 @@ The customer workspace does not render the admin console below the order flow. T
 | Admin login | Admin screen signs in with Supabase Auth when Supabase env keys exist; local demo credentials are available for development. |
 | Admin dashboard | Revenue, order count, AOV, top-selling pizza, busiest hour, payment mix, order filters, CSV export, menu controls, and forecast panel. |
 | Preserve Stage 2 logic | Name, phone, quantity, payment, discount, GST, and bill calculation rules live in `lib/pricing.ts`. |
-| AI/ML integration | OpenRouter recommendation engine, AI cart strategist, AI menu copywriter, AI operations briefing, recommendation logging, and demand forecast dashboard. |
+| AI/ML integration | OpenRouter recommendation engine, AI cart strategist, AI menu copywriter, AI operations briefing, recommendation logging, and demand forecast dashboard (scikit-learn + cache). |
+
+## API routes
+
+| Route | Method | Purpose |
+| --- | --- | --- |
+| `/api/menu` | GET | Live menu from Supabase (`pizza_types`, `bases`, `toppings`, `sizes`) |
+| `/api/orders` | POST | Place order — customer, header, line items, toppings, totals, payment |
+| `/api/recommend` | POST | AI pizza/topping recommendation from order history + OpenRouter |
+| `/api/customer/register` | POST | Register/link Supabase customer row (email + phone) |
+| `/api/customer/profile` | GET | Lookup customer profile by email or phone |
+| `/api/customer/orders` | GET | Order history for logged-in customer |
+| `/api/payments/create-order` | POST | Razorpay order (server-side bill recompute) |
+| `/api/payments/verify` | POST | Razorpay signature verification |
+| `/api/payments/cashfree/create-order` | POST | Cashfree sandbox/prod order |
+| `/api/payments/cashfree/verify` | POST | Cashfree payment status |
+| `/api/admin/orders` | GET | Admin summary, filters, CSV export (`?format=csv`) |
+| `/api/admin/menu` | GET/POST | Menu CRUD for admin studio |
+| `/api/admin/upload` | POST | Menu image upload → `public/uploads/menu` |
+| `/api/admin/forecast/refresh` | POST | Local-only retrain (Python + scikit-learn on machine) |
+| `/api/ai/cart-insight` | POST | Cart upsell / discount proximity copy |
+| `/api/ai/menu-copy` | POST | Admin menu item marketing copy |
+| `/api/ai/ops-briefing` | POST | Admin shift briefing from live metrics + forecast |
+| `/api/health` | GET | Health check |
+
+Protected admin routes use bearer-token checks via `lib/admin-auth.ts` when Supabase service keys are configured.
+
+## Project layout
+
+```text
+FullStack/
+├── app/
+│   ├── page.tsx                 # Entry portal gate → customer app
+│   ├── admin-dashboard/         # Admin operations console
+│   ├── payment/                 # Payment step
+│   └── api/                     # Route handlers (see table above)
+├── components/
+│   ├── EntryPortal/             # OTP / demo login shell
+│   ├── SliceMaticStage3.tsx     # Customer ordering workspace
+│   └── admin/ForecastPanel.tsx  # Demand forecast chart + model card
+├── lib/
+│   ├── pricing.ts               # Stage 2 bill rules (source of truth)
+│   ├── data-service.ts          # Supabase reads/writes, admin summary
+│   ├── forecast-service.ts      # Load forecast JSON cache
+│   ├── session-customer.ts      # Customer session sync + register hook
+│   ├── store.ts                 # Zustand cart/settings state
+│   ├── razorpay.ts / cashfree.ts
+│   └── generated/
+│       └── forecast-cache.json  # Trained forecast (commit or regenerate)
+├── scripts/
+│   ├── forecast_model.py        # scikit-learn trainer
+│   ├── refresh-forecast.mjs     # Supabase → Python → cache
+│   ├── seed-synthetic-orders.mjs
+│   └── verify-recommend-flow.mjs
+├── supabase/schema.sql
+├── requirements-ml.txt            # scikit-learn for forecast scripts
+└── backups/                     # Local pg_dump (gitignored)
+```
 
 ## Stage 2 Business Rules Preserved
 
@@ -144,6 +230,8 @@ Customer accounts are supported via two routes depending on flow:
 - **New OTP Entry Portal**: Users start in a unified glassmorphic `EntryPortal` (`components/EntryPortal/EntryPortal.tsx`) requiring email/OTP sign-in, with a automatic demo fallback for local/no-key development.
 - **Continue-as-guest**: Guests can enter the workspace immediately. If they want to unlock cash payment, clicking "Sign in for Cash" in the Cart redirects them back to the new OTP-based `EntryPortal`.
 - **Saved session restoration**: The app retains user sessions (emails/profile names) in sessionStorage and automatically pulls past order history and recommendations.
+- **Supabase customer linking**: `lib/session-customer.ts` syncs the session to a `slicematic.customer` row via `GET /api/customer/profile` or `POST /api/customer/register` (name, phone, email).
+- **Order history**: Logged-in customers load past orders through `GET /api/customer/orders`.
 - **Account Workspace**: Logged-in customers gain access to their account workspace (`workspace === "account"`) to manage their order history, personal AI recommendations, and password recovery.
 
 Demo customer credentials:
@@ -222,12 +310,17 @@ Without environment keys the app runs with demo menu/orders so the UI can be rev
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
+DATABASE_URL=                        # optional — DBeaver / pg_dump pooler URL
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=openai/gpt-oss-20b
 NEXT_PUBLIC_DEMO_ADMIN_EMAIL=admin@slicematic.in
 NEXT_PUBLIC_DEMO_ADMIN_PASSWORD=slicematic-demo
 RAZORPAY_KEY_ID=rzp_test_...
 RAZORPAY_KEY_SECRET=...
+RAZORPAY_CONFIG_ID=                  # optional Razorpay checkout config
+CASHFREE_APP_ID=
+CASHFREE_SECRET_KEY=
+CASHFREE_ENV=sandbox                   # sandbox | production
 ```
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` and `RAZORPAY_KEY_SECRET` only in server environments such as Vercel project settings. Never expose them in browser code.
@@ -313,26 +406,76 @@ The recommendation engine is configured to use the **`openai/gpt-oss-20b`** mode
 
 ## Demand Forecast ML
 
-The admin **Forecast** tab reads a scikit-learn cache trained on Supabase order history. Training runs offline; the dashboard serves the cached predictions on Vercel without needing Python at request time.
+Stage 3 requirement: *use Supabase order history to train a lightweight scikit-learn model that predicts order volume by hour of day and day of week; show a chart and top 3 peak hours on the admin dashboard; document model choice, features, and RMSE.*
+
+We use a **hybrid train/serve design** (KISS): Python trains offline; the Next.js app only reads a JSON cache — no Python on Vercel at request time.
+
+### Architecture
+
+```text
+┌─────────────────┐     npm run forecast:refresh      ┌──────────────────────┐
+│ Supabase        │ ─────────────────────────────────►│ scripts/             │
+│ slicematic.     │   order_datetime rows (JSON stdin)  │ forecast_model.py    │
+│ orders          │                                     │ (scikit-learn train) │
+└─────────────────┘                                     └──────────┬───────────┘
+                                                                   │
+                                                                   ▼
+┌─────────────────┐     loadForecastCache()           ┌──────────────────────┐
+│ Admin Forecast  │ ◄─────────────────────────────────│ lib/generated/       │
+│ tab (Recharts)  │   via lib/forecast-service.ts     │ forecast-cache.json  │
+└─────────────────┘                                     └──────────────────────┘
+```
+
+| Step | What happens |
+| --- | --- |
+| 1. Fetch | `scripts/refresh-forecast.mjs` reads all `order_datetime` values from `slicematic.orders` |
+| 2. Bucket | Python groups orders into **hourly buckets** (IST, minute truncated) → target = order count per hour |
+| 3. Train | `RandomForestRegressor(n_estimators=100, random_state=42)` on features **`weekday`** (0=Mon…6=Sun) and **`hour`** (0–23) |
+| 4. Evaluate | If ≥20 hourly buckets exist, hold out 22% randomly and compute **RMSE** (orders/hour) |
+| 5. Predict | For each store hour **11:00–22:00** over the **next 7 days**, predict order volume |
+| 6. Cache | Write JSON with `forecast[]`, `topPeaks[]` (top 3 by volume), `rmse`, metadata |
+| 7. Display | Admin **Forecast** tab (`components/admin/ForecastPanel.tsx`) — area chart + top 3 list + model card |
 
 ### Model choice
 
-**RandomForestRegressor** (not LinearRegression) because order volume has non-linear lunch/dinner peaks and weekend bumps that a single linear plane underfits.
+**RandomForestRegressor** (assignment allows LinearRegression or RandomForest). We chose RandomForest because lunch/dinner peaks are non-linear in hour — two features (`weekday`, `hour`) stay minimal while the tree ensemble captures peak shapes without extra engineering.
 
-### Features and target
+| Item | Value |
+| --- | --- |
+| Library | scikit-learn (`requirements-ml.txt`) |
+| Model | `RandomForestRegressor` |
+| Features | `weekday`, `hour` (Asia/Kolkata) |
+| Target | Orders per hour |
+| Metric | **RMSE** on 22% hold-out (null if &lt;20 buckets) |
+| Store hours predicted | 11:00–22:00 only |
 
-| Feature | Description |
-|---|---|
-| `weekday` | Day of week (0=Mon … 6=Sun, IST) |
-| `hour` | Hour of day (0–23, IST) |
-| `is_weekend` | 1 if Saturday/Sunday else 0 |
-| `hourly_revenue` | Total revenue in that hour bucket |
+LinearRegression would also satisfy the rubric; RandomForest typically fits hourly peaks better on sparse real data.
 
-**Target:** orders per hour.
+### Key files
 
-### Evaluation metric
+| File | Role |
+| --- | --- |
+| `scripts/forecast_model.py` | Trainer CLI — `--stdin-json`, `--write-cache` |
+| `scripts/refresh-forecast.mjs` | Supabase fetch + spawn Python + write cache |
+| `lib/forecast-service.ts` | `loadForecastCache()`, `getForecastForSummary()` |
+| `lib/data-service.ts` | `loadAdminSummary()` attaches forecast to admin API |
+| `components/admin/ForecastPanel.tsx` | Chart, top 3 peaks, model documentation card |
+| `app/api/admin/forecast/refresh/route.ts` | Optional POST retrain when Python is installed locally |
 
-Hold-out **RMSE** (root mean squared error) in orders/hour on 22% of hourly buckets when at least 20 buckets exist. Shown in the dashboard model card and CLI output.
+### Cache JSON shape
+
+```json
+{
+  "trainedAt": "2026-07-05T17:03:14+05:30",
+  "orderCount": 201,
+  "bucketCount": 130,
+  "model": "RandomForestRegressor",
+  "features": ["weekday", "hour"],
+  "rmse": 1.05,
+  "forecast": [{ "label": "Mon 11:00", "predictedOrders": 2 }],
+  "topPeaks": [{ "label": "Sat 17:00", "predictedOrders": 4 }]
+}
+```
 
 ### Refresh workflow
 
@@ -341,15 +484,47 @@ python -m pip install -r requirements-ml.txt
 npm run forecast:refresh
 ```
 
-`forecast:refresh` pulls `order_datetime` + `final_amount` from Supabase, trains via `scripts/forecast_model.py`, and writes `lib/generated/forecast-cache.json`. Re-run after meaningful order activity before deploy so Vercel serves fresh peaks.
+Re-run after meaningful new orders and before deploy so Vercel serves fresh peaks. Commit `lib/generated/forecast-cache.json` or regenerate in CI.
 
-Local-only retrain from the admin session: `POST /api/admin/forecast/refresh` (requires Python + scikit-learn on the machine).
+**Local retrain from admin session** (machine must have Python + scikit-learn):
 
-Q&A demo (synthetic data, prints RMSE + top windows):
+```bash
+POST /api/admin/forecast/refresh
+```
+
+**Demo without Supabase** (built-in synthetic hourly patterns):
 
 ```bash
 python scripts/forecast_model.py
 ```
+
+### Synthetic order seed (optional — ML/dev)
+
+When real order volume is too low for RMSE (&lt;20 hourly buckets), append tagged demo orders:
+
+```bash
+node scripts/seed-synthetic-orders.mjs --dry-run --count 150   # preview
+node scripts/seed-synthetic-orders.mjs --count 150 --yes       # insert
+npm run forecast:refresh                                       # retrain
+node scripts/seed-synthetic-orders.mjs --purge --yes           # remove only tagged rows
+```
+
+Safety rules:
+
+- Rows tagged `customer_note = 'SYNTHETIC_ML_SEED'`
+- Dedicated phone band `9100000001`–`9100000020`
+- Random UUIDs; billing uses same rules as `lib/pricing.ts`
+- Purge only removes synthetic-tagged rows; take a DB backup first (`FullStack/backups/`)
+
+### Admin UI
+
+Open **Admin → Forecast** tab:
+
+1. **Area chart** — predicted orders for each hour slot in the next 7 days (11:00–22:00)
+2. **Top 3 peak hours** — highest predicted volume windows for staffing/prep
+3. **Model card** — model name, features, RMSE, train timestamp, order/bucket counts
+
+The AI **Operations Briefing** (`/api/ai/ops-briefing`) also reads forecast peaks for shift recommendations.
 
 ## Deployment
 
@@ -365,14 +540,25 @@ Submission checklist:
 - GitHub repository URL.
 - Supabase read-only access for evaluator.
 - Loom walkthrough link.
-- README with architecture, setup, AI feature, system prompt, and model rationale.
+- README with architecture, setup, AI feature, system prompt, model rationale, and demand forecast pipeline.
 - Live demo ready to show one code modification, such as changing the discount trigger in `lib/pricing.ts` from 5 pizzas to 3.
 
 ## Demo Flow
 
-1. Enter a valid name, phone, and delivery address.
-2. Show AI recommendation and explain OpenRouter plus Supabase history lookup.
-3. Build a pizza with base, size, toppings, and quantity.
-4. Place order with UPI, Card, or Cash.
-5. Open admin dashboard, show filters, CSV export, top pizza, busiest hour, and revenue summary.
-6. Explain schema tables and how `orders` and `order_item` separate header vs line data.
+1. **Entry portal** — sign in (OTP/demo), continue as guest, or open admin.
+2. Customer intake — valid name, phone, delivery address (0–4 km).
+3. Show **AI recommendation** (`/api/recommend`) — OpenRouter + Supabase history.
+4. Build pizza — base, size, toppings, quantity; cart strategist upsell in drawer.
+5. Checkout — UPI/Card (Razorpay or Cashfree) or Cash (members / owner setting).
+6. **Admin dashboard** — revenue, AOV, busiest hour, payment mix, order filters, CSV export.
+7. **Forecast tab** — explain offline Python train → JSON cache → chart + top 3 peaks + RMSE.
+8. **Menu tab** — add item, AI copywriter, image upload.
+9. Schema Q&A — `orders` header vs `order_item` lines; `recommendation_event` attribution.
+
+## Further reading
+
+| Document | Contents |
+| --- | --- |
+| [`CHANGELOG.md`](./CHANGELOG.md) | Timestamped dev log — forecast pipeline, Supabase fixes, payments, TDD |
+| [`AI_RECOMMENDATION_ENGINE.md`](./AI_RECOMMENDATION_ENGINE.md) | Deep dive on recommendation prompts, schema, and attribution |
+| [`STAGE3_BUILD_REPORT.md`](./STAGE3_BUILD_REPORT.md) | Build verification notes for Stage 3 submission |

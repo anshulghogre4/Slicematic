@@ -659,10 +659,7 @@ export async function loadAdminSummary(): Promise<AdminSummary> {
     const hourlyDemand = [...hourMap.values()].sort((a, b) => a.hour.localeCompare(b.hour));
     const busiestHour = [...hourMap.values()].sort((a, b) => b.orders - a.orders)[0]?.hour ?? "20:00";
     const topPizza = await loadTopSellingPizza();
-    const { forecast, topPeaks, forecastMeta } = await getForecastForSummary(
-      recentOrders.map((order) => ({ createdAt: order.createdAt, finalTotal: order.finalTotal })),
-      recentOrders.length
-    );
+    const { forecast, topPeaks, forecastMeta } = await getForecastForSummary();
 
     return {
       totalRevenue,

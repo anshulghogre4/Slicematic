@@ -17,7 +17,7 @@ export async function POST(request: Request) {
   const ordersResult = await supabase
     .schema("slicematic")
     .from("orders")
-    .select("order_datetime, final_amount")
+    .select("order_datetime")
     .order("order_datetime", { ascending: false });
 
   if (ordersResult.error) {
@@ -25,8 +25,7 @@ export async function POST(request: Request) {
   }
 
   const orders = (ordersResult.data || []).map((row) => ({
-    createdAt: String(row.order_datetime),
-    finalTotal: Number(row.final_amount ?? 0)
+    createdAt: String(row.order_datetime)
   }));
 
   const cache = refreshForecastCache(orders);

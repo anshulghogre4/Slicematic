@@ -360,25 +360,13 @@ Files:
 - `scripts/forecast_model.py`
 - `requirements-ml.txt`
 
-The ML script trains a lightweight scikit-learn `RandomForestRegressor` for demand forecasting by hour/day.
+The ML script trains a lightweight scikit-learn `RandomForestRegressor` on Supabase order history.
 
-Features used:
+Features: `weekday`, `hour` (IST).
 
-- Weekday.
-- Hour.
-- Weekend flag.
-- Revenue signal.
+Metric: hold-out **RMSE** (orders/hour).
 
-Metric:
-
-- RMSE.
-
-Output:
-
-- Validation RMSE.
-- Top 7 forecast prep windows.
-
-The admin dashboard also shows a demand forecast chart and top 3 peak windows. This supports a stronger ML story during Stage 3 Q&A.
+Output: next-7-day hourly chart, top 3 peak hours, model card on admin Forecast tab.
 
 ## Verification Completed
 

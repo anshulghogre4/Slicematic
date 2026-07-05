@@ -195,18 +195,18 @@ export const seedOrders: SavedOrder[] = [
 ];
 
 export const seedForecast: ForecastPoint[] = [
-  { label: "Fri 19:00", predictedOrders: 18, confidence: 0.91 },
-  { label: "Sat 20:00", predictedOrders: 25, confidence: 0.88 },
-  { label: "Sun 13:00", predictedOrders: 19, confidence: 0.84 },
-  { label: "Mon 20:00", predictedOrders: 13, confidence: 0.81 },
-  { label: "Tue 19:00", predictedOrders: 12, confidence: 0.79 },
-  { label: "Wed 21:00", predictedOrders: 14, confidence: 0.82 },
-  { label: "Thu 20:00", predictedOrders: 16, confidence: 0.86 }
+  { label: "Fri 19:00", predictedOrders: 18 },
+  { label: "Sat 20:00", predictedOrders: 25 },
+  { label: "Sun 13:00", predictedOrders: 19 },
+  { label: "Mon 20:00", predictedOrders: 13 },
+  { label: "Tue 19:00", predictedOrders: 12 },
+  { label: "Wed 21:00", predictedOrders: 14 },
+  { label: "Thu 20:00", predictedOrders: 16 }
 ];
 
 export const seedForecastMeta = {
   model: "RandomForestRegressor",
-  features: ["weekday", "hour", "is_weekend", "hourly_revenue"],
+  features: ["weekday", "hour"],
   rmse: 1.84,
   trainedAt: "2026-01-15T18:00:00+05:30",
   orderCount: seedOrders.length,

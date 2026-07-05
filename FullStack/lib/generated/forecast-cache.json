@@ -1,67 +1,363 @@
 {
-  "trainedAt": "2026-07-04T17:36:18.760400+05:30",
-  "orderCount": 22,
-  "bucketCount": 10,
+  "trainedAt": "2026-07-05T17:05:03.062396+05:30",
+  "orderCount": 201,
+  "bucketCount": 130,
   "model": "RandomForestRegressor",
   "features": [
     "weekday",
-    "hour",
-    "is_weekend",
-    "hourly_revenue"
+    "hour"
   ],
-  "rmse": null,
+  "rmse": 1.05,
   "forecast": [
     {
-      "label": "Mon 14:00",
-      "predictedOrders": 3,
-      "confidence": 0.67
-    },
-    {
-      "label": "Tue 14:00",
-      "predictedOrders": 3,
-      "confidence": 0.64
-    },
-    {
-      "label": "Wed 14:00",
-      "predictedOrders": 3,
-      "confidence": 0.61
-    },
-    {
-      "label": "Thu 14:00",
-      "predictedOrders": 3,
-      "confidence": 0.58
-    },
-    {
-      "label": "Fri 14:00",
-      "predictedOrders": 3,
-      "confidence": 0.55
+      "label": "Mon 11:00",
+      "predictedOrders": 2
     },
     {
       "label": "Mon 12:00",
-      "predictedOrders": 3,
-      "confidence": 0.55
+      "predictedOrders": 1
     },
     {
       "label": "Mon 13:00",
-      "predictedOrders": 3,
-      "confidence": 0.55
+      "predictedOrders": 1
+    },
+    {
+      "label": "Mon 14:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Mon 15:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Mon 16:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Mon 17:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Mon 18:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Mon 19:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Mon 20:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Mon 21:00",
+      "predictedOrders": 2
+    },
+    {
+      "label": "Mon 22:00",
+      "predictedOrders": 2
+    },
+    {
+      "label": "Tue 11:00",
+      "predictedOrders": 2
+    },
+    {
+      "label": "Tue 12:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Tue 13:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Tue 14:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Tue 15:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Tue 16:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Tue 17:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Tue 18:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Tue 19:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Tue 20:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Tue 21:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Tue 22:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Wed 11:00",
+      "predictedOrders": 2
+    },
+    {
+      "label": "Wed 12:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Wed 13:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Wed 14:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Wed 15:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Wed 16:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Wed 17:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Wed 18:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Wed 19:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Wed 20:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Wed 21:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Wed 22:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Thu 11:00",
+      "predictedOrders": 2
+    },
+    {
+      "label": "Thu 12:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Thu 13:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Thu 14:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Thu 15:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Thu 16:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Thu 17:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Thu 18:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Thu 19:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Thu 20:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Thu 21:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Thu 22:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Fri 11:00",
+      "predictedOrders": 2
+    },
+    {
+      "label": "Fri 12:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Fri 13:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Fri 14:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Fri 15:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Fri 16:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Fri 17:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Fri 18:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Fri 19:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Fri 20:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Fri 21:00",
+      "predictedOrders": 2
+    },
+    {
+      "label": "Fri 22:00",
+      "predictedOrders": 3
+    },
+    {
+      "label": "Sat 11:00",
+      "predictedOrders": 3
+    },
+    {
+      "label": "Sat 12:00",
+      "predictedOrders": 2
+    },
+    {
+      "label": "Sat 13:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Sat 14:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Sat 15:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Sat 16:00",
+      "predictedOrders": 3
+    },
+    {
+      "label": "Sat 17:00",
+      "predictedOrders": 4
+    },
+    {
+      "label": "Sat 18:00",
+      "predictedOrders": 3
+    },
+    {
+      "label": "Sat 19:00",
+      "predictedOrders": 2
+    },
+    {
+      "label": "Sat 20:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Sat 21:00",
+      "predictedOrders": 3
+    },
+    {
+      "label": "Sat 22:00",
+      "predictedOrders": 4
+    },
+    {
+      "label": "Sun 11:00",
+      "predictedOrders": 4
+    },
+    {
+      "label": "Sun 12:00",
+      "predictedOrders": 3
+    },
+    {
+      "label": "Sun 13:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Sun 14:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Sun 15:00",
+      "predictedOrders": 1
+    },
+    {
+      "label": "Sun 16:00",
+      "predictedOrders": 2
+    },
+    {
+      "label": "Sun 17:00",
+      "predictedOrders": 3
+    },
+    {
+      "label": "Sun 18:00",
+      "predictedOrders": 3
+    },
+    {
+      "label": "Sun 19:00",
+      "predictedOrders": 3
+    },
+    {
+      "label": "Sun 20:00",
+      "predictedOrders": 2
+    },
+    {
+      "label": "Sun 21:00",
+      "predictedOrders": 3
+    },
+    {
+      "label": "Sun 22:00",
+      "predictedOrders": 1
     }
   ],
   "topPeaks": [
     {
-      "label": "Mon 14:00",
-      "predictedOrders": 3,
-      "confidence": 0.67
+      "label": "Sat 17:00",
+      "predictedOrders": 4
     },
     {
-      "label": "Tue 14:00",
-      "predictedOrders": 3,
-      "confidence": 0.64
+      "label": "Sat 22:00",
+      "predictedOrders": 4
     },
     {
-      "label": "Wed 14:00",
-      "predictedOrders": 3,
-      "confidence": 0.61
+      "label": "Sun 11:00",
+      "predictedOrders": 4
     }
   ]
 }

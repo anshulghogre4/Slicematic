@@ -4,6 +4,19 @@ This file maintains a timestamp-based record of the modifications, debugging ses
 
 ---
 
+### [2026-07-05 17:10:00] - Demand forecast (KISS) + README / changelog documentation
+**Context:** Align demand forecasting with Stage 3 rubric (scikit-learn, hour/day features, admin chart, top 3 peaks, RMSE documentation) and document the full FullStack feature set in README.
+**Changes & Fixes:**
+* **Forecast model simplified** (`scripts/forecast_model.py`): features reduced to **`weekday` + `hour` only**; removed `hourly_revenue`, `is_weekend`, and synthetic confidence scores. Target remains orders per hour; metric remains hold-out **RMSE**.
+* **Hybrid train/serve pipeline:** `npm run forecast:refresh` → Supabase `order_datetime` → Python trainer → `lib/generated/forecast-cache.json` → admin UI via `lib/forecast-service.ts` (no Python on Vercel at request time).
+* **Admin Forecast tab** (`components/admin/ForecastPanel.tsx`): area chart for next 7 days (11:00–22:00), top 3 peak hours list, model documentation card (model, features, RMSE, train metadata).
+* **Optional local retrain:** `POST /api/admin/forecast/refresh` when Python + scikit-learn installed on the machine.
+* **Synthetic seed script** (`scripts/seed-synthetic-orders.mjs`, `npm run seed:synthetic-orders`): append/purge tagged demo orders (`SYNTHETIC_ML_SEED`) for ML bucket volume; backup recommended under `FullStack/backups/` (gitignored).
+* **README expanded:** quick reference table, NPM scripts, API routes table, project layout, full forecast architecture/steps/cache shape/seed workflow, updated env vars (Cashfree, DATABASE_URL), customer register/profile docs, demo flow including Forecast tab.
+* **Current live metrics (201 orders):** RMSE ≈ 1.05 orders/hour; top peaks Sat 17:00, Sat 22:00, Sun 11:00.
+
+---
+
 ### [2026-07-04 22:45:00] - Documentation updates in README.md
 **Context:** Expanded documentation in `README.md` to cover system architecture, the AI features engine, model choices, and the Admin Console workspace.
 **Changes & Fixes:**

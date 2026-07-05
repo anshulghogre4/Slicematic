@@ -12,7 +12,8 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "forecast:refresh": "node scripts/refresh-forecast.mjs"
+    "forecast:refresh": "node scripts/refresh-forecast.mjs",
+    "seed:synthetic-orders": "node scripts/seed-synthetic-orders.mjs"
   },
   "dependencies": {
     "@cashfreepayments/cashfree-js": "^1.0.7",

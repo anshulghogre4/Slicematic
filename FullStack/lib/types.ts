@@ -129,7 +129,6 @@ export type Recommendation = {
 export type ForecastPoint = {
   label: string;
   predictedOrders: number;
-  confidence: number;
 };
 
 export type ForecastMeta = {

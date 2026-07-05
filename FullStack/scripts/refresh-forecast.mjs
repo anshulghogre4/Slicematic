@@ -34,7 +34,7 @@ async function fetchOrders() {
   const { data, error } = await supabase
     .schema("slicematic")
     .from("orders")
-    .select("order_datetime, final_amount")
+    .select("order_datetime")
     .order("order_datetime", { ascending: false });
 
   if (error) {
@@ -43,8 +43,7 @@ async function fetchOrders() {
   }
 
   return (data || []).map((row) => ({
-    createdAt: String(row.order_datetime),
-    finalTotal: Number(row.final_amount ?? 0)
+    createdAt: String(row.order_datetime)
   }));
 }
 
