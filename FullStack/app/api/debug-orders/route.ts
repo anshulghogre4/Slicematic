@@ -14,58 +14,62 @@ export async function GET(request: Request) {
   const results: Record<string, unknown> = {
     hasAdminClient: !!adminClient,
     hasServerClient: !!serverClient,
+    customerId,
+    customerIdLength: customerId.length,
   };
 
   const client = serverClient;
   if (!client) return NextResponse.json({ ...results, error: "no supabase client" });
 
-  // 1. Check customer exists
-  const custRes = await client
-    .schema("slicematic")
-    .from("customer")
-    .select("customer_id")
-    .eq("customer_id", customerId)
-    .maybeSingle();
-  results.customerExists = !!custRes.data;
-  results.customerError = custRes.error ? { message: custRes.error.message, code: custRes.error.code } : null;
-
-  // 2. Query orders by customer_id
-  const ordersRes = await client
+  // 1. Total visible orders (no filter, higher limit)
+  const totalRes = await client
     .schema("slicematic")
     .from("orders")
-    .select("order_id, customer_id, order_datetime, order_status, payment_method, subtotal_amount, discount_amount, tax_amount, final_amount")
-    .eq("customer_id", customerId)
-    .order("order_datetime", { ascending: false })
-    .limit(20);
-  results.ordersCount = ordersRes.data?.length ?? 0;
-  results.ordersError = ordersRes.error ? { message: ordersRes.error.message, code: ordersRes.error.code } : null;
+    .select("order_id", { count: "exact", head: true });
+  results.totalVisibleOrders = totalRes.count;
+  results.totalError = totalRes.error ? { message: totalRes.error.message, code: totalRes.error.code } : null;
 
-  // 3. Latest 3 orders in DB regardless of customer (sanity check — do we see any rows at all?)
-  const latestRes = await client
+  // 2. Filter by customer_id (the broken path)
+  const byCustomer = await client
+    .schema("slicematic")
+    .from("orders")
+    .select("order_id, customer_id")
+    .eq("customer_id", customerId);
+  results.byCustomerIdCount = byCustomer.data?.length ?? 0;
+  results.byCustomerIdError = byCustomer.error ? { message: byCustomer.error.message, code: byCustomer.error.code } : null;
+
+  // 3. Filter by known order_id directly
+  const byOrderId = await client
+    .schema("slicematic")
+    .from("orders")
+    .select("order_id, customer_id")
+    .eq("order_id", "c0b8e22d-b0ee-4a37-87f1-b4ded78ef13c");
+  results.byOrderIdCount = byOrderId.data?.length ?? 0;
+  results.byOrderIdData = byOrderId.data;
+  results.byOrderIdError = byOrderId.error ? { message: byOrderId.error.message, code: byOrderId.error.code } : null;
+
+  // 4. Filter by customer_id cast to text
+  const byCustomerText = await client
+    .schema("slicematic")
+    .from("orders")
+    .select("order_id, customer_id")
+    .filter("customer_id::text", "eq", customerId);
+  results.byCustomerTextCount = byCustomerText.data?.length ?? 0;
+  results.byCustomerTextError = byCustomerText.error ? { message: byCustomerText.error.message, code: byCustomerText.error.code } : null;
+
+  // 5. Latest 5 with customer_id values
+  const latest = await client
     .schema("slicematic")
     .from("orders")
     .select("order_id, customer_id, order_datetime")
     .order("order_datetime", { ascending: false })
-    .limit(3);
-  results.latestOrdersCount = latestRes.data?.length ?? 0;
-  results.latestOrders = (latestRes.data ?? []).map((r) => ({
+    .limit(5);
+  results.latestOrders = (latest.data ?? []).map((r) => ({
     order_id: r.order_id,
     customer_id: r.customer_id,
-    order_datetime: r.order_datetime,
-    matches: r.customer_id === customerId,
+    matches_js: r.customer_id === customerId,
+    customer_id_length: String(r.customer_id).length,
   }));
-  results.latestOrdersError = latestRes.error ? { message: latestRes.error.message, code: latestRes.error.code } : null;
-
-  if (ordersRes.data?.length) {
-    const orderIds = ordersRes.data.map((r) => r.order_id);
-    const itemsRes = await client
-      .schema("slicematic")
-      .from("order_item")
-      .select("order_id, pizza_type_id, base_id, size_id, quantity, line_total")
-      .in("order_id", orderIds);
-    results.itemsCount = itemsRes.data?.length ?? 0;
-    results.itemsError = itemsRes.error ? { message: itemsRes.error.message, code: itemsRes.error.code } : null;
-  }
 
   return NextResponse.json(results);
 }
