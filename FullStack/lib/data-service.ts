@@ -490,13 +490,15 @@ async function fetchOrderHistoryByCustomerId(
   supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
   customerId: string
 ): Promise<CustomerOrderHistoryItem[]> {
+  // NOTE: Do NOT add .limit() here with .order() — PostgREST applies the Range
+  // globally across all rows before the customer_id WHERE filter, so combining
+  // ORDER BY + LIMIT drops orders that fall outside the global top-N.
   const { data: ordersData, error: ordersError } = await supabase
     .schema("slicematic")
     .from("orders")
     .select(ORDER_HISTORY_SELECT)
     .eq("customer_id", customerId)
-    .order("order_datetime", { ascending: false })
-    .limit(20);
+    .order("order_datetime", { ascending: false });
 
   if (ordersError) {
     console.error("Customer orders lookup error:", ordersError);
