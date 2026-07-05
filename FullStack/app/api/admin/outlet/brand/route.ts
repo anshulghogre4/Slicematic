@@ -5,6 +5,8 @@ import { BrandConfig } from "../../../../../lib/types";
 import { requireAdminSession } from "../../../../../lib/admin-auth";
 
 export const dynamic = "force-dynamic";
+export const fetchCache = "force-no-store";
+export const revalidate = 0;
 
 export async function GET(request: Request) {
   const authError = await requireAdminSession(request);
