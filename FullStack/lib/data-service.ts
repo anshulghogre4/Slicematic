@@ -10,11 +10,13 @@ export type CustomerOrderHistoryItem = {
   id: string;
   createdAt: string;
   paymentMode: string;
+  paymentStatus?: string;
   status: string;
   subtotal: number;
   discount: number;
   gst: number;
   finalTotal: number;
+  deliveryZone?: string | null;
   lines: Array<{
     pizzaName: string;
     baseName: string;
@@ -496,8 +498,9 @@ async function fetchOrderHistoryByCustomerId(
   try {
     type OrderRow = {
       order_id: string; order_datetime: string; order_status: string;
-      payment_method: string; subtotal_amount: number; discount_amount: number;
-      tax_amount: number; final_amount: number;
+      payment_method: string; payment_status: string | null;
+      subtotal_amount: number; discount_amount: number;
+      tax_amount: number; final_amount: number; delivery_zone: string | null;
     };
     type ItemRow = {
       order_id: string; pizza_type_id: number; base_id: number;
@@ -508,8 +511,8 @@ async function fetchOrderHistoryByCustomerId(
     type SizeRow  = { size_id: string; size_name: string };
 
     const orders = await queryDb<OrderRow>(
-      `SELECT order_id, order_datetime, order_status, payment_method,
-              subtotal_amount, discount_amount, tax_amount, final_amount
+      `SELECT order_id, order_datetime, order_status, payment_method, payment_status,
+              subtotal_amount, discount_amount, tax_amount, final_amount, delivery_zone
        FROM slicematic.orders
        WHERE customer_id = $1
        ORDER BY order_datetime DESC`,
@@ -553,22 +556,24 @@ async function fetchOrderHistoryByCustomerId(
         pizzaName: pizzaMap.get(item.pizza_type_id) ?? "Unknown Pizza",
         baseName:  baseMap.get(item.base_id)        ?? "Unknown Base",
         sizeName:  sizeMap.get(item.size_id)        ?? "Regular",
-        quantity:  item.quantity,
-        lineTotal: item.line_total,
+        quantity:  Number(item.quantity),
+        lineTotal: Number(item.line_total),
       });
       itemsByOrder.set(item.order_id, lines);
     }
 
     return orders.map((o) => ({
-      id:         o.order_id,
-      createdAt:  o.order_datetime,
+      id:          o.order_id,
+      createdAt:   o.order_datetime,
       paymentMode: o.payment_method,
-      status:     o.order_status,
-      subtotal:   Number(o.subtotal_amount),
-      discount:   Number(o.discount_amount),
-      gst:        Number(o.tax_amount),
-      finalTotal: Number(o.final_amount),
-      lines:      itemsByOrder.get(o.order_id) ?? [],
+      paymentStatus: o.payment_status ?? "confirmed",
+      status:      o.order_status,
+      subtotal:    Number(o.subtotal_amount),
+      discount:    Number(o.discount_amount),
+      gst:         Number(o.tax_amount),
+      finalTotal:  Number(o.final_amount),
+      deliveryZone: o.delivery_zone,
+      lines:       itemsByOrder.get(o.order_id) ?? [],
     }));
   } catch (err) {
     console.error("fetchOrderHistoryByCustomerId raw SQL error:", err);

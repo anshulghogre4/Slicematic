@@ -40,6 +40,8 @@ import { AdminSummary, CartLine, CustomerDetails, MenuItem, MenuPayload, Payment
 import { useStore } from "../../lib/store";
 import { useRouter } from "next/navigation";
 import ForecastPanel from "../../components/admin/ForecastPanel";
+import CustomerOrderHistoryTable from "../../components/CustomerOrderHistoryTable";
+import { CustomerOrderHistoryItem } from "../../lib/data-service";
 
 type Step = "intake" | "recommendation" | "menu" | "checkout" | "tracking";
 type AdminTab = "overview" | "orders" | "forecast" | "menu" | "ai" | "settings";
@@ -177,7 +179,7 @@ export default function AdminDashboardPage() {
   const [cartInsightLoading, setCartInsightLoading] = useState(false);
   const [opsBriefing, setOpsBriefing] = useState<OpsBriefing | null>(null);
   const [opsLoading, setOpsLoading] = useState(false);
-  const [customerOrders, setCustomerOrders] = useState<any[]>([]);
+  const [customerOrders, setCustomerOrders] = useState<CustomerOrderHistoryItem[]>([]);
   const [customerOrdersLoading, setCustomerOrdersLoading] = useState(false);
   const [brand, setBrand] = useState({
     name: "SliceMatic",
@@ -1740,27 +1742,7 @@ export default function AdminDashboardPage() {
               ) : customerOrders.length === 0 ? (
                 <p style={{ color: "var(--text-muted)" }}>No past orders found. Place your first order today!</p>
               ) : (
-                <div style={{ display: "grid", gap: "1rem", gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))" }}>
-                  {customerOrders.map(order => (
-                    <div key={order.id} style={{ border: "1px solid var(--border-light)", borderRadius: "var(--radius)", padding: "1rem", background: "var(--surface)" }}>
-                      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "0.5rem", fontSize: "0.85rem", color: "var(--text-muted)" }}>
-                        <span>{new Date(order.createdAt).toLocaleDateString()}</span>
-                        <span style={{ textTransform: "capitalize", fontWeight: 600, color: order.status === "Placed" ? "var(--accent)" : "inherit" }}>{order.status}</span>
-                      </div>
-                      <div style={{ marginBottom: "0.5rem" }}>
-                         {order.lines.map((item: any, idx: number) => (
-                           <div key={idx} style={{ fontSize: "0.9rem", color: "var(--text-base)", marginBottom: "0.25rem" }}>
-                             {item.quantity}x {item.pizzaName} <span style={{ color: "var(--text-muted)", fontSize: "0.8rem" }}>({item.sizeName})</span>
-                           </div>
-                         ))}
-                      </div>
-                      <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 600, borderTop: "1px solid var(--border-light)", paddingTop: "0.5rem", marginTop: "0.5rem", color: "var(--text-base)" }}>
-                        <span>Total</span>
-                        <span>₹{order.finalTotal.toFixed(2)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
+                <CustomerOrderHistoryTable orders={customerOrders} />
               )}
             </article>
             <article><Sparkles /><strong>Personalized picks</strong><span>Recommendation context can use account-linked history.</span></article>

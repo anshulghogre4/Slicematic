@@ -2004,6 +2004,14 @@ a.primary:hover {
   margin-top: 3px;
 }
 
+.order-table.customer-order-history .order-row {
+  grid-template-columns: minmax(130px, 0.9fr) minmax(170px, 1fr) minmax(220px, 1.4fr) minmax(110px, 0.7fr) minmax(180px, 1fr) minmax(110px, 0.7fr);
+}
+
+.order-items-cell strong + strong {
+  margin-top: 3px;
+}
+
 .recommendation-list {
   display: grid;
   gap: 12px;
