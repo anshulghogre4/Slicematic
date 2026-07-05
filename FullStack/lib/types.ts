@@ -153,3 +153,14 @@ export type AdminSummary = {
   topPeaks?: ForecastPoint[];
   forecastMeta?: ForecastMeta;
 };
+
+export type BrandConfig = {
+  name: string;
+  outlet: string;
+  openStatus: string;
+  deliveryPromise: string;
+  hero: string;
+  subhero: string;
+  customerPromise: string;
+  opsPromise: string;
+};

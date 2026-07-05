@@ -377,6 +377,12 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     void fetchOutletPricingConfig().then((config) => {
       if (config) setPricingConfig(config);
     });
+    const interval = window.setInterval(() => {
+      void fetchOutletPricingConfig().then((config) => {
+        if (config) setPricingConfig(config);
+      });
+    }, 30000);
+    return () => window.clearInterval(interval);
   }, [setPricingConfig]);
 
   useEffect(() => {
@@ -2419,7 +2425,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                   <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
                   <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
                   <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
-                  <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
+                  <div><span>Delivery</span><b>{pricingConfig.deliveryFee === 0 ? "Included" : totals.deliveryCharge === 0 ? `Free (above ${money(pricingConfig.freeDeliveryMin)})` : money(totals.deliveryCharge)}</b></div>
                   <div className="total"><span>Total</span><b>{money(totals.finalTotal)}</b></div>
                 </div>
                 <div className="ai-cart-card">

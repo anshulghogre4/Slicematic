@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { validateCustomer, validateOrderLines, calculateBill, money } from "./pricing";
+import { validateCustomer, validateOrderLines, calculateBill, money, defaultPricingConfig } from "./pricing";
 import { CartLine, MenuPayload } from "./types";
 import { seedMenu } from "./seed-data";
 
@@ -129,5 +129,61 @@ describe("TDD Parity: Currency Formatting", () => {
     expect(money(2988)).toBe("Rs. 2,988");
     expect(money(484.056)).toBe("Rs. 484");
     expect(money(298.8)).toBe("Rs. 299");
+  });
+});
+
+describe("TDD Parity: Delivery Fee Logic — calculateBill", () => {
+  const mockMenu: MenuPayload = {
+    ...seedMenu,
+    bases: [{ id: 1, code: "B1", name: "Thin Crust", price: 149, available: true, description: "" }],
+    pizzas: [{ id: 1, code: "P1", name: "Margherita", price: 299, available: true, description: "", image: "", badge: "", tags: [], prepMinutes: 10 }],
+    toppings: [],
+    sizes: [{ id: "M", name: "Medium", extra: 0, detail: "", available: true }]
+  };
+  const getLine = (qty: number): CartLine => ({ id: "test", pizzaId: 1, baseId: 1, sizeId: "M", toppingIds: [], quantity: qty });
+  // Margherita (299) + Thin Crust (149) = 448 per qty
+
+  it("charges delivery fee when subtotal < freeDeliveryMin", () => {
+    const config = { ...defaultPricingConfig, deliveryFee: 50, freeDeliveryMin: 1000 };
+    const bill = calculateBill([getLine(1)], mockMenu, config);
+    expect(bill.subtotal).toBe(448);
+    expect(bill.deliveryCharge).toBe(50);
+    expect(bill.finalTotal).toBe(bill.taxable + bill.gst + 50);
+  });
+
+  it("waives delivery fee when subtotal >= freeDeliveryMin", () => {
+    const config = { ...defaultPricingConfig, deliveryFee: 50, freeDeliveryMin: 500 };
+    const bill = calculateBill([getLine(2)], mockMenu, config); // 896 subtotal
+    expect(bill.deliveryCharge).toBe(0);
+  });
+
+  it("charges 0 delivery when deliveryFee=0 regardless of subtotal", () => {
+    const config = { ...defaultPricingConfig, deliveryFee: 0, freeDeliveryMin: 0 };
+    const bill = calculateBill([getLine(1)], mockMenu, config);
+    expect(bill.deliveryCharge).toBe(0);
+  });
+});
+
+describe("TDD Parity: Custom PricingConfig in calculateBill", () => {
+  const mockMenu: MenuPayload = {
+    ...seedMenu,
+    bases: [{ id: 1, code: "B1", name: "Thin Crust", price: 149, available: true, description: "" }],
+    pizzas: [{ id: 1, code: "P1", name: "Margherita", price: 299, available: true, description: "", image: "", badge: "", tags: [], prepMinutes: 10 }],
+    toppings: [],
+    sizes: [{ id: "M", name: "Medium", extra: 0, detail: "", available: true }]
+  };
+  const getLine = (qty: number): CartLine => ({ id: "test", pizzaId: 1, baseId: 1, sizeId: "M", toppingIds: [], quantity: qty });
+
+  it("applies custom gstRate (10% vs default 18%)", () => {
+    const config = { ...defaultPricingConfig, gstRate: 0.10, deliveryFee: 0 };
+    const bill = calculateBill([getLine(1)], mockMenu, config); // Subtotal 448
+    expect(bill.gst).toBe(45);  // 448 * 0.10 = 44.8 -> 45
+    expect(bill.finalTotal).toBe(448 + 45); // 493
+  });
+
+  it("applies custom bulkDiscountRate", () => {
+    const config = { ...defaultPricingConfig, bulkDiscountRate: 0.15, bulkDiscountQty: 3 };
+    const bill = calculateBill([getLine(3)], mockMenu, config); // Subtotal 1344
+    expect(bill.discount).toBe(202); // 1344 * 0.15 = 201.6 -> 202
   });
 });

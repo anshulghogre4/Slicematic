@@ -71,11 +71,12 @@ describe("Global Store", () => {
     expect(useStore.getState().cart).toEqual([]);
   });
 
-  it("resetSession clears cart, customer, lastOrder, and recommendation back to their defaults", () => {
+  it("resetSession clears cart, customer, lastOrder, and recommendation but preserves pricingConfig", () => {
     useStore.getState().setCart([{ id: "test", pizzaId: 1, baseId: 1, sizeId: "s1", toppingIds: [], quantity: 1 }]);
     useStore.getState().setCustomer({ name: "Aarav", phone: "9876543210", address: "Flat 1", deliveryZone: "0-2", note: "leave at gate" });
     useStore.getState().setLastOrder({ orderId: "abc" } as any);
     useStore.getState().setRecommendation({ headline: "Try this" } as any);
+    useStore.getState().setPricingConfig({ ...defaultPricingConfig, gstRate: 0.15 });
 
     useStore.getState().resetSession();
 
@@ -84,7 +85,7 @@ describe("Global Store", () => {
     expect(state.customer).toEqual({ name: "", phone: "", address: "", deliveryZone: "2-4", note: "" });
     expect(state.lastOrder).toBeNull();
     expect(state.recommendation).toBeNull();
-    expect(state.pricingConfig).toEqual(defaultPricingConfig);
+    expect(state.pricingConfig.gstRate).toBe(0.15); // Pricing config preserved!
   });
 });
 

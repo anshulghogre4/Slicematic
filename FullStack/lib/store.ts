@@ -51,7 +51,6 @@ export const useStore = create<AppState>()(
           customer: initialCustomer,
           lastOrder: null,
           recommendation: null,
-          pricingConfig: defaultPricingConfig,
         }),
     }),
     {

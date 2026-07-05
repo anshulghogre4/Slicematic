@@ -165,8 +165,21 @@ export default function AdminDashboardPage() {
         router.replace("/");
       } else {
         setAdminLoggedIn(true);
-        refreshAdminSummary();
-        loadOpsBriefing();
+        const supabase = getSupabaseAuthClient();
+        if (supabase) {
+          supabase.auth.getSession().then(({ data }) => {
+            const token = data.session?.access_token ?? "";
+            if (token) {
+              setAdminAccessToken(token);
+              setAdminSessionEmail(data.session?.user?.email ?? "");
+            }
+            refreshAdminSummary(token);
+            loadOpsBriefing(token);
+          });
+        } else {
+          refreshAdminSummary();
+          loadOpsBriefing();
+        }
       }
     }
   }, [router]);
@@ -189,6 +202,7 @@ export default function AdminDashboardPage() {
   const [settingsPage, setSettingsPage] = useState<SettingsPage>("brand");
   const [menuDraft, setMenuDraft] = useState<MenuDraft>(emptyMenuDraft);
   const [menuSaving, setMenuSaving] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [menuImageUploading, setMenuImageUploading] = useState(false);
   const [menuCopyLoading, setMenuCopyLoading] = useState(false);
   const [menuBaseline, setMenuBaseline] = useState<Record<string, Pick<MenuItem, "name" | "price" | "available">>>({});
@@ -335,7 +349,22 @@ export default function AdminDashboardPage() {
     void fetchOutletPricingConfig().then((config) => {
       if (config) setPricingConfig(config);
     });
+    const interval = window.setInterval(() => {
+      void fetchOutletPricingConfig().then((config) => {
+        if (config) setPricingConfig(config);
+      });
+    }, 30000);
+    return () => window.clearInterval(interval);
   }, [setPricingConfig]);
+
+  useEffect(() => {
+    fetch("/api/admin/outlet/brand", {
+      headers: adminAccessToken ? { Authorization: `Bearer ${adminAccessToken}` } : {}
+    })
+      .then(r => r.json())
+      .then(data => { if (data.ok && data.brandConfig) setBrand(data.brandConfig); })
+      .catch(() => {});
+  }, [adminAccessToken]);
 
   useEffect(() => {
     if (!toast) return;
@@ -414,11 +443,44 @@ export default function AdminDashboardPage() {
   }
 
   function updatePricing<K extends keyof PricingConfig>(field: K, value: PricingConfig[K]) {
-    setPricingConfig((current) => {
-      const next = { ...current, [field]: value };
-      if (adminLoggedIn) void persistOutletPricing(next);
-      return next;
-    });
+    setPricingConfig((current) => ({ ...current, [field]: value }));
+  }
+
+  async function applySettings() {
+    setSettingsSaving(true);
+    try {
+      const pricingRes = await fetch("/api/admin/outlet/pricing", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(adminAccessToken ? { Authorization: `Bearer ${adminAccessToken}` } : {}) },
+        body: JSON.stringify({ pricingConfig })
+      });
+      const pricingResult = await pricingRes.json();
+      if (!pricingRes.ok || !pricingResult.ok) {
+        showToast(pricingResult.error ?? "Could not save financial settings.");
+        return;
+      }
+      
+      const brandRes = await fetch("/api/admin/outlet/brand", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(adminAccessToken ? { Authorization: `Bearer ${adminAccessToken}` } : {}) },
+        body: JSON.stringify({ brandConfig: brand })
+      });
+      const brandResult = await brandRes.json();
+      if (!brandRes.ok || !brandResult.ok) {
+        showToast(brandResult.error ?? "Could not save brand settings.");
+        return;
+      }
+
+      showToast("✓ Settings saved — live for all customers");
+      const fastPoll = window.setInterval(() => {
+        void fetchOutletPricingConfig().then(config => { if (config) setPricingConfig(config); });
+      }, 5000);
+      setTimeout(() => window.clearInterval(fastPoll), 60000);
+    } catch {
+      showToast("Network error — settings not saved. Check connection.");
+    } finally {
+      setSettingsSaving(false);
+    }
   }
 
   function updatePercent(field: "gstRate" | "bulkDiscountRate", value: string) {
@@ -2295,7 +2357,7 @@ export default function AdminDashboardPage() {
                   <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
                   <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
                   <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
-                  <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
+                  <div><span>Delivery</span><b>{pricingConfig.deliveryFee === 0 ? "Included" : totals.deliveryCharge === 0 ? `Free (above ${money(pricingConfig.freeDeliveryMin)})` : money(totals.deliveryCharge)}</b></div>
                   <div className="total"><span>Total</span><b>{money(totals.finalTotal)}</b></div>
                 </div>
                 <div className="ai-cart-card">
@@ -2500,7 +2562,7 @@ export default function AdminDashboardPage() {
                       <p className="eyebrow">Owner configuration</p>
                       <h3>Control the customer app, financial rules, delivery policy, and risk settings.</h3>
                     </div>
-                    <button type="button" onClick={() => showToast("Settings applied to the live app preview.")}><Check /> Apply live preview</button>
+                    <button type="button" onClick={applySettings} disabled={settingsSaving}><Check /> {settingsSaving ? "Saving…" : "Apply live"}</button>
                   </div>
 
                   <div className="sub-tabs">
