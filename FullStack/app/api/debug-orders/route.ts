@@ -23,7 +23,7 @@ export async function GET(request: Request) {
   const client = serverClient;
   if (!client) return NextResponse.json({ ...results, error: "no supabase client" });
 
-  // Step A: exact query used by fetchOrderHistoryByCustomerId (with limit)
+  // Step A: exact broken query (order + limit together)
   const stepA = await client
     .schema("slicematic")
     .from("orders")
@@ -31,49 +31,55 @@ export async function GET(request: Request) {
     .eq("customer_id", customerId)
     .order("order_datetime", { ascending: false })
     .limit(20);
-  results.stepA_count = stepA.data?.length ?? 0;
-  results.stepA_error = stepA.error ? { message: stepA.error.message, code: stepA.error.code } : null;
-  results.stepA_data = stepA.data;
+  results.stepA_orderAndLimit = stepA.data?.length ?? 0;
+  results.stepA_error = stepA.error?.message ?? null;
 
-  // Step B: same select, no limit (to rule out limit cutting data)
+  // Step B: limit only (no order)
   const stepB = await client
     .schema("slicematic")
     .from("orders")
     .select(ORDER_HISTORY_SELECT)
-    .eq("customer_id", customerId);
-  results.stepB_count = stepB.data?.length ?? 0;
-  results.stepB_error = stepB.error ? { message: stepB.error.message, code: stepB.error.code } : null;
+    .eq("customer_id", customerId)
+    .limit(20);
+  results.stepB_limitOnly = stepB.data?.length ?? 0;
+  results.stepB_error = stepB.error?.message ?? null;
 
-  // Step C: minimal select (same as debug that worked)
+  // Step C: order only (no limit)
   const stepC = await client
     .schema("slicematic")
     .from("orders")
-    .select("order_id, customer_id")
-    .eq("customer_id", customerId);
-  results.stepC_count = stepC.data?.length ?? 0;
-  results.stepC_error = stepC.error ? { message: stepC.error.message, code: stepC.error.code } : null;
-  results.stepC_data = stepC.data;
+    .select(ORDER_HISTORY_SELECT)
+    .eq("customer_id", customerId)
+    .order("order_datetime", { ascending: false });
+  results.stepC_orderOnly = stepC.data?.length ?? 0;
+  results.stepC_error = stepC.error?.message ?? null;
 
-  // Step D: total orders visible (unfiltered)
+  // Step D: no order, no limit (baseline)
   const stepD = await client
     .schema("slicematic")
     .from("orders")
-    .select("order_id", { count: "exact", head: true });
-  results.stepD_total = stepD.count;
-  results.stepD_error = stepD.error ? { message: stepD.error.message, code: stepD.error.code } : null;
+    .select(ORDER_HISTORY_SELECT)
+    .eq("customer_id", customerId);
+  results.stepD_baseline = stepD.data?.length ?? 0;
+  results.stepD_error = stepD.error?.message ?? null;
 
-  // Step E: if stepC found an order, fetch it individually by order_id with full select
-  const customerOrderId = (stepC.data ?? [])[0]?.order_id;
-  if (customerOrderId) {
-    const stepE = await client
-      .schema("slicematic")
-      .from("orders")
-      .select(ORDER_HISTORY_SELECT)
-      .eq("order_id", customerOrderId)
-      .maybeSingle();
-    results.stepE_byOrderId = stepE.data;
-    results.stepE_error = stepE.error ? { message: stepE.error.message, code: stepE.error.code } : null;
-  }
+  // Step E: range(0,19) explicitly (what supabase-js sends for limit)
+  const stepE = await client
+    .schema("slicematic")
+    .from("orders")
+    .select(ORDER_HISTORY_SELECT)
+    .eq("customer_id", customerId)
+    .order("order_datetime", { ascending: false })
+    .range(0, 99);
+  results.stepE_range0to99 = stepE.data?.length ?? 0;
+  results.stepE_error = stepE.error?.message ?? null;
+
+  // Step F: total orders in DB
+  const stepF = await client
+    .schema("slicematic")
+    .from("orders")
+    .select("order_id", { count: "exact", head: true });
+  results.stepF_total = stepF.count ?? 0;
 
   return NextResponse.json(results);
 }
