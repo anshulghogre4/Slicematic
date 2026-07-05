@@ -3,6 +3,7 @@ import { calculateBill, getLineUnitPrice, sanitizePricingConfig } from "./pricin
 import { buildSeedSummary, seedMenu, seedOrders } from "./seed-data";
 import { getForecastForSummary } from "./forecast-service";
 import { getSupabaseAdminClient, getSupabaseServerClient } from "./supabase";
+import { queryDb } from "./db";
 import { AdminSummary, CartLine, MenuItem, MenuPayload, OrderPayload, PaymentMeta, SavedOrder } from "./types";
 
 export type CustomerOrderHistoryItem = {
@@ -487,98 +488,92 @@ type OrderHistoryRow = {
  * Nested joins fail under RLS on hosted Supabase; fetch orders, items, and names separately.
  */
 async function fetchOrderHistoryByCustomerId(
-  supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
+  _supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
   customerId: string
 ): Promise<CustomerOrderHistoryItem[]> {
-  // NOTE: Use .limit() WITHOUT .order() here.
-  // Without any Range header, PostgREST applies the project's default max-rows
-  // globally before the customer_id WHERE filter, silently dropping new orders.
-  // A .limit(N) sends an explicit Range header which forces the filter to be
-  // applied first. Do NOT add .order() — ORDER BY + Range is applied globally.
-  // Sort newest-first in JS instead.
-  const { data: ordersData, error: ordersError } = await supabase
-    .schema("slicematic")
-    .from("orders")
-    .select(ORDER_HISTORY_SELECT)
-    .eq("customer_id", customerId)
-    .limit(1000);
+  // Use raw SQL via pg to bypass PostgREST's stale query plan/result cache
+  // which causes ORDER BY + LIMIT (and sometimes no-LIMIT) to drop rows.
+  try {
+    type OrderRow = {
+      order_id: string; order_datetime: string; order_status: string;
+      payment_method: string; subtotal_amount: number; discount_amount: number;
+      tax_amount: number; final_amount: number;
+    };
+    type ItemRow = {
+      order_id: string; pizza_type_id: number; base_id: number;
+      size_id: string; quantity: number; line_total: number;
+    };
+    type PizzaRow = { pizza_type_id: number; pizza_name: string };
+    type BaseRow  = { base_id: number; base_name: string };
+    type SizeRow  = { size_id: string; size_name: string };
 
-  if (ordersError) {
-    console.error("Customer orders lookup error:", ordersError);
+    const orders = await queryDb<OrderRow>(
+      `SELECT order_id, order_datetime, order_status, payment_method,
+              subtotal_amount, discount_amount, tax_amount, final_amount
+       FROM slicematic.orders
+       WHERE customer_id = $1
+       ORDER BY order_datetime DESC`,
+      [customerId]
+    );
+
+    if (!orders.length) return [];
+
+    const orderIds = orders.map((o) => o.order_id);
+    const items = await queryDb<ItemRow>(
+      `SELECT order_id, pizza_type_id, base_id, size_id, quantity, line_total
+       FROM slicematic.order_item
+       WHERE order_id = ANY($1)`,
+      [orderIds]
+    );
+
+    const pizzaIds = [...new Set(items.map((i) => i.pizza_type_id))];
+    const baseIds  = [...new Set(items.map((i) => i.base_id))];
+    const sizeIds  = [...new Set(items.map((i) => i.size_id))];
+
+    const [pizzas, bases, sizes] = await Promise.all([
+      pizzaIds.length
+        ? queryDb<PizzaRow>(`SELECT pizza_type_id, pizza_name FROM slicematic.pizza_types WHERE pizza_type_id = ANY($1)`, [pizzaIds])
+        : Promise.resolve([] as PizzaRow[]),
+      baseIds.length
+        ? queryDb<BaseRow>(`SELECT base_id, base_name FROM slicematic.pizza_bases WHERE base_id = ANY($1)`, [baseIds])
+        : Promise.resolve([] as BaseRow[]),
+      sizeIds.length
+        ? queryDb<SizeRow>(`SELECT size_id, size_name FROM slicematic.pizza_sizes WHERE size_id = ANY($1)`, [sizeIds])
+        : Promise.resolve([] as SizeRow[]),
+    ]);
+
+    const pizzaMap = new Map(pizzas.map((p) => [p.pizza_type_id, p.pizza_name]));
+    const baseMap  = new Map(bases.map((b) => [b.base_id, b.base_name]));
+    const sizeMap  = new Map(sizes.map((s) => [s.size_id, s.size_name]));
+
+    const itemsByOrder = new Map<string, CustomerOrderHistoryItem["lines"]>();
+    for (const item of items) {
+      const lines = itemsByOrder.get(item.order_id) ?? [];
+      lines.push({
+        pizzaName: pizzaMap.get(item.pizza_type_id) ?? "Unknown Pizza",
+        baseName:  baseMap.get(item.base_id)        ?? "Unknown Base",
+        sizeName:  sizeMap.get(item.size_id)        ?? "Regular",
+        quantity:  item.quantity,
+        lineTotal: item.line_total,
+      });
+      itemsByOrder.set(item.order_id, lines);
+    }
+
+    return orders.map((o) => ({
+      id:         o.order_id,
+      createdAt:  o.order_datetime,
+      paymentMode: o.payment_method,
+      status:     o.order_status,
+      subtotal:   Number(o.subtotal_amount),
+      discount:   Number(o.discount_amount),
+      gst:        Number(o.tax_amount),
+      finalTotal: Number(o.final_amount),
+      lines:      itemsByOrder.get(o.order_id) ?? [],
+    }));
+  } catch (err) {
+    console.error("fetchOrderHistoryByCustomerId raw SQL error:", err);
     return [];
   }
-
-  const rows = ((ordersData ?? []) as OrderHistoryRow[]).sort(
-    (a, b) => new Date(b.order_datetime).getTime() - new Date(a.order_datetime).getTime()
-  );
-  if (!rows.length) return [];
-
-  const orderIds = rows.map((row) => row.order_id);
-  const { data: itemsData, error: itemsError } = await supabase
-    .schema("slicematic")
-    .from("order_item")
-    .select("order_id, pizza_type_id, base_id, size_id, quantity, line_total")
-    .in("order_id", orderIds);
-
-  if (itemsError) {
-    console.error("Customer order items lookup error:", itemsError);
-    return rows.map((row) => ({
-      id: row.order_id,
-      createdAt: row.order_datetime,
-      paymentMode: row.payment_method,
-      status: row.order_status,
-      subtotal: row.subtotal_amount,
-      discount: row.discount_amount,
-      gst: row.tax_amount,
-      finalTotal: row.final_amount,
-      lines: []
-    }));
-  }
-
-  const pizzaIds = [...new Set((itemsData ?? []).map((item) => item.pizza_type_id))];
-  const baseIds = [...new Set((itemsData ?? []).map((item) => item.base_id))];
-  const sizeIds = [...new Set((itemsData ?? []).map((item) => item.size_id))];
-
-  const [pizzasRes, basesRes, sizesRes] = await Promise.all([
-    pizzaIds.length
-      ? supabase.schema("slicematic").from("pizza_types").select("pizza_type_id, pizza_name").in("pizza_type_id", pizzaIds)
-      : Promise.resolve({ data: [], error: null }),
-    baseIds.length
-      ? supabase.schema("slicematic").from("pizza_bases").select("base_id, base_name").in("base_id", baseIds)
-      : Promise.resolve({ data: [], error: null }),
-    sizeIds.length
-      ? supabase.schema("slicematic").from("pizza_sizes").select("size_id, size_name").in("size_id", sizeIds)
-      : Promise.resolve({ data: [], error: null })
-  ]);
-
-  const pizzaMap = new Map((pizzasRes.data ?? []).map((pizza) => [pizza.pizza_type_id, pizza.pizza_name]));
-  const baseMap = new Map((basesRes.data ?? []).map((base) => [base.base_id, base.base_name]));
-  const sizeMap = new Map((sizesRes.data ?? []).map((size) => [size.size_id, size.size_name]));
-
-  const itemsByOrder = new Map<string, CustomerOrderHistoryItem["lines"]>();
-  for (const item of itemsData ?? []) {
-    const lines = itemsByOrder.get(item.order_id) ?? [];
-    lines.push({
-      pizzaName: pizzaMap.get(item.pizza_type_id) ?? "Unknown Pizza",
-      baseName: baseMap.get(item.base_id) ?? "Unknown Base",
-      sizeName: sizeMap.get(item.size_id) ?? "Regular",
-      quantity: item.quantity,
-      lineTotal: item.line_total
-    });
-    itemsByOrder.set(item.order_id, lines);
-  }
-
-  return rows.map((row) => ({
-    id: row.order_id,
-    createdAt: row.order_datetime,
-    paymentMode: row.payment_method,
-    status: row.order_status,
-    subtotal: row.subtotal_amount,
-    discount: row.discount_amount,
-    gst: row.tax_amount,
-    finalTotal: row.final_amount,
-    lines: itemsByOrder.get(row.order_id) ?? []
-  }));
 }
 
 export async function loadCustomerOrderHistoryByCustomerId(
