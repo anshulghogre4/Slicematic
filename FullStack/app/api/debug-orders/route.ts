@@ -11,75 +11,62 @@ export async function GET(request: Request) {
   const customerId = searchParams.get("customer_id")?.trim() ?? "";
   if (!customerId) return NextResponse.json({ error: "customer_id required" }, { status: 400 });
 
-  const adminClient = getSupabaseAdminClient();
-  const serverClient = getSupabaseServerClient();
+  const client = getSupabaseAdminClient() ?? getSupabaseServerClient();
+  if (!client) return NextResponse.json({ error: "no supabase client" });
 
-  const results: Record<string, unknown> = {
-    hasAdminClient: !!adminClient,
-    hasServerClient: !!serverClient,
-    customerId,
-  };
+  const results: Record<string, unknown> = { customerId };
 
-  const client = serverClient;
-  if (!client) return NextResponse.json({ ...results, error: "no supabase client" });
-
-  // Step A: exact broken query (order + limit together)
-  const stepA = await client
+  // 1. Does this customer exist in the customer table?
+  const customerCheck = await client
     .schema("slicematic")
-    .from("orders")
-    .select(ORDER_HISTORY_SELECT)
+    .from("customer")
+    .select("customer_id, first_name, last_name, mobile_number, email")
     .eq("customer_id", customerId)
-    .order("order_datetime", { ascending: false })
-    .limit(20);
-  results.stepA_orderAndLimit = stepA.data?.length ?? 0;
-  results.stepA_error = stepA.error?.message ?? null;
+    .maybeSingle();
+  results.customerExists = !!customerCheck.data;
+  results.customerData = customerCheck.data;
+  results.customerError = customerCheck.error?.message ?? null;
 
-  // Step B: limit only (no order)
-  const stepB = await client
-    .schema("slicematic")
-    .from("orders")
-    .select(ORDER_HISTORY_SELECT)
-    .eq("customer_id", customerId)
-    .limit(20);
-  results.stepB_limitOnly = stepB.data?.length ?? 0;
-  results.stepB_error = stepB.error?.message ?? null;
-
-  // Step C: order only (no limit)
-  const stepC = await client
-    .schema("slicematic")
-    .from("orders")
-    .select(ORDER_HISTORY_SELECT)
-    .eq("customer_id", customerId)
-    .order("order_datetime", { ascending: false });
-  results.stepC_orderOnly = stepC.data?.length ?? 0;
-  results.stepC_error = stepC.error?.message ?? null;
-
-  // Step D: no order, no limit (baseline)
-  const stepD = await client
+  // 2. Baseline: orders for this customer (no order, no limit — current production query)
+  const baseline = await client
     .schema("slicematic")
     .from("orders")
     .select(ORDER_HISTORY_SELECT)
     .eq("customer_id", customerId);
-  results.stepD_baseline = stepD.data?.length ?? 0;
-  results.stepD_error = stepD.error?.message ?? null;
+  results.baselineCount = baseline.data?.length ?? 0;
+  results.baselineError = baseline.error?.message ?? null;
+  results.baselineData = baseline.data;
 
-  // Step E: range(0,19) explicitly (what supabase-js sends for limit)
-  const stepE = await client
+  // 3. What stepA (order+limit) actually returns — show customer_ids to confirm mismatch
+  const stepA = await client
     .schema("slicematic")
     .from("orders")
-    .select(ORDER_HISTORY_SELECT)
+    .select("order_id, customer_id, order_datetime")
     .eq("customer_id", customerId)
     .order("order_datetime", { ascending: false })
-    .range(0, 99);
-  results.stepE_range0to99 = stepE.data?.length ?? 0;
-  results.stepE_error = stepE.error?.message ?? null;
+    .limit(20);
+  results.stepA_count = stepA.data?.length ?? 0;
+  results.stepA_data = stepA.data; // are these for the right customer?
 
-  // Step F: total orders in DB
-  const stepF = await client
+  // 4. Latest 3 orders in the DB — to find the duplicate customer's order
+  const latest = await client
     .schema("slicematic")
     .from("orders")
-    .select("order_id", { count: "exact", head: true });
-  results.stepF_total = stepF.count ?? 0;
+    .select("order_id, customer_id, order_datetime")
+    .order("order_datetime", { ascending: false })
+    .limit(3);
+  results.latestOrders = latest.data;
+
+  // 5. If customer exists by phone: look up by mobile_number from customerData
+  const phone = customerCheck.data?.mobile_number;
+  if (phone) {
+    const byPhone = await client
+      .schema("slicematic")
+      .from("customer")
+      .select("customer_id, first_name")
+      .eq("mobile_number", phone);
+    results.customersByPhone = byPhone.data; // shows if a duplicate customer was created
+  }
 
   return NextResponse.json(results);
 }
