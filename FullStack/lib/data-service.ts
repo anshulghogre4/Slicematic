@@ -490,14 +490,18 @@ async function fetchOrderHistoryByCustomerId(
   supabase: NonNullable<ReturnType<typeof getSupabaseServerClient>>,
   customerId: string
 ): Promise<CustomerOrderHistoryItem[]> {
-  // NOTE: Do NOT use .order() or .limit() here. PostgREST on Supabase applies
-  // ORDER BY + Range globally across all rows before the customer_id WHERE
-  // filter, silently dropping orders outside the global top-N. Sort in JS.
+  // NOTE: Use .limit() WITHOUT .order() here.
+  // Without any Range header, PostgREST applies the project's default max-rows
+  // globally before the customer_id WHERE filter, silently dropping new orders.
+  // A .limit(N) sends an explicit Range header which forces the filter to be
+  // applied first. Do NOT add .order() — ORDER BY + Range is applied globally.
+  // Sort newest-first in JS instead.
   const { data: ordersData, error: ordersError } = await supabase
     .schema("slicematic")
     .from("orders")
     .select(ORDER_HISTORY_SELECT)
-    .eq("customer_id", customerId);
+    .eq("customer_id", customerId)
+    .limit(1000);
 
   if (ordersError) {
     console.error("Customer orders lookup error:", ordersError);
