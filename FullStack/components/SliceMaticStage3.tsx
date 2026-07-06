@@ -18,6 +18,7 @@ import {
   Phone,
   Pizza,
   Plus,
+  RefreshCw,
   UserRound,
   ReceiptText,
   Search,
@@ -125,7 +126,7 @@ function snapshotMenuBaseline(payload: MenuPayload) {
 
 export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: () => void }) {
   const router = useRouter();
-  const { cart, setCart, customer, setCustomer, pricingConfig, setPricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setRecommendation } = useStore();
+  const { cart, setCart, customer, setCustomer, pricingConfig, setPricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setRecommendation, recommendations, setRecommendations } = useStore();
 
   const [menu, setMenu] = useState<MenuPayload>(seedMenu);
   const [query, setQuery] = useState("");
@@ -186,7 +187,6 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   const [customerOrdersError, setCustomerOrdersError] = useState("");
   const ordersRefreshInFlight = useRef(false);
   const ordersRequestSeq = useRef(0);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [brand, setBrand] = useState({
     name: "SliceMatic",
     outlet: "New Ashok Nagar",
@@ -294,9 +294,14 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       // Auto-fire recommendation for authenticated users who have a phone number.
       // New users (no history) get global popularity picks.
       // Returning users get personal + global + exploratory picks.
-      if (phoneFromSession) {
+      const emailFromSession = window.sessionStorage.getItem("slicematic_customer_email") ?? "";
+      if (phoneFromSession || emailFromSession) {
         setStep("recommendation");
-        void submitCustomer(nameFromSession || undefined, phoneFromSession);
+        const hasCached = useStore.getState().recommendations.length > 0;
+        const isFetching = useStore.getState().isFetchingRecommendation;
+        if (!hasCached && !isFetching) {
+          void submitCustomer(nameFromSession || undefined, phoneFromSession || undefined, false, emailFromSession);
+        }
       } else {
         setStep("menu");
       }
@@ -546,16 +551,17 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     setStep(nextStep);
   }
 
-  async function submitCustomer(autoName?: string, autoPhone?: string) {
+  async function submitCustomer(autoName?: string, autoPhone?: string, forceRefresh = false, autoEmail?: string) {
     // When called from session restore (auto-fire), use provided name/phone.
     // When called from the intake form button, use state and validate.
     const name = autoName ?? customer.name;
     const phone = autoPhone ?? customer.phone;
+    const email = autoEmail ?? customerSessionEmail;
     const customerId = typeof window !== "undefined"
       ? window.sessionStorage.getItem("slicematic_customer_id") ?? undefined
       : undefined;
 
-    if (!autoPhone) {
+    if (!autoPhone && !autoEmail) {
       // Manual trigger from intake form — validate full customer details
       const errors = customerValidation();
       setCustomerErrors(errors);
@@ -565,6 +571,12 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       }
     }
 
+    const cachedRecs = useStore.getState().recommendations;
+    if (!forceRefresh && cachedRecs.length > 0) {
+      setStep("recommendation");
+      return;
+    }
+
     setStep("recommendation");
     setRecommendation(null);
     setRecommendations([]);
@@ -572,7 +584,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       const response = await fetch("/api/recommend", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, phone, customer_id: customerId })
+        body: JSON.stringify({ name, phone, email, customer_id: customerId })
       });
       if (!response.ok) {
         showToast("Recommendation unavailable — browse the menu.");
@@ -659,11 +671,11 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   function addBuilderToCart() {
     if (!selectedPizza) return;
     if (!Number.isInteger(builder.quantity)) {
-      showToast("Quantity must be a whole number from 1 to 10.");
+      showToast(`Quantity must be a whole number from 1 to ${pricingConfig.maxOrderQty}.`);
       return;
     }
-    if (builder.quantity < 1) {
-      showToast("Quantity must be between 1 and 10.");
+    if (builder.quantity < 1 || builder.quantity > pricingConfig.maxOrderQty) {
+      showToast(`Quantity must be between 1 and ${pricingConfig.maxOrderQty}.`);
       return;
     }
     if (builder.quantity > pricingConfig.maxOrderQty) {
@@ -672,7 +684,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     }
     const existingQuantity = cart.reduce((sum, line) => sum + line.quantity, 0);
     if (existingQuantity + builder.quantity > pricingConfig.maxOrderQty) {
-      showToast(`Maximum outlet capacity is ${pricingConfig.maxOrderQty} pizzas per order.`);
+      showToast(`You have ${existingQuantity} pizzas in cart. Max allowed is ${pricingConfig.maxOrderQty}.`);
       return;
     }
 
@@ -1556,7 +1568,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       const response = await fetch("/api/ai/cart-insight", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ customer, lines: cart })
+        body: JSON.stringify({ customer, lines: cart, pricingConfig, isGuest: !customerLoggedIn })
       });
       const result = await response.json();
       if (!result.ok) throw new Error("Cart insight unavailable");
@@ -2017,18 +2029,9 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                     const btn = e.currentTarget;
                     btn.disabled = true;
                     btn.textContent = "Analyzing history...";
-                    try {
-                      const cid = window.sessionStorage.getItem("slicematic_customer_id") ?? undefined;
-                      const response = await fetch("/api/recommend", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ name: customer.name || "Customer", phone: customer.phone || "9999999999", customer_id: cid })
-                      });
-                      setRecommendation(await response.json());
-                    } catch {
-                      btn.textContent = "Failed. Try again.";
-                      btn.disabled = false;
-                    }
+                    await submitCustomer(customer.name || undefined, customer.phone || undefined, true, customerSessionEmail);
+                    btn.disabled = false;
+                    btn.textContent = "Generate pick";
                   }}>Generate pick</button>
                 </div>
               )}
@@ -2322,11 +2325,23 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
 
                 {step === "recommendation" && (
                   <section className="glass-panel ai-recommendation" id="ai">
-                    <div>
-                      <p className="eyebrow">AI recommendations</p>
-                      <h2>{!recommendation ? "Reading order history..." : recommendations.length > 1 ? `${recommendations.length} picks for you` : recommendation.pizzaName ? `${recommendation.pizzaName} + ${recommendation.toppingName}` : "Explore our menu"}</h2>
-                      <p>{recommendation?.reason ?? "The backend queries Supabase history, sends a compact profile to OpenRouter, validates menu IDs, and logs the recommendation event."}</p>
-                      {recommendation && recommendation.confidence > 0 && <small>{recommendation.source === "openrouter" ? "OpenRouter response" : "Data-driven pick"} / confidence {Math.round(recommendation.confidence * 100)}% / {recommendation.customerTier} customer</small>}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div>
+                        <p className="eyebrow">AI recommendations</p>
+                        <h2>{!recommendation ? "Reading order history..." : recommendations.length > 1 ? `${recommendations.length} picks for you` : recommendation.pizzaName ? `${recommendation.pizzaName} + ${recommendation.toppingName}` : "Explore our menu"}</h2>
+                        <p>{recommendation?.reason ?? "The backend queries Supabase history, sends a compact profile to OpenRouter, validates menu IDs, and logs the recommendation event."}</p>
+                        {recommendation && recommendation.confidence > 0 && <small>{recommendation.source === "openrouter" ? "OpenRouter response" : "Data-driven pick"} / confidence {Math.round(recommendation.confidence * 100)}% / {recommendation.customerTier} customer</small>}
+                      </div>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Refresh recommendations"
+                        onClick={() => submitCustomer(customer.name || undefined, customer.phone || undefined, true, customerSessionEmail)}
+                        disabled={!recommendation}
+                        style={{ padding: "0.5rem", borderRadius: "0.5rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                      >
+                        <RefreshCw size={16} />
+                      </button>
                     </div>
                     {recommendations.length > 1 ? (
                       <div className="recommendation-list">
@@ -2681,7 +2696,16 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
               <div className="builder-group"><h3>Crust</h3>{activeBases.map((base) => <button className={builder.baseId === base.id ? "active" : ""} onClick={() => setBuilder({ ...builder, baseId: base.id })} key={base.id} type="button">{base.name}<span>{money(base.price)}</span></button>)}</div>
               <div className="builder-group"><h3>Size</h3>{activeSizes.map((size) => <button className={builder.sizeId === size.id ? "active" : ""} onClick={() => setBuilder({ ...builder, sizeId: size.id })} key={size.id} type="button">{size.name}<span>{size.extra ? `+ ${money(size.extra)}` : "Included"}</span></button>)}</div>
               <div className="builder-group toppings"><h3>Toppings</h3>{activeToppings.map((topping) => <label key={topping.id}><input type="checkbox" checked={builder.toppingIds.includes(topping.id)} onChange={(event) => setBuilder((current) => ({ ...current, toppingIds: event.target.checked ? [...current.toppingIds, topping.id] : current.toppingIds.filter((id) => id !== topping.id) }))} />{topping.name}<span>+ {money(topping.price)}</span></label>)}</div>
-              <div className="builder-footer"><input type="number" min={1} max={10} value={builder.quantity} onChange={(event) => setBuilder({ ...builder, quantity: Number(event.target.value) })} /><strong>{money(getLineUnitPrice({ id: "preview", pizzaId: selectedPizza.id, baseId: builder.baseId, sizeId: builder.sizeId, toppingIds: builder.toppingIds, quantity: 1 }, menu) * builder.quantity)}</strong><button className="primary" onClick={addBuilderToCart} type="button"><ShoppingBag /> Add to cart</button></div>
+              <div className="builder-footer"><input type="number" min={1} max={pricingConfig.maxOrderQty} value={builder.quantity} onChange={(event) => {
+                const newQty = Number(event.target.value);
+                const maxAllowed = pricingConfig.maxOrderQty;
+                if (newQty > maxAllowed) {
+                  showToast(`Maximum outlet capacity is ${pricingConfig.maxOrderQty} pizzas per order.`);
+                  setBuilder({ ...builder, quantity: maxAllowed });
+                } else {
+                  setBuilder({ ...builder, quantity: newQty });
+                }
+              }} /><strong>{money(getLineUnitPrice({ id: "preview", pizzaId: selectedPizza.id, baseId: builder.baseId, sizeId: builder.sizeId, toppingIds: builder.toppingIds, quantity: 1 }, menu) * builder.quantity)}</strong><button className="primary" onClick={addBuilderToCart} type="button"><ShoppingBag /> Add to cart</button></div>
             </div>
           </section>
         </div>

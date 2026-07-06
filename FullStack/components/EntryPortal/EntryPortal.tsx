@@ -4,10 +4,12 @@ import React, { useState, useEffect } from "react";
 import { Pizza, ArrowRight, Lock, UserCheck, ShieldAlert, Smartphone, Mail, Sparkles, Smile, ArrowLeft } from "lucide-react";
 import { getSupabaseBrowserClient } from "../../lib/supabase";
 import { useStore } from "../../lib/store";
+import { Recommendation } from "../../lib/types";
 import "./EntryPortal.css";
 
 interface EntryPortalProps {
   onComplete: () => void;
+  onRecommendationReady?: (data: { recommendations: Recommendation[], primary: Recommendation }) => void;
 }
 
 interface LocalRegisteredCustomer {
@@ -32,7 +34,7 @@ const SEED_CUSTOMERS = [
   }
 ];
 
-export default function EntryPortal({ onComplete }: EntryPortalProps) {
+export default function EntryPortal({ onComplete, onRecommendationReady }: EntryPortalProps) {
   const [step, setStep] = useState<"identity" | "otp" | "register">("identity");
   const [identifier, setIdentifier] = useState("");
   const [otp, setOtp] = useState("");
@@ -51,6 +53,24 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
   const isEmail = (val: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
   const isMobile = (val: string) => /^\d{10}$/.test(val);
   const isDemoUser = (val: string) => val === "demo@slicematic.in" || val === "9999999999";
+
+  async function prefetchRecommendation(email: string, cb?: (data: { recommendations: Recommendation[], primary: Recommendation }) => void) {
+    try {
+      useStore.getState().setIsFetchingRecommendation(true);
+      const res = await fetch("/api/recommend", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "", email })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        cb?.(data);
+      }
+    } catch { /* silent */ }
+    finally {
+      useStore.getState().setIsFetchingRecommendation(false);
+    }
+  }
 
   /**
    * Resolves the bearer token to send to the protected /api/customer/* routes:
@@ -112,6 +132,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
         }
       }
       setStep("otp");
+      void prefetchRecommendation(trimmedVal, onRecommendationReady);
     } catch (err: any) {
       console.error(err);
       setErrorMsg("An error occurred while sending OTP.");
@@ -348,8 +369,20 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
 
   const saveSessionAndProceed = async (customerObj: any) => {
     if (typeof window !== "undefined") {
+      const preFetchedRecs = useStore.getState().recommendations;
+      const preFetchedPrimary = useStore.getState().recommendation;
+      const isFetching = useStore.getState().isFetchingRecommendation;
+      
       // Reset any prior identity's cart/customer draft before writing this login's session data.
       useStore.getState().resetSession();
+      
+      if (preFetchedRecs.length > 0) {
+        useStore.getState().setRecommendations(preFetchedRecs);
+        useStore.getState().setRecommendation(preFetchedPrimary);
+      }
+      if (isFetching) {
+        useStore.getState().setIsFetchingRecommendation(true);
+      }
 
       const displayAddress = customerObj.city 
         ? `${customerObj.address || ""}, ${customerObj.city}`.trim().replace(/^,\s*/, "")
@@ -444,6 +477,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
       sessionStorage.removeItem("slicematic_customer_id");
       sessionStorage.setItem("slicematic_customer_logged_in", "false");
     }
+    void prefetchRecommendation("", onRecommendationReady);
     onComplete();
   };
 

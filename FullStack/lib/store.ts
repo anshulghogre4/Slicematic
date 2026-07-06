@@ -12,6 +12,8 @@ interface AppState {
   paymentMode: PaymentMode;
   lastOrder: SavedOrder | null;
   recommendation: Recommendation | null;
+  recommendations: Recommendation[];
+  isFetchingRecommendation: boolean;
 
   setCart: (updater: CartLine[] | ((prev: CartLine[]) => CartLine[])) => void;
   setCustomer: (updater: CustomerDetails | ((prev: CustomerDetails) => CustomerDetails)) => void;
@@ -19,6 +21,8 @@ interface AppState {
   setPaymentMode: (updater: PaymentMode | ((prev: PaymentMode) => PaymentMode)) => void;
   setLastOrder: (updater: SavedOrder | null | ((prev: SavedOrder | null) => SavedOrder | null)) => void;
   setRecommendation: (updater: Recommendation | null | ((prev: Recommendation | null) => Recommendation | null)) => void;
+  setRecommendations: (updater: Recommendation[] | ((prev: Recommendation[]) => Recommendation[])) => void;
+  setIsFetchingRecommendation: (fetching: boolean) => void;
   clearCheckout: () => void;
   /**
    * Clears cart/customer/lastOrder/recommendation so one identity's session data
@@ -37,6 +41,8 @@ export const useStore = create<AppState>()(
       paymentMode: "UPI",
       lastOrder: null,
       recommendation: null,
+      recommendations: [],
+      isFetchingRecommendation: false,
 
       setCart: (updater) => set((state) => ({ cart: typeof updater === "function" ? updater(state.cart) : updater })),
       setCustomer: (updater) => set((state) => ({ customer: typeof updater === "function" ? updater(state.customer) : updater })),
@@ -44,6 +50,8 @@ export const useStore = create<AppState>()(
       setPaymentMode: (updater) => set((state) => ({ paymentMode: typeof updater === "function" ? updater(state.paymentMode) : updater })),
       setLastOrder: (updater) => set((state) => ({ lastOrder: typeof updater === "function" ? updater(state.lastOrder) : updater })),
       setRecommendation: (updater) => set((state) => ({ recommendation: typeof updater === "function" ? updater(state.recommendation) : updater })),
+      setRecommendations: (updater) => set((state) => ({ recommendations: typeof updater === "function" ? updater(state.recommendations) : updater })),
+      setIsFetchingRecommendation: (fetching) => set({ isFetchingRecommendation: fetching }),
       clearCheckout: () => set({ cart: [] }),
       resetSession: () =>
         set({
@@ -51,6 +59,8 @@ export const useStore = create<AppState>()(
           customer: initialCustomer,
           lastOrder: null,
           recommendation: null,
+          recommendations: [],
+          isFetchingRecommendation: false,
         }),
     }),
     {

@@ -17,6 +17,7 @@ type RecommendRequest = {
   name: string;
   phone?: string;
   customer_id?: string;
+  email?: string;
 };
 
 type HistoryLine = {
@@ -32,7 +33,7 @@ type HistoryLine = {
 export async function POST(request: Request) {
   const body = (await request.json()) as RecommendRequest;
   const menu = await loadMenu();
-  const history = await getCustomerHistory(body.customer_id, body.phone, menu);
+  const history = await getCustomerHistory(body.customer_id, body.phone, body.email, menu);
   const customerTier = history.length ? "returning" : "new";
   const customerProfile = buildCustomerProfile(history, menu);
   const popularity = await getGlobalPopularity(menu);
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   const fallback = fallbacks[0];
 
   if (!process.env.OPENROUTER_API_KEY) {
-    const logged = await logRecommendation(body.customer_id, body.phone, fallback);
+    const logged = await logRecommendation(body.customer_id, body.phone, body.email, fallback);
     return NextResponse.json({
       ok: true,
       recommendations: fallbacks,
@@ -127,7 +128,7 @@ export async function POST(request: Request) {
     }
 
     // Log the primary recommendation
-    const logged = await logRecommendation(body.customer_id, body.phone, recommendations[0]);
+    const logged = await logRecommendation(body.customer_id, body.phone, body.email, recommendations[0]);
     return NextResponse.json({
       ok: true,
       recommendations,
@@ -137,7 +138,7 @@ export async function POST(request: Request) {
       customerTier
     });
   } catch {
-    const logged = await logRecommendation(body.customer_id, body.phone, fallback);
+    const logged = await logRecommendation(body.customer_id, body.phone, body.email, fallback);
     return NextResponse.json({
       ok: true,
       recommendations: fallbacks,
@@ -149,7 +150,7 @@ export async function POST(request: Request) {
   }
 }
 
-async function getCustomerHistory(customerId: string | undefined, phone: string | undefined, menu: MenuPayload): Promise<HistoryLine[]> {
+async function getCustomerHistory(customerId: string | undefined, phone: string | undefined, email: string | undefined, menu: MenuPayload): Promise<HistoryLine[]> {
   const supabase = getSupabaseServerClient();
   if (!supabase) {
     return seedOrders
@@ -181,6 +182,16 @@ async function getCustomerHistory(customerId: string | undefined, phone: string 
         .from("customer")
         .select("customer_id")
         .eq("mobile_number", phone)
+        .maybeSingle();
+      resolvedCustomerId = customer.data?.customer_id ?? undefined;
+    }
+
+    if (!resolvedCustomerId && email) {
+      const customer = await supabase
+        .schema("slicematic")
+        .from("customer")
+        .select("customer_id")
+        .eq("email", email)
         .maybeSingle();
       resolvedCustomerId = customer.data?.customer_id ?? undefined;
     }
@@ -488,7 +499,7 @@ function clampConfidence(value: number) {
   return Math.min(0.99, Math.max(0.01, value));
 }
 
-async function logRecommendation(customerId: string | undefined, phone: string | undefined, recommendation: Recommendation) {
+async function logRecommendation(customerId: string | undefined, phone: string | undefined, email: string | undefined, recommendation: Recommendation) {
   const supabase = getSupabaseServerClient();
   if (!supabase) return recommendation.recommendationId;
   try {
@@ -501,6 +512,16 @@ async function logRecommendation(customerId: string | undefined, phone: string |
         .from("customer")
         .select("customer_id")
         .eq("mobile_number", phone)
+        .maybeSingle();
+      resolvedCustomerId = customer.data?.customer_id ?? undefined;
+    }
+
+    if (!resolvedCustomerId && email) {
+      const customer = await supabase
+        .schema("slicematic")
+        .from("customer")
+        .select("customer_id")
+        .eq("email", email)
         .maybeSingle();
       resolvedCustomerId = customer.data?.customer_id ?? undefined;
     }
