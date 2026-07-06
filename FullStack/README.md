@@ -20,9 +20,10 @@ SliceMatic is a full-stack PizzaFlow delivery application built for the Stage 3 
 ```bash
 npm run dev                  # Next.js dev server (localhost:3000)
 npm run build                # Production build
-npm run test                 # Vitest — pricing, data-service, payments, store
+npm run test                 # Vitest — pricing, data-service, payments, store, admin menu/upload/auth
 npm run forecast:refresh     # Pull orders from Supabase → train Python model → write cache
 npm run seed:synthetic-orders  # Append tagged demo orders for ML/dev (see below)
+npm run setup:storage        # One-time (idempotent): create the public `menu-images` Supabase Storage bucket
 ```
 
 Python ML deps (forecast only):
@@ -129,23 +130,24 @@ The customer workspace does not render the admin console below the order flow. T
 | `/api/menu` | GET | Live menu from Supabase (`pizza_types`, `bases`, `toppings`, `sizes`) |
 | `/api/orders` | POST | Place order — customer, header, line items, toppings, totals, payment |
 | `/api/recommend` | POST | AI pizza/topping recommendation from order history + OpenRouter |
-| `/api/customer/register` | POST | Register/link Supabase customer row (email + phone) |
-| `/api/customer/profile` | GET | Lookup customer profile by email or phone |
-| `/api/customer/orders` | GET | Order history for logged-in customer |
+| `/api/customer/register` | POST | Register/link Supabase customer row (email + phone) — **auth required** |
+| `/api/customer/profile` | GET | Lookup customer profile by email or phone — **auth required** |
+| `/api/customer/orders` | GET | Order history for logged-in customer — **auth required** |
 | `/api/payments/create-order` | POST | Razorpay order (server-side bill recompute) |
 | `/api/payments/verify` | POST | Razorpay signature verification |
 | `/api/payments/cashfree/create-order` | POST | Cashfree sandbox/prod order |
 | `/api/payments/cashfree/verify` | POST | Cashfree payment status |
 | `/api/admin/orders` | GET | Admin summary, filters, CSV export (`?format=csv`) |
-| `/api/admin/menu` | GET/POST | Menu CRUD for admin studio |
-| `/api/admin/upload` | POST | Menu image upload → `public/uploads/menu` |
+| `/api/admin/menu` | POST/PATCH | Create (`POST`) or update (`PATCH`) a pizza/base/topping row for the admin Menu Studio |
+| `/api/admin/outlet/pricing` | GET/POST | Read/write the shared Financials config (GST, discount, delivery) |
+| `/api/admin/upload` | POST | Menu image upload → Supabase Storage `menu-images` bucket (public URL) |
 | `/api/admin/forecast/refresh` | POST | Local-only retrain (Python + scikit-learn on machine) |
 | `/api/ai/cart-insight` | POST | Cart upsell / discount proximity copy |
 | `/api/ai/menu-copy` | POST | Admin menu item marketing copy |
 | `/api/ai/ops-briefing` | POST | Admin shift briefing from live metrics + forecast |
 | `/api/health` | GET | Health check |
 
-Protected admin routes use bearer-token checks via `lib/admin-auth.ts` when Supabase service keys are configured.
+Protected admin routes use bearer-token checks via `lib/admin-auth.ts` when Supabase service keys are configured. The three `/api/customer/*` routes above use the equivalent `lib/customer-auth.ts` (see [Customer Authentication & Entry Portal](#customer-authentication--entry-portal) below).
 
 ## Project layout
 
@@ -195,7 +197,7 @@ The source of truth is `lib/pricing.ts`.
 ## Test Driven Development (TDD)
 The core logic for pricing, data parsing, and payment gateways is verified using Vitest. 
 - 100% logic and edge-case parity with the original MVP Python tests.
-- 44 tests across 6 suites (including Razorpay, Cashfree, Zustand Store, Pricing, and Data Services).
+- 80+ tests across 14 suites (including Razorpay, Cashfree, Zustand Store, Pricing, Data Services, and the `lib/customer-auth.ts` / `app/api/customer/*` ownership-check matrix).
 - Follows the Red-Green-Refactor protocol to prevent regressions in billing math and API behavior.
 - Test suites run cleanly in Node environments with mocked APIs and middleware.
 
@@ -207,11 +209,23 @@ Admin users can add new sellable catalogue items from the Menu tab:
 - New crust/base: code, name, price, description.
 - New topping: code, name, price.
 
-When Supabase is configured and the admin is signed in, `POST /api/admin/menu` creates a real database row in the correct menu table. During local demo mode, the item is added to the in-memory menu so the workflow can still be shown without credentials.
+When Supabase is configured and the admin is signed in (including the demo admin login — see below), `POST /api/admin/menu` creates a real database row in the correct menu table. During local demo mode (no Supabase configured at all), the item is added to the in-memory menu so the workflow can still be shown without credentials.
 
 New available pizzas appear in the customer menu immediately. New bases and toppings appear inside the pizza builder immediately.
 
-Pizza images are uploaded through the admin menu studio. The upload route validates JPG, PNG, WEBP, and GIF files up to 4 MB, saves them under `public/uploads/menu`, returns a dynamic URL, and the menu preview auto-fits the image before the item is saved.
+Pizza images are uploaded through the admin menu studio to a Supabase Storage bucket (`menu-images`, public). The upload route validates JPG, PNG, WEBP, and GIF files up to 4 MB, uploads them via the service-role client (which bypasses Storage RLS), and returns the bucket's public URL — the menu preview auto-fits the image before the item is saved. Run `npm run setup:storage` once per Supabase project to provision the bucket (see [Supabase Setup](#supabase-setup)); the script is idempotent and safe to re-run.
+
+### Editing existing catalogue items
+
+Each row in the Pizzas / Bases / Toppings tabs (name, price, Available checkbox) has its own **Save** button, wired to `PATCH /api/admin/menu`:
+
+- **idle** — no unsaved changes, button disabled.
+- **dirty** (amber) — the row differs from the last-saved snapshot; button enabled.
+- **saving** (blue) — request in flight.
+- **saved** (green, auto-clears after ~2s) — the server confirmed the update and the row's baseline snapshot advances.
+- **error** (red, labeled "Retry") — the request failed (validation or network); a toast explains why and the row stays editable.
+
+This is a deliberate per-row save (not autosave-on-keystroke and not one global "Save all" button) so each edit gets its own explicit confirmation and independent error handling.
 
 ## Admin Authentication
 
@@ -223,16 +237,31 @@ The admin console is built like a secure application workspace:
 - Reset password screen using Supabase `updateUser` during a recovery session.
 - Local demo fallback that can reset the demo password for the current browser session.
 - Admin APIs remain protected with bearer-token checks when Supabase admin env keys exist.
+- **Demo admin auth token:** the demo admin login (`admin@slicematic.in` / `slicematic-demo`) doesn't hold a real Supabase Auth session, so it has no JWT to send. Every admin-mutating call (`addMenuItem`, the per-row `Save` action, `uploadMenuImage`, `persistOutletPricing`, `generateMenuCopy`) uses a shared `adminAuthHeader()` helper that sends the server's `demo-bypass` bearer token (accepted by `requireAdminSession` in `lib/admin-auth.ts`) whenever there's no real access token but the admin is logged in. This lets the demo login exercise the same Supabase-backed code paths as a real Supabase Auth admin, instead of silently no-op'ing or failing with an unsurfaced 401.
 
 ## Customer Authentication & Entry Portal
 
 Customer accounts are supported via two routes depending on flow:
 - **New OTP Entry Portal**: Users start in a unified glassmorphic `EntryPortal` (`components/EntryPortal/EntryPortal.tsx`) requiring email/OTP sign-in, with a automatic demo fallback for local/no-key development.
 - **Continue-as-guest**: Guests can enter the workspace immediately. If they want to unlock cash payment, clicking "Sign in for Cash" in the Cart redirects them back to the new OTP-based `EntryPortal`.
-- **Saved session restoration**: The app retains user sessions (emails/profile names) in sessionStorage and automatically pulls past order history and recommendations.
+- **Saved session restoration**: The app retains user sessions (emails/profile names) in `sessionStorage` and automatically pulls past order history and recommendations.
 - **Supabase customer linking**: `lib/session-customer.ts` syncs the session to a `slicematic.customer` row via `GET /api/customer/profile` or `POST /api/customer/register` (name, phone, email).
 - **Order history**: Logged-in customers load past orders through `GET /api/customer/orders`.
 - **Account Workspace**: Logged-in customers gain access to their account workspace (`workspace === "account"`) to manage their order history, personal AI recommendations, and password recovery.
+
+### Customer route authorization (`lib/customer-auth.ts`)
+
+The three `/api/customer/*` routes above return real customer PII (name, phone, email, order history) and are called from the browser with an identifier or a `customer_id` that isn't itself a secret — a phone number, a UUID once known, an email address. Every request must now carry an `Authorization: Bearer <token>` header, checked by `requireCustomerOwnership()`:
+
+- **Real customers**: the bearer token is the live Supabase Auth `access_token` from `supabase.auth.getSession()` (already available after the OTP flow completes). The route resolves the requested `identifier`/`customer_id` to its owning `slicematic.customer.email` and requires it to match the token's verified email (case-insensitive) — otherwise `401` (missing/invalid token) or `403` (valid token, wrong identity).
+- **Demo customer**: the demo identity (`demo@slicematic.in` / phone `9999999999`) never has a real Supabase session (its OTP is a hardcoded `1111`), so it sends the bearer token `demo-bypass` — mirroring the existing admin `demo-bypass` pattern in `lib/admin-auth.ts`. This bypass is checked against the **specific identity being requested**, not accepted unconditionally: `demo-bypass` + someone else's email/phone/`customer_id` is rejected with `403`. It cannot be used to fetch any other customer's data — this is covered explicitly in `lib/customer-auth.test.ts`.
+- Client call sites (`EntryPortal.tsx`, `lib/session-customer.ts`) resolve and attach this token automatically before calling the protected routes.
+
+### Session storage change (cart/customer no longer survive a full browser restart)
+
+`lib/store.ts` (the Zustand cart/customer/last-order state) now persists to `sessionStorage` instead of `localStorage`, and is explicitly cleared via `resetSession()` on every customer and admin login/logout (in `EntryPortal.tsx`, `components/SliceMaticStage3.tsx`, and `app/admin-dashboard/page.tsx`), plus `localStorage["cf_pending"]` (pending Cashfree payload) is cleared on every logout. This closes a real cross-user leak: previously, Customer A's cart/name/phone/address/last order stayed in `localStorage` (shared by every tab and every future visitor to the same browser) even after they logged out, and Customer B's next login on the same machine would hydrate from it.
+
+**This is an intentional behavior change**: a cart still survives an accidental page refresh mid-checkout (`sessionStorage` persists across refreshes within the same tab), but it no longer survives closing the browser tab/window — which is the correct trade-off for a shared/public ordering device, and is exactly what "session" storage is for.
 
 Demo customer credentials:
 ```text
@@ -310,7 +339,7 @@ Without environment keys the app runs with demo menu/orders so the UI can be rev
 NEXT_PUBLIC_SUPABASE_URL=
 NEXT_PUBLIC_SUPABASE_ANON_KEY=
 SUPABASE_SERVICE_ROLE_KEY=
-DATABASE_URL=                        # optional — DBeaver / pg_dump pooler URL
+DATABASE_URL=                        # REQUIRED for customer order history — see note below
 OPENROUTER_API_KEY=
 OPENROUTER_MODEL=openai/gpt-oss-20b
 NEXT_PUBLIC_DEMO_ADMIN_EMAIL=admin@slicematic.in
@@ -325,6 +354,8 @@ CASHFREE_ENV=sandbox                   # sandbox | production
 
 Keep `SUPABASE_SERVICE_ROLE_KEY` and `RAZORPAY_KEY_SECRET` only in server environments such as Vercel project settings. Never expose them in browser code.
 
+**`DATABASE_URL` is not optional in production.** `GET /api/customer/orders` (`fetchOrderHistoryByCustomerId` in `lib/data-service.ts`) bypasses the Supabase PostgREST client entirely and queries Postgres directly via `pg` (`lib/db.ts`). This exists because hosted Supabase's PostgREST layer was silently dropping rows on Vercel when a `customer_id` filter was combined with `.order() + .limit()` on the `orders` table — a query-planner/range bug that never reproduced locally. The fix was to skip PostgREST for this one read path and run raw SQL over a direct Postgres connection instead. If `DATABASE_URL` is missing on Vercel, this function throws internally, the error is swallowed, and **customer order history silently returns empty** — no error shown, easy to miss. Always set `DATABASE_URL` (the Session/Transaction pooler connection string from Supabase → Project Settings → Database) in Vercel's env vars alongside the other Supabase keys.
+
 ## Supabase Setup
 
 1. Create a Supabase project.
@@ -332,7 +363,8 @@ Keep `SUPABASE_SERVICE_ROLE_KEY` and `RAZORPAY_KEY_SECRET` only in server enviro
 3. Run `supabase/schema.sql`.
 4. In Authentication, create the admin user used for the demo.
 5. Add the environment variables to `.env.local` and to Vercel.
-6. For marking, create a read-only Supabase user or invite the evaluator with read-only access.
+6. Run `npm run setup:storage` once (locally, with `.env`/`.env.local` pointed at that project) to create the public `menu-images` Storage bucket used by pizza image uploads. The script is idempotent — safe to re-run against the same project, including after redeploys.
+7. For marking, create a read-only Supabase user or invite the evaluator with read-only access.
 
 The required core tables are:
 
@@ -533,6 +565,22 @@ npm run build
 ```
 
 Deploy the `FullStack` directory to Vercel and set all environment variables in Vercel Project Settings.
+
+### Manual Vercel verification checklist (admin Menu & Financials persistence)
+
+Run this after every deploy that touches admin menu/financials/image-upload code, since it exercises Supabase Storage and serverless-specific behavior that local `npm run dev` can mask:
+
+1. Run `npm run setup:storage` once against the production Supabase project (creates the `menu-images` bucket), then deploy to Vercel and confirm `DATABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, and `NEXT_PUBLIC_SUPABASE_*` are all set in Vercel's project env vars.
+2. On the live URL, open the EntryPortal and enter `demo@slicematic.in` to route to `/admin-dashboard`, then complete the pre-filled Sign in (`admin@slicematic.in` / demo password):
+   - **Create Item** a new pizza → confirm it appears in Supabase's `pizza_types` table, not just the browser.
+   - **Pizzas tab**: edit an existing pizza's price/name/availability, click **Save** → confirm the row updates in Supabase and the button shows saved/error correctly.
+   - **Financials**: change the GST % → confirm `slicematic.outlet_settings.pricing_config` updates in Supabase.
+   - **Create Item**: upload a pizza image → confirm the returned URL is a Supabase Storage URL (not `/uploads/...`) and the image actually renders.
+3. Open the customer-facing `/` in a second browser/incognito window (no admin session) → confirm the new pizza (with its uploaded image), the edited price, and the new GST all show up with no code change or redeploy.
+4. Repeat step 2–3 signed in as a real Supabase-Auth admin user (if one exists) to confirm parity with the demo path.
+5. Temporarily revoke/corrupt the admin token and confirm error toasts now appear (sanity check that failures are no longer silent).
+
+These steps require a live Vercel deployment and cannot be fully verified from a local dev sandbox — treat them as the final gate before considering this feature shipped.
 
 Submission checklist:
 

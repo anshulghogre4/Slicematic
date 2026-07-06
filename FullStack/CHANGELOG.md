@@ -4,6 +4,73 @@ This file maintains a timestamp-based record of the modifications, debugging ses
 
 ---
 
+### [2026-07-06 00:43:52] - Customer session and privacy hardening (TDD)
+
+**Context:** A security audit found two real issues: (1) `GET /api/customer/profile` and `GET /api/customer/orders` had **zero authentication** — anyone who knew or guessed a customer's email/phone/`customer_id` could pull their full name, phone, email, and order history via curl; (2) `lib/store.ts`'s Zustand `persist()` defaulted to `localStorage` with no clearing on logout, so Customer A's cart/name/phone/address/last order stayed on a shared browser and leaked into Customer B's session on the same machine — even after Customer A logged out. This directly failed the `code-review-excellence` skill's own Security checklist ("Is authentication required where needed? Are authorization checks before every action?").
+
+**Fix — JWT ownership checks (`lib/customer-auth.ts`, new):**
+* Added `requireCustomerOwnership(request, { identifier?, customerId? })`, mirroring the existing `lib/admin-auth.ts` pattern: requires an `Authorization: Bearer <token>` header, resolves the requested identifier/`customer_id` to its `slicematic.customer.email`, and requires it to match the caller's verified Supabase JWT email (case-insensitive) — `401` if missing/invalid token, `403` on identity mismatch.
+* The demo customer (`demo@slicematic.in` / phone `9999999999`) has no real Supabase session (hardcoded OTP `1111`), so it authenticates with a `demo-bypass` bearer token — **scoped only to its own identity**: `demo-bypass` + any other customer's email/phone/`customer_id` is rejected with `403`, so it cannot recreate the original vulnerability. Explicitly covered by tests.
+* Wired into `app/api/customer/profile/route.ts`, `app/api/customer/orders/route.ts`, and (after audit) `app/api/customer/register/route.ts` (which previously let anyone probe whether an arbitrary email/phone was already registered and get back its `customer_id`).
+* Updated client call sites — `components/EntryPortal/EntryPortal.tsx`, `lib/session-customer.ts`, `components/SliceMaticStage3.tsx` (`refreshCustomerOrders`), `app/admin-dashboard/page.tsx` (customer orders fetch) — to resolve and attach the bearer token (live Supabase access token, or `demo-bypass` for the demo identity) before calling the now-protected routes.
+
+**Fix — sessionStorage + explicit reset (`lib/store.ts`):**
+* Switched the `persist()` middleware's storage engine from the implicit `localStorage` default to `createJSONStorage(() => sessionStorage)` (isolated per tab, cleared when the tab closes).
+* Added `resetSession()`, resetting `cart`, `customer`, `lastOrder`, `recommendation`, and `pricingConfig` back to their defaults. Wired as defense-in-depth (on top of the storage-engine change) into every customer/admin login and logout: `EntryPortal.tsx` (`saveSessionAndProceed`, `handleGuestLogin`), and `customerLogin`/`customerLogout`/`adminLogin`/`adminLogout` in **both** `components/SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx` (previously-inconsistent duplicates — `admin-dashboard`'s `customerLogout` cleared no session keys at all; now both clear the same set). `localStorage["cf_pending"]` (pending Cashfree payload) is also cleared on every logout.
+* **Intentional behavior change:** cart/customer draft still survives an accidental page refresh mid-checkout (`sessionStorage` persists across refreshes in the same tab), but no longer survives closing the browser tab/window — the correct trade-off for a shared/public ordering device.
+
+**Tests (TDD, red-green per slice):** `lib/customer-auth.test.ts` (11 tests: 401/403/200 matrix for identifier and `customer_id` targets, phone-to-email resolution, and the demo-bypass scoping matrix including the explicit "demo-bypass cannot fetch another customer's data" case), `app/api/customer/profile/route.test.ts`, `app/api/customer/orders/route.test.ts`, `app/api/customer/register/route.test.ts` (route-level wiring, auth helper mocked), and extended `lib/store.test.ts` (`resetSession()` behavior + sessionStorage-vs-localStorage engine assertion). Full suite: **84/84 passing** across 14 files.
+
+**Docs:** Updated `README.md` with a new "Customer route authorization" and "Session storage change" section under Customer Authentication, and marked the three `/api/customer/*` routes "auth required" in the API table.
+
+---
+
+### [2026-07-06 00:40:00] - Admin Menu & Financials persistence fix (TDD)
+**Context:** Audit found that Pizzas/Bases/Toppings catalogue edits never persisted to Supabase (local React state only, no Save action, no update endpoint), Financials/Create-Item/Image-upload silently failed to persist for the demo admin login (empty `adminAccessToken` meant the `authorization` header was omitted entirely, the server 401'd, and the client never checked `response.ok`), and image upload wrote to the local filesystem (`fs/promises` `writeFile`), which does not work on Vercel's read-only serverless filesystem.
+**Root causes fixed:**
+1. No update endpoint existed for editing an existing pizza/base/topping (only create).
+2. No client-side Save action was wired up for catalogue edit fields.
+3. Demo-admin session never sent a usable auth token, and failures were silently swallowed in `persistOutletPricing`, `addMenuItem`, and `uploadMenuImage`.
+4. Image upload wrote to local disk instead of a durable, CDN-served store.
+**Changes & Fixes:**
+* **New `PATCH /api/admin/menu`** (`app/api/admin/menu/route.ts`): validates `{ section, id, item }`, reuses the POST route's name/price validation (extracted into `validateItemFields`), updates the matching Supabase row (`.update(...).eq(id, ...).select("*").single()`), and falls back to an optimistic in-memory patch when Supabase isn't configured (demo mode, mirrors the existing `createDemoItem` POST fallback).
+* **`adminAuthHeader()` helper** added to both `app/admin-dashboard/page.tsx` and `components/SliceMaticStage3.tsx` (duplicated per the two-file architecture): resolves to the real Supabase Auth bearer token when present, otherwise falls back to the server's `demo-bypass` token when the admin is logged in via the demo flow. Replaces the ad-hoc `adminAccessToken ? {...} : undefined` checks in `addMenuItem`, `uploadMenuImage`, `persistOutletPricing`, and `generateMenuCopy` in both files — the demo admin login now actually reaches Supabase-backed routes instead of silently no-op'ing or 401'ing.
+* **Surfaced save failures:** `persistOutletPricing` now checks `response.ok`/`result.ok` and toasts on failure instead of swallowing 401s silently; `addMenuItem` and `uploadMenuImage` now also check `response.ok` in addition to the existing `result.ok` check.
+* **Per-row Save UI** for Pizzas/Bases/Toppings catalogue rows (both files): a `menuBaseline` snapshot (captured on initial `/api/menu` load and refreshed after each successful save/create) is diffed against live row state to compute a per-row dirty flag; a `.row-save-btn` next to each row's Available checkbox shows idle/dirty/saving/saved/error states and PATCHes only that row via `adminAuthHeader()`.
+* **`.row-save-btn` styles** added to `app/globals.css` using existing design tokens (`--gold`-tinted dirty, `--blue`-tinted saving, `--basil`-tinted saved, `--tomato`-tinted error), and `.menu-editor article`/`article.compact` grid templates extended with a 5th column for the button.
+* **Image upload moved to Supabase Storage** (`app/api/admin/upload/route.ts`): now uploads to the `menu-images` bucket via `getSupabaseServerClient().storage.from("menu-images").upload(...)` (service-role client bypasses Storage RLS) and returns `getPublicUrl(...)` instead of a local `/uploads/...` path; kept the same JPG/PNG/WEBP/GIF + 4MB validation; when Supabase isn't configured, returns a clear 400 (no working local-disk fallback in production, unlike the demo-item fallback for menu create/update).
+* **New `scripts/setup-storage-bucket.mjs`** (`npm run setup:storage`): idempotently creates the public `menu-images` bucket. `createBucket()` is **not** idempotent (409 `BucketAlreadyExists` on re-run) — the script calls `listBuckets()` first and also catches a 409 from `createBucket` itself as a defense-in-depth fallback. Ran successfully against the project's live Supabase instance (bucket created, then confirmed idempotent on re-run); also smoke-tested a real upload + public URL fetch (200 OK) + cleanup directly against Storage.
+* **Tests added (TDD, red-before-green for new behavior):** `app/api/admin/menu/route.test.ts` (PATCH auth branches, validation, Supabase-backed success shape), `lib/admin-auth.test.ts` (all `requireAdminSession` branches — demo-bypass, no-token, valid/invalid/absent Supabase session, no-admin-env), `app/api/admin/outlet/pricing/route.test.ts` (GET/POST auth + demo-bypass), `app/api/admin/upload/route.test.ts` (401, type/size validation, Supabase Storage success returning a non-`/uploads/...` public URL, clear error when Storage isn't configured). Full suite: **84/84 passing**.
+**Manual verification still required (documented in README):** live Vercel deploy with `npm run setup:storage` run against production Supabase; end-to-end demo-admin click-through (create pizza, edit+Save a row, change GST, upload an image) confirmed live in the Supabase tables and reflected on a second incognito customer session; parity check with a real Supabase-Auth admin account; confirming error toasts appear on a revoked/corrupted token.
+
+---
+
+### [2026-07-05 23:35:00] - Centralized outlet pricing + schema.sql safety review
+**Context:** User asked whether re-running `schema.sql` could break anything, and flagged the earlier Vercel-only bug where customer order history silently returned empty.
+**Schema review:** Confirmed every statement in `supabase/schema.sql` is idempotent (`if not exists`, `on conflict do nothing/update`, `create or replace view`, `drop policy if exists`) — no `DROP`/`TRUNCATE`/`DELETE` anywhere, so re-running it is safe for existing orders/customers. Only caveat: the seed `insert ... on conflict do update` for `pizza_bases`/`pizza_types`/`toppings` (ids 1–5/1–8/1–10) would reset those specific rows to seed values if ever hand-edited in the DB directly — not a live risk today since the admin menu-editor's inline edit fields are local-state only and not yet persisted.
+**Security fix:** `slicematic.outlet_settings` (new table backing GST/discount sync) had no RLS enabled while the script grants `all privileges` to `anon` — added `alter table ... enable row level security` with no anon/authenticated policy so only the service role (used by `/api/outlet/pricing` and `/api/admin/outlet/pricing`) can touch it.
+**Vercel note:** New pricing-config reads/writes (`lib/outlet-settings.ts`) use a plain `.eq(...).maybeSingle()` via the Supabase client — not the `.order()+.limit()` combo that caused the earlier PostgREST bug — so they don't need the raw-SQL (`lib/db.ts`) workaround. Confirmed the existing raw-SQL path for customer order history (`fetchOrderHistoryByCustomerId`) is untouched and still required.
+**Docs fix:** `README.md` incorrectly listed `DATABASE_URL` as "optional." It is required in production — without it, order history fails silently (empty list, no error). Updated the env var docs to call this out explicitly.
+
+---
+
+### [2026-07-05 23:20:00] - Menu create-item image preview fix
+**Context:** Pizza image preview in admin Menu → Create Item showed only a narrow vertical strip.
+**Root cause:** `.menu-editor img` forced all images to 78×64px, overriding `.image-preview-frame img`.
+**Fix:** Scoped catalogue thumbnails to `.menu-editor article img`; strengthened `.image-preview-frame` with 16:10 aspect ratio and explicit preview sizing.
+
+---
+
+### [2026-07-05 23:15:00] - AI tab shows live recommendation prompt + UI fixes
+**Context:** Admin AI tab displayed a shortened stale "system prompt summary" that did not match `/api/recommend`. Forecast peak cards had a grid alignment bug (title consumed first grid cell).
+**Changes & Fixes:**
+* **Single source of truth:** `lib/recommendation-prompt.ts` — exports the exact `RECOMMENDATION_SYSTEM_PROMPT` sent to OpenRouter.
+* **`/api/recommend`** imports the shared prompt and default model constant (no duplicate string).
+* **`RecommendationAIPanel`** component shows the full live prompt, model, JSON output schema, user payload fields, and endpoint — used in admin dashboard and `SliceMaticStage3`.
+* **Forecast peaks UI:** moved eyebrow title outside `.forecast-list` grid so all 3 peak cards align in one row.
+
+---
+
 ### [2026-07-05 17:10:00] - Demand forecast (KISS) + README / changelog documentation
 **Context:** Align demand forecasting with Stage 3 rubric (scikit-learn, hour/day features, admin chart, top 3 peaks, RMSE documentation) and document the full FullStack feature set in README.
 **Changes & Fixes:**

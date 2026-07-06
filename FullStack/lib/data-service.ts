@@ -112,6 +112,7 @@ export async function loadMenu(): Promise<MenuPayload> {
     ]);
 
     if (pizzasResult.error || basesResult.error || toppingsResult.error) {
+      console.error("[loadMenu] Supabase query error:", pizzasResult.error ?? basesResult.error ?? toppingsResult.error);
       return seedMenu;
     }
 
@@ -143,7 +144,8 @@ export async function loadMenu(): Promise<MenuPayload> {
       toppings: toppings.length ? deduplicate(toppings) : seedMenu.toppings,
       sizes
     };
-  } catch {
+  } catch (err) {
+    console.error("[loadMenu] unexpected error:", err);
     return seedMenu;
   }
 }

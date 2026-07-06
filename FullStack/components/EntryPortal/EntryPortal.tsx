@@ -3,10 +3,13 @@
 import React, { useState, useEffect } from "react";
 import { Pizza, ArrowRight, Lock, UserCheck, ShieldAlert, Smartphone, Mail, Sparkles, Smile, ArrowLeft } from "lucide-react";
 import { getSupabaseBrowserClient } from "../../lib/supabase";
+import { useStore } from "../../lib/store";
+import { Recommendation } from "../../lib/types";
 import "./EntryPortal.css";
 
 interface EntryPortalProps {
   onComplete: () => void;
+  onRecommendationReady?: (data: { recommendations: Recommendation[], primary: Recommendation }) => void;
 }
 
 interface LocalRegisteredCustomer {
@@ -31,7 +34,7 @@ const SEED_CUSTOMERS = [
   }
 ];
 
-export default function EntryPortal({ onComplete }: EntryPortalProps) {
+export default function EntryPortal({ onComplete, onRecommendationReady }: EntryPortalProps) {
   const [step, setStep] = useState<"identity" | "otp" | "register">("identity");
   const [identifier, setIdentifier] = useState("");
   const [otp, setOtp] = useState("");
@@ -50,6 +53,41 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
   const isEmail = (val: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val);
   const isMobile = (val: string) => /^\d{10}$/.test(val);
   const isDemoUser = (val: string) => val === "demo@slicematic.in" || val === "9999999999";
+
+  async function prefetchRecommendation(email: string, cb?: (data: { recommendations: Recommendation[], primary: Recommendation }) => void) {
+    try {
+      useStore.getState().setIsFetchingRecommendation(true);
+      const res = await fetch("/api/recommend", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ name: "", email })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        cb?.(data);
+      }
+    } catch { /* silent */ }
+    finally {
+      useStore.getState().setIsFetchingRecommendation(false);
+    }
+  }
+
+  /**
+   * Resolves the bearer token to send to the protected /api/customer/* routes:
+   * "demo-bypass" for the demo identity (or the rate-limit fallback-demo path,
+   * which never has a real Supabase session), otherwise the live Supabase
+   * access token from the just-verified OTP session.
+   */
+  const getAuthToken = async (identifierForCheck: string): Promise<string> => {
+    if (isDemoUser(identifierForCheck.trim().toLowerCase()) || fallbackDemo) return "demo-bypass";
+    const supabase = getSupabaseBrowserClient();
+    if (!supabase) return "";
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? "";
+  };
+
+  const withAuthHeader = (token: string, extra?: Record<string, string>) =>
+    token ? { ...extra, Authorization: `Bearer ${token}` } : extra;
 
   useEffect(() => {
     if (step === "register") {
@@ -94,6 +132,7 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
         }
       }
       setStep("otp");
+      void prefetchRecommendation(trimmedVal, onRecommendationReady);
     } catch (err: any) {
       console.error(err);
       setErrorMsg("An error occurred while sending OTP.");
@@ -155,7 +194,10 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
       : verifiedIdentifier.trim();
 
     try {
-      const profileRes = await fetch(`/api/customer/profile?identifier=${encodeURIComponent(normalizedIdentifier)}`);
+      const authToken = await getAuthToken(verifiedIdentifier);
+      const profileRes = await fetch(`/api/customer/profile?identifier=${encodeURIComponent(normalizedIdentifier)}`, {
+        headers: withAuthHeader(authToken)
+      });
       const profileData = await profileRes.json();
       if (profileData.ok && profileData.profile) {
         foundCustomer = {
@@ -291,9 +333,10 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
     try {
       const isDemo = isDemoUser(identifier.trim().toLowerCase());
       if (!isDemo && !fallbackDemo) {
+        const authToken = await getAuthToken(identifier.trim().toLowerCase());
         const registerRes = await fetch("/api/customer/register", {
           method: "POST",
-          headers: { "content-type": "application/json" },
+          headers: withAuthHeader(authToken, { "content-type": "application/json" }),
           body: JSON.stringify({
             name: newCustomer.name,
             phone: newCustomer.phone,
@@ -326,17 +369,33 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
 
   const saveSessionAndProceed = async (customerObj: any) => {
     if (typeof window !== "undefined") {
+      const preFetchedRecs = useStore.getState().recommendations;
+      const preFetchedPrimary = useStore.getState().recommendation;
+      const isFetching = useStore.getState().isFetchingRecommendation;
+      
+      // Reset any prior identity's cart/customer draft before writing this login's session data.
+      useStore.getState().resetSession();
+      
+      if (preFetchedRecs.length > 0) {
+        useStore.getState().setRecommendations(preFetchedRecs);
+        useStore.getState().setRecommendation(preFetchedPrimary);
+      }
+      if (isFetching) {
+        useStore.getState().setIsFetchingRecommendation(true);
+      }
+
       const displayAddress = customerObj.city 
         ? `${customerObj.address || ""}, ${customerObj.city}`.trim().replace(/^,\s*/, "")
         : customerObj.address || "";
 
       const loginEmail = (customerObj.email || identifier.trim().toLowerCase() || "").trim().toLowerCase();
       const isDemo = isDemoUser(loginEmail) || fallbackDemo;
+      const authToken = await getAuthToken(loginEmail);
       if (!isDemo && loginEmail && customerObj.phone && customerObj.name) {
         try {
           const registerRes = await fetch("/api/customer/register", {
             method: "POST",
-            headers: { "content-type": "application/json" },
+            headers: withAuthHeader(authToken, { "content-type": "application/json" }),
             body: JSON.stringify({
               name: customerObj.name,
               phone: customerObj.phone,
@@ -370,7 +429,9 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
 
       if (!customerObj.customerId && customerObj.email) {
         try {
-          const res = await fetch(`/api/customer/profile?identifier=${encodeURIComponent(customerObj.email)}`);
+          const res = await fetch(`/api/customer/profile?identifier=${encodeURIComponent(customerObj.email)}`, {
+            headers: withAuthHeader(authToken)
+          });
           const data = await res.json();
           if (data.ok && data.profile?.customerId) {
             sessionStorage.setItem("slicematic_customer_id", data.profile.customerId);
@@ -410,11 +471,13 @@ export default function EntryPortal({ onComplete }: EntryPortalProps) {
 
   const handleGuestLogin = () => {
     if (typeof window !== "undefined") {
+      useStore.getState().resetSession();
       sessionStorage.removeItem("slicematic_customer");
       sessionStorage.removeItem("slicematic_customer_email");
       sessionStorage.removeItem("slicematic_customer_id");
       sessionStorage.setItem("slicematic_customer_logged_in", "false");
     }
+    void prefetchRecommendation("", onRecommendationReady);
     onComplete();
   };
 

@@ -8,6 +8,7 @@ import { calculateBill, getLineUnitPrice, money } from "../../lib/pricing";
 import { CartLine, MenuPayload, PaymentMode } from "../../lib/types";
 import { seedMenu } from "../../lib/seed-data";
 import { applyOrderToSession } from "../../lib/session-customer";
+import { fetchOutletPricingConfig } from "../../lib/customer-flow";
 
 const paymentModes: Array<{ mode: PaymentMode; icon: React.ReactNode; copy: string }> = [
   { 
@@ -65,7 +66,7 @@ function renderLine(line: CartLine, menu: MenuPayload, index: number, onRemove: 
 
 export default function PaymentScreen() {
   const router = useRouter();
-  const { cart, customer, pricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setCart } = useStore();
+  const { cart, customer, pricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setCart, setPricingConfig } = useStore();
   const [placingOrder, setPlacingOrder] = useState(false);
   const [paymentStatusMessage, setPaymentStatusMessage] = useState("");
   const [toast, setToast] = useState("");
@@ -74,6 +75,18 @@ export default function PaymentScreen() {
   const [sessionCustomerId, setSessionCustomerId] = useState<string | null>(null);
 
   const brand = { name: "SliceMatic" };
+
+  useEffect(() => {
+    void fetchOutletPricingConfig().then((config) => {
+      if (config) setPricingConfig(config);
+    });
+    const interval = window.setInterval(() => {
+      void fetchOutletPricingConfig().then((config) => {
+        if (config) setPricingConfig(config);
+      });
+    }, 30000);
+    return () => window.clearInterval(interval);
+  }, [setPricingConfig]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -349,7 +362,7 @@ export default function PaymentScreen() {
               <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
               <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
               <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
-              <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
+              <div><span>Delivery</span><b>{pricingConfig.deliveryFee === 0 ? "Included" : totals.deliveryCharge === 0 ? `Free (above ${money(pricingConfig.freeDeliveryMin)})` : money(totals.deliveryCharge)}</b></div>
               <div className="total"><span>Total payable</span><b>{money(totals.finalTotal)}</b></div>
             </div>
           </section>

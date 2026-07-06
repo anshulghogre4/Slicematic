@@ -30,21 +30,24 @@ import {
   Star,
   Trash2,
   Upload,
-  Utensils
+  Utensils,
+  X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { calculateBill, defaultPricingConfig, getLineUnitPrice, money, validateCustomer } from "../../lib/pricing";
+import { CUSTOMER_FLOW_TABS, fetchOutletPricingConfig } from "../../lib/customer-flow";
 import { buildSeedSummary, seedMenu } from "../../lib/seed-data";
 import { AdminSummary, CartLine, CustomerDetails, MenuItem, MenuPayload, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "../../lib/types";
 import { useStore } from "../../lib/store";
 import { useRouter } from "next/navigation";
 import ForecastPanel from "../../components/admin/ForecastPanel";
+import RecommendationAIPanel from "../../components/admin/RecommendationAIPanel";
+import { ADMIN_TABS, adminTabLabel, type AdminTab } from "../../lib/admin-tabs";
 import CustomerOrderHistoryTable from "../../components/CustomerOrderHistoryTable";
 import { CustomerOrderHistoryItem } from "../../lib/data-service";
 
 type Step = "intake" | "recommendation" | "menu" | "checkout" | "tracking";
-type AdminTab = "overview" | "orders" | "forecast" | "menu" | "ai" | "settings";
 type Workspace = "customer" | "account" | "admin";
 type AdminAuthView = "login" | "forgot" | "reset";
 type CustomerAuthView = "login" | "forgot" | "reset";
@@ -105,6 +108,20 @@ const emptyMenuDraft: MenuDraft = {
   prepMinutes: "24"
 };
 
+function menuRowKey(section: MenuSection, id: number) {
+  return `${section}:${id}`;
+}
+
+function snapshotMenuBaseline(payload: MenuPayload) {
+  const baseline: Record<string, Pick<MenuItem, "name" | "price" | "available">> = {};
+  (["pizzas", "bases", "toppings"] as MenuSection[]).forEach((section) => {
+    payload[section].forEach((item) => {
+      baseline[menuRowKey(section, item.id)] = { name: item.name, price: item.price, available: item.available };
+    });
+  });
+  return baseline;
+}
+
 export default function AdminDashboardPage() {
   const router = useRouter();
   const { cart, setCart, customer, setCustomer, pricingConfig, setPricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setRecommendation } = useStore();
@@ -149,8 +166,21 @@ export default function AdminDashboardPage() {
         router.replace("/");
       } else {
         setAdminLoggedIn(true);
-        refreshAdminSummary();
-        loadOpsBriefing();
+        const supabase = getSupabaseAuthClient();
+        if (supabase) {
+          supabase.auth.getSession().then(({ data }) => {
+            const token = data.session?.access_token ?? "";
+            if (token) {
+              setAdminAccessToken(token);
+              setAdminSessionEmail(data.session?.user?.email ?? "");
+            }
+            refreshAdminSummary(token);
+            loadOpsBriefing(token);
+          });
+        } else {
+          refreshAdminSummary();
+          loadOpsBriefing();
+        }
       }
     }
   }, [router]);
@@ -173,8 +203,11 @@ export default function AdminDashboardPage() {
   const [settingsPage, setSettingsPage] = useState<SettingsPage>("brand");
   const [menuDraft, setMenuDraft] = useState<MenuDraft>(emptyMenuDraft);
   const [menuSaving, setMenuSaving] = useState(false);
+  const [settingsSaving, setSettingsSaving] = useState(false);
   const [menuImageUploading, setMenuImageUploading] = useState(false);
   const [menuCopyLoading, setMenuCopyLoading] = useState(false);
+  const [menuBaseline, setMenuBaseline] = useState<Record<string, Pick<MenuItem, "name" | "price" | "available">>>({});
+  const [menuRowStatus, setMenuRowStatus] = useState<Record<string, "saving" | "saved" | "error">>({});
   const [cartInsight, setCartInsight] = useState<CartInsight | null>(null);
   const [cartInsightLoading, setCartInsightLoading] = useState(false);
   const [opsBriefing, setOpsBriefing] = useState<OpsBriefing | null>(null);
@@ -195,7 +228,10 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     fetch("/api/menu")
       .then((response) => response.json())
-      .then((payload: MenuPayload) => setMenu(payload))
+      .then((payload: MenuPayload) => {
+        setMenu(payload);
+        setMenuBaseline(snapshotMenuBaseline(payload));
+      })
       .catch(() => setMenu(seedMenu));
     refreshAdminSummary();
   }, []);
@@ -280,7 +316,12 @@ export default function AdminDashboardPage() {
       const customerId = window.sessionStorage.getItem("slicematic_customer_id")?.trim() ?? "";
       if (customerId) {
         setCustomerOrdersLoading(true);
-        fetch(`/api/customer/orders?customer_id=${encodeURIComponent(customerId)}`, { cache: "no-store" })
+        void getCustomerRoutesAuthToken().then((authToken) =>
+          fetch(`/api/customer/orders?customer_id=${encodeURIComponent(customerId)}`, {
+            cache: "no-store",
+            headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined
+          })
+        )
           .then(res => res.json())
           .then(data => {
             if (data.ok && data.orders) {
@@ -304,6 +345,21 @@ export default function AdminDashboardPage() {
       setStep("intake");
     }
   }, []);
+
+  useEffect(() => {
+    void fetchOutletPricingConfig().then((config) => {
+      if (config) setPricingConfig(config);
+    });
+  }, [setPricingConfig]);
+
+  useEffect(() => {
+    fetch("/api/admin/outlet/brand", {
+      headers: adminAccessToken ? { Authorization: `Bearer ${adminAccessToken}` } : {}
+    })
+      .then(r => r.json())
+      .then(data => { if (data.ok && data.brandConfig) setBrand(data.brandConfig); })
+      .catch(() => {});
+  }, [adminAccessToken]);
 
   useEffect(() => {
     if (!toast) return;
@@ -353,8 +409,73 @@ export default function AdminDashboardPage() {
     setToast(message);
   }
 
+  function adminAuthHeader(): Record<string, string> | undefined {
+    const token = adminAccessToken || (adminLoggedIn ? "demo-bypass" : "");
+    return token ? { authorization: `Bearer ${token}` } : undefined;
+  }
+
+  async function persistOutletPricing(config: PricingConfig) {
+    try {
+      const response = await fetch("/api/admin/outlet/pricing", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...adminAuthHeader()
+        },
+        body: JSON.stringify({ pricingConfig: config })
+      });
+      if (!response.ok) {
+        showToast("Financial settings could not be saved. Sign in again and retry.");
+        return;
+      }
+      const result = await response.json();
+      if (!result.ok) {
+        showToast(result.error ?? "Financial settings could not be saved.");
+      }
+    } catch {
+      showToast("Financial settings could not be saved. Check your connection and try again.");
+    }
+  }
+
   function updatePricing<K extends keyof PricingConfig>(field: K, value: PricingConfig[K]) {
     setPricingConfig((current) => ({ ...current, [field]: value }));
+  }
+
+  async function applySettings() {
+    setSettingsSaving(true);
+    try {
+      const pricingRes = await fetch("/api/admin/outlet/pricing", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(adminAccessToken ? { Authorization: `Bearer ${adminAccessToken}` } : {}) },
+        body: JSON.stringify({ pricingConfig })
+      });
+      const pricingResult = await pricingRes.json();
+      if (!pricingRes.ok || !pricingResult.ok) {
+        showToast(pricingResult.error ?? "Could not save financial settings.");
+        return;
+      }
+      
+      const brandRes = await fetch("/api/admin/outlet/brand", {
+        method: "POST",
+        headers: { "content-type": "application/json", ...(adminAccessToken ? { Authorization: `Bearer ${adminAccessToken}` } : {}) },
+        body: JSON.stringify({ brandConfig: brand })
+      });
+      const brandResult = await brandRes.json();
+      if (!brandRes.ok || !brandResult.ok) {
+        showToast(brandResult.error ?? "Could not save brand settings.");
+        return;
+      }
+
+      showToast("✓ Settings saved — live for all customers");
+      const fastPoll = window.setInterval(() => {
+        void fetchOutletPricingConfig().then(config => { if (config) setPricingConfig(config); });
+      }, 5000);
+      setTimeout(() => window.clearInterval(fastPoll), 60000);
+    } catch {
+      showToast("Network error — settings not saved. Check connection.");
+    } finally {
+      setSettingsSaving(false);
+    }
   }
 
   function updatePercent(field: "gstRate" | "bulkDiscountRate", value: string) {
@@ -878,6 +999,21 @@ export default function AdminDashboardPage() {
     });
   }
 
+  /**
+   * Bearer token for the protected /api/customer/* routes: "demo-bypass" for the
+   * demo identity (which never has a real Supabase session), otherwise the live
+   * Supabase access token for the currently active customer login.
+   */
+  async function getCustomerRoutesAuthToken(): Promise<string> {
+    if (typeof window === "undefined") return "";
+    const email = (window.sessionStorage.getItem("slicematic_customer_email") ?? "").trim().toLowerCase();
+    if (email === "demo@slicematic.in" || email === "9999999999") return "demo-bypass";
+    const supabase = getSupabaseAuthClient();
+    if (!supabase) return "";
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? "";
+  }
+
   function validateAdminEmail() {
     if (!emailPattern.test(adminEmail.trim())) {
       setAdminAuthMessage("Enter a valid admin email address.");
@@ -1023,6 +1159,7 @@ export default function AdminDashboardPage() {
 
     setCustomerAuthLoading(true);
     setCustomerAuthMessage("");
+    useStore.getState().resetSession();
     try {
       const supabase = getSupabaseAuthClient();
       if (supabase) {
@@ -1135,6 +1272,15 @@ export default function AdminDashboardPage() {
       const supabase = getSupabaseAuthClient();
       if (supabase) await supabase.auth.signOut();
     } finally {
+      useStore.getState().resetSession();
+      if (typeof window !== "undefined") {
+        sessionStorage.removeItem("slicematic_customer");
+        sessionStorage.removeItem("slicematic_customer_email");
+        sessionStorage.removeItem("slicematic_customer_id");
+        sessionStorage.removeItem("slicematic_workspace");
+        sessionStorage.setItem("slicematic_customer_logged_in", "false");
+        localStorage.removeItem("cf_pending");
+      }
       setCustomerLoggedIn(false);
       setCustomerSessionEmail("");
       setCustomerAuthView("login");
@@ -1205,6 +1351,7 @@ export default function AdminDashboardPage() {
 
     setAdminAuthLoading(true);
     setAdminAuthMessage("");
+    useStore.getState().resetSession();
     try {
       const supabase = getSupabaseAuthClient();
       if (supabase) {
@@ -1320,9 +1467,11 @@ export default function AdminDashboardPage() {
       const supabase = getSupabaseAuthClient();
       if (supabase) await supabase.auth.signOut();
     } finally {
+      useStore.getState().resetSession();
       sessionStorage.removeItem("slicematic_is_admin");
       sessionStorage.removeItem("slicematic_admin_view_customer");
       sessionStorage.removeItem("slicematic_customer_logged_in");
+      localStorage.removeItem("cf_pending");
       setAdminLoggedIn(false);
       router.replace("/");
     }
@@ -1460,6 +1609,76 @@ export default function AdminDashboardPage() {
     }));
   }
 
+  function isMenuRowDirty(section: MenuSection, item: MenuItem) {
+    const baseline = menuBaseline[menuRowKey(section, item.id)];
+    if (!baseline) return false;
+    return baseline.name !== item.name || baseline.price !== item.price || baseline.available !== item.available;
+  }
+
+  async function saveMenuRow(section: MenuSection, item: MenuItem) {
+    const key = menuRowKey(section, item.id);
+    setMenuRowStatus((current) => ({ ...current, [key]: "saving" }));
+    try {
+      const response = await fetch("/api/admin/menu", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          ...adminAuthHeader()
+        },
+        body: JSON.stringify({
+          section,
+          id: item.id,
+          item: { name: item.name, price: item.price, available: item.available }
+        })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        setMenuRowStatus((current) => ({ ...current, [key]: "error" }));
+        showToast(Object.values(result.errors ?? { server: "This item could not be saved." })[0] as string);
+        return;
+      }
+
+      const saved = result.item as MenuItem;
+      setMenu((current) => ({
+        ...current,
+        [section]: current[section].map((entry) => (entry.id === item.id ? saved : entry))
+      }));
+      setMenuBaseline((current) => ({
+        ...current,
+        [key]: { name: saved.name, price: saved.price, available: saved.available }
+      }));
+      setMenuRowStatus((current) => ({ ...current, [key]: "saved" }));
+      showToast(`${saved.name} saved.`);
+      window.setTimeout(() => {
+        setMenuRowStatus((current) => {
+          const next = { ...current };
+          delete next[key];
+          return next;
+        });
+      }, 2000);
+    } catch {
+      setMenuRowStatus((current) => ({ ...current, [key]: "error" }));
+      showToast("This item could not be saved. Check your connection and try again.");
+    }
+  }
+
+  function renderRowSaveButton(section: MenuSection, item: MenuItem) {
+    const status = menuRowStatus[menuRowKey(section, item.id)];
+    const dirty = isMenuRowDirty(section, item);
+    const stateClass = status ?? (dirty ? "dirty" : "idle");
+    const label = status === "saving" ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Retry" : "Save";
+    return (
+      <button
+        type="button"
+        className={`row-save-btn ${stateClass}`}
+        disabled={status === "saving" || (!dirty && status !== "error")}
+        onClick={() => saveMenuRow(section, item)}
+      >
+        {label}
+      </button>
+    );
+  }
+
   function nextMenuItem(section: MenuSection, draft = menuDraft): MenuItem {
     const collection = menu[section];
     const nextId = Math.max(0, ...collection.map((item) => item.id)) + 1;
@@ -1494,17 +1713,18 @@ export default function AdminDashboardPage() {
     setMenuSaving(true);
     try {
       let item = nextMenuItem(menuDraftSection);
-      if (adminAccessToken) {
+      const authHeader = adminAuthHeader();
+      if (authHeader) {
         const response = await fetch("/api/admin/menu", {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            authorization: `Bearer ${adminAccessToken}`
+            ...authHeader
           },
           body: JSON.stringify({ section: menuDraftSection, item })
         });
         const result = await response.json();
-        if (!result.ok) {
+        if (!response.ok || !result.ok) {
           showToast(Object.values(result.errors ?? { server: "Menu item could not be saved." })[0] as string);
           return;
         }
@@ -1515,10 +1735,23 @@ export default function AdminDashboardPage() {
         ...current,
         [menuDraftSection]: [...current[menuDraftSection], item]
       }));
+      setMenuBaseline((current) => ({
+        ...current,
+        [menuRowKey(menuDraftSection, item.id)]: { name: item.name, price: item.price, available: item.available }
+      }));
       setMenuDraft(emptyMenuDraft);
       setQuery("");
       setCategory("All");
       showToast(`${item.name} added to ${menuDraftSection}.`);
+
+      // confirm with server (catches any DB-side discrepancy or edge-cache stale hit)
+      fetch("/api/menu")
+        .then((r) => r.json())
+        .then((payload: MenuPayload) => {
+          setMenu(payload);
+          setMenuBaseline(snapshotMenuBaseline(payload));
+        })
+        .catch(() => { /* leave optimistic state on network error */ });
     } catch {
       showToast("Menu item could not be saved. Check admin access and Supabase settings.");
     } finally {
@@ -1543,11 +1776,11 @@ export default function AdminDashboardPage() {
       form.append("file", file);
       const response = await fetch("/api/admin/upload", {
         method: "POST",
-        headers: adminAccessToken ? { authorization: `Bearer ${adminAccessToken}` } : undefined,
+        headers: adminAuthHeader(),
         body: form
       });
       const result = await response.json();
-      if (!result.ok) {
+      if (!response.ok || !result.ok) {
         showToast(result.error ?? "Image upload failed.");
         return;
       }
@@ -1571,7 +1804,7 @@ export default function AdminDashboardPage() {
         method: "POST",
         headers: {
           "content-type": "application/json",
-          ...(adminAccessToken ? { authorization: `Bearer ${adminAccessToken}` } : {})
+          ...adminAuthHeader()
         },
         body: JSON.stringify({
           section: menuDraftSection,
@@ -1746,7 +1979,7 @@ export default function AdminDashboardPage() {
               )}
             </article>
             <article><Sparkles /><strong>Personalized picks</strong><span>Recommendation context can use account-linked history.</span></article>
-            <article><ShieldCheck /><strong>Secure recovery</strong><span>Password reset and logout are built into the customer workspace.</span></article>
+            <article><ShieldCheck /><strong>Easy login</strong><span>Passwordless login using otp only.</span></article>
             <article><CreditCard /><strong>Full payment choice</strong><span>Members can use Cash, Card, or UPI; guests stay online-only.</span></article>
           </div>
         </section>
@@ -2003,9 +2236,9 @@ export default function AdminDashboardPage() {
                 </div>
 
                 <div className="flow-tabs">
-                  {["menu", "recommendation", "checkout", "tracking", "intake"].map((item) => (
-                    <button key={item} className={step === item ? "active" : ""} onClick={() => goToStep(item as Step)} type="button">
-                      {item === "intake" ? "Customer Details" : item}
+                  {CUSTOMER_FLOW_TABS.map((item) => (
+                    <button key={item.id} className={step === item.id ? "active" : ""} onClick={() => goToStep(item.id as Step)} type="button">
+                      {item.label}
                     </button>
                   ))}
                 </div>
@@ -2058,8 +2291,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="menu-grid">
                       {filteredPizzas.map((pizza) => {
-                        const thinCrust = menu.bases.find((b) => b.code === "B1" || b.name.toLowerCase() === "thin crust");
-                        const thinCrustPrice = thinCrust?.price ?? 149;
+                        const defaultCrustPrice = activeBases.length > 0 ? activeBases[0].price : 0;
                         return (
                           <article className="pizza-card" key={pizza.id}>
                             <div className="pizza-media">
@@ -2090,7 +2322,7 @@ export default function AdminDashboardPage() {
                                   </span>
                                   {pizza.name}
                                 </h3>
-                                <strong>{money(pizza.price + thinCrustPrice)}</strong>
+                                <strong>{money(pizza.price + defaultCrustPrice)}</strong>
                               </div>
                               <p>{pizza.description}</p>
                               <div className="chips"><span><ChefHat /> Fresh</span><span>{pizza.prepMinutes} min</span>{pizza.tags?.slice(0, 2).map((tag) => <span key={tag}>{tag}</span>)}</div>
@@ -2119,7 +2351,7 @@ export default function AdminDashboardPage() {
                   <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
                   <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
                   <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
-                  <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
+                  <div><span>Delivery</span><b>{pricingConfig.deliveryFee === 0 ? "Included" : totals.deliveryCharge === 0 ? `Free (above ${money(pricingConfig.freeDeliveryMin)})` : money(totals.deliveryCharge)}</b></div>
                   <div className="total"><span>Total</span><b>{money(totals.finalTotal)}</b></div>
                 </div>
                 <div className="ai-cart-card">
@@ -2165,7 +2397,11 @@ export default function AdminDashboardPage() {
           {!adminLoggedIn ? null : (
             <>
               <div className="admin-tabs">
-                {(["overview", "orders", "forecast", "menu", "ai", "settings"] as AdminTab[]).map((tab) => <button key={tab} className={adminTab === tab ? "active" : ""} onClick={() => setAdminTab(tab)} type="button">{tab}</button>)}
+                {ADMIN_TABS.map((tab) => (
+                  <button key={tab} className={adminTab === tab ? "active" : ""} onClick={() => setAdminTab(tab)} type="button">
+                    {adminTabLabel(tab)}
+                  </button>
+                ))}
               </div>
               {adminTab === "overview" && <AdminOverview summary={adminSummary} opsBriefing={opsBriefing} opsLoading={opsLoading} onRefreshOps={() => loadOpsBriefing()} />}
               {adminTab === "orders" && (
@@ -2277,6 +2513,7 @@ export default function AdminDashboardPage() {
                           <input value={pizza.name} onChange={(event) => updatePizza(pizza.id, "name", event.target.value)} />
                           <input type="number" min={0} value={pizza.price} onChange={(event) => updatePizza(pizza.id, "price", Number(event.target.value))} />
                           <label><input type="checkbox" checked={pizza.available} onChange={(event) => updatePizza(pizza.id, "available", event.target.checked)} /> Available</label>
+                          {renderRowSaveButton("pizzas", pizza)}
                         </article>
                       ))}
                     </>
@@ -2290,6 +2527,7 @@ export default function AdminDashboardPage() {
                           <input value={base.name} onChange={(event) => updateMenuItem("bases", base.id, "name", event.target.value)} />
                           <input type="number" min={0} value={base.price} onChange={(event) => updateMenuItem("bases", base.id, "price", Number(event.target.value))} />
                           <label><input type="checkbox" checked={base.available} onChange={(event) => updateMenuItem("bases", base.id, "available", event.target.checked)} /> Available</label>
+                          {renderRowSaveButton("bases", base)}
                         </article>
                       ))}
                     </>
@@ -2303,13 +2541,14 @@ export default function AdminDashboardPage() {
                           <input value={topping.name} onChange={(event) => updateMenuItem("toppings", topping.id, "name", event.target.value)} />
                           <input type="number" min={0} value={topping.price} onChange={(event) => updateMenuItem("toppings", topping.id, "price", Number(event.target.value))} />
                           <label><input type="checkbox" checked={topping.available} onChange={(event) => updateMenuItem("toppings", topping.id, "available", event.target.checked)} /> Available</label>
+                          {renderRowSaveButton("toppings", topping)}
                         </article>
                       ))}
                     </>
                   )}
                 </section>
               )}
-              {adminTab === "ai" && <AIPanel />}
+              {adminTab === "ai" && <RecommendationAIPanel />}
               {adminTab === "settings" && (
                 <section className="admin-card settings-console">
                   <div className="settings-head">
@@ -2317,7 +2556,7 @@ export default function AdminDashboardPage() {
                       <p className="eyebrow">Owner configuration</p>
                       <h3>Control the customer app, financial rules, delivery policy, and risk settings.</h3>
                     </div>
-                    <button type="button" onClick={() => showToast("Settings applied to the live app preview.")}><Check /> Apply live preview</button>
+                    <button type="button" onClick={applySettings} disabled={settingsSaving}><Check /> {settingsSaving ? "Saving…" : "Apply live"}</button>
                   </div>
 
                   <div className="sub-tabs">
@@ -2368,7 +2607,7 @@ export default function AdminDashboardPage() {
                         <label className="toggle-row"><input type="checkbox" checked={pricingConfig.guestCashAllowed} onChange={(event) => updatePricing("guestCashAllowed", event.target.checked)} /> Allow Cash for guest checkout</label>
                         <div className="settings-preview wide">
                           <strong>Live policy preview</strong>
-                          <span>GST {Math.round(pricingConfig.gstRate * 100)}%, {Math.round(pricingConfig.bulkDiscountRate * 100)}% off at {pricingConfig.bulkDiscountQty}+ pizzas, max {pricingConfig.maxOrderQty} pizzas/order, delivery fee {money(pricingConfig.deliveryFee)}, guest Cash {pricingConfig.guestCashAllowed ? "allowed" : "blocked"}.</span>
+                          <span>GST {Math.round(pricingConfig.gstRate * 100)}%, {Math.round(pricingConfig.bulkDiscountRate * 100)}% off at {pricingConfig.bulkDiscountQty}+ pizzas, max {pricingConfig.maxOrderQty} pizzas/order, delivery fee {money(pricingConfig.deliveryFee)}, guest Cash {pricingConfig.guestCashAllowed ? "allowed" : "blocked"}. Saved to Supabase — applies to all customers on next page load.</span>
                         </div>
                       </div>
                     </div>
@@ -2384,7 +2623,8 @@ export default function AdminDashboardPage() {
         <div className="builder-overlay" onClick={() => setSelectedPizza(null)}>
           <section className="builder-panel" onClick={(event) => event.stopPropagation()}>
             <img src={selectedPizza.image} alt={selectedPizza.name} />
-            <div>
+            <div style={{ position: "relative" }}>
+              <button type="button" onClick={() => setSelectedPizza(null)} style={{ position: "absolute", top: "0", right: "0", background: "none", border: "none", cursor: "pointer", padding: "0.5rem" }}><X size={24} /></button>
               <p className="eyebrow">Customize pizza</p><h2>{selectedPizza.name}</h2><p>{selectedPizza.description}</p>
               <div className="builder-group"><h3>Crust</h3>{activeBases.map((base) => <button className={builder.baseId === base.id ? "active" : ""} onClick={() => setBuilder({ ...builder, baseId: base.id })} key={base.id} type="button">{base.name}<span>{money(base.price)}</span></button>)}</div>
               <div className="builder-group"><h3>Size</h3>{activeSizes.map((size) => <button className={builder.sizeId === size.id ? "active" : ""} onClick={() => setBuilder({ ...builder, sizeId: size.id })} key={size.id} type="button">{size.name}<span>{size.extra ? `+ ${money(size.extra)}` : "Included"}</span></button>)}</div>
@@ -2493,21 +2733,5 @@ function OrderTable({ orders }: { orders: SavedOrder[] }) {
         </div>
       ))}
     </div>
-  );
-}
-
-function AIPanel() {
-  return (
-    <section className="admin-card ai-panel">
-      <Brain /><h2>OpenRouter AI Recommendation Engine</h2>
-      <p>Triggered after name and phone, before menu selection. The API builds a customer feature profile from Supabase history, sends grounded menu IDs to OpenRouter, validates returned IDs, logs `recommendation_event`, and falls back safely during rate limits.</p>
-      <pre>{`System prompt summary:
-Only recommend from provided menu IDs.
-Personalize with favourite pizza, topping, AOV, quantity, veg/spicy lean, and recency.
-Use local favourites and high-value topping signals for new customers.
-Prefer customer fit and contribution margin without forcing discounts.
-Return strict JSON: pizza_id, topping_id, reason, confidence.
-Model: OPENROUTER_MODEL (default openai/gpt-oss-20b).`}</pre>
-    </section>
   );
 }

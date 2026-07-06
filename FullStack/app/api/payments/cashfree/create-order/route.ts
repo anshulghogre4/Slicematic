@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { loadMenu } from "../../../../../lib/data-service";
-import { calculateBill, sanitizePricingConfig, validateCustomer, validateOrderLines } from "../../../../../lib/pricing";
+import { loadOutletPricingConfig } from "../../../../../lib/outlet-settings";
+import { calculateBill, validateCustomer, validateOrderLines } from "../../../../../lib/pricing";
 import { createCashfreeOrder, hasCashfreeEnv } from "../../../../../lib/cashfree";
 import { toPaise } from "../../../../../lib/razorpay";
 import { OrderPayload } from "../../../../../lib/types";
@@ -18,7 +19,7 @@ export async function POST(request: Request) {
 
     const payload = (await request.json()) as OrderPayload;
     const menu = await loadMenu();
-    const pricingConfig = sanitizePricingConfig(payload.pricingConfig);
+    const pricingConfig = await loadOutletPricingConfig();
 
     const errors = validateCustomer(
       payload.customer?.name ?? "",

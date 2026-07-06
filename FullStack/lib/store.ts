@@ -1,7 +1,9 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 import { CartLine, CustomerDetails, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "./types";
 import { defaultPricingConfig } from "./pricing";
+
+const initialCustomer: CustomerDetails = { name: "", phone: "", address: "New Ashok Nagar, Delhi NCR", deliveryZone: "2-4", note: "" };
 
 interface AppState {
   cart: CartLine[];
@@ -10,6 +12,8 @@ interface AppState {
   paymentMode: PaymentMode;
   lastOrder: SavedOrder | null;
   recommendation: Recommendation | null;
+  recommendations: Recommendation[];
+  isFetchingRecommendation: boolean;
 
   setCart: (updater: CartLine[] | ((prev: CartLine[]) => CartLine[])) => void;
   setCustomer: (updater: CustomerDetails | ((prev: CustomerDetails) => CustomerDetails)) => void;
@@ -17,18 +21,28 @@ interface AppState {
   setPaymentMode: (updater: PaymentMode | ((prev: PaymentMode) => PaymentMode)) => void;
   setLastOrder: (updater: SavedOrder | null | ((prev: SavedOrder | null) => SavedOrder | null)) => void;
   setRecommendation: (updater: Recommendation | null | ((prev: Recommendation | null) => Recommendation | null)) => void;
+  setRecommendations: (updater: Recommendation[] | ((prev: Recommendation[]) => Recommendation[])) => void;
+  setIsFetchingRecommendation: (fetching: boolean) => void;
   clearCheckout: () => void;
+  /**
+   * Clears cart/customer/lastOrder/recommendation so one identity's session data
+   * never leaks into the next login on the same browser tab. Call on every
+   * login and logout (customer and admin) for defense in depth alongside sessionStorage.
+   */
+  resetSession: () => void;
 }
 
 export const useStore = create<AppState>()(
   persist(
     (set) => ({
       cart: [],
-      customer: { name: "", phone: "", address: "", deliveryZone: "2-4", note: "" },
+      customer: initialCustomer,
       pricingConfig: defaultPricingConfig,
       paymentMode: "UPI",
       lastOrder: null,
       recommendation: null,
+      recommendations: [],
+      isFetchingRecommendation: false,
 
       setCart: (updater) => set((state) => ({ cart: typeof updater === "function" ? updater(state.cart) : updater })),
       setCustomer: (updater) => set((state) => ({ customer: typeof updater === "function" ? updater(state.customer) : updater })),
@@ -36,10 +50,22 @@ export const useStore = create<AppState>()(
       setPaymentMode: (updater) => set((state) => ({ paymentMode: typeof updater === "function" ? updater(state.paymentMode) : updater })),
       setLastOrder: (updater) => set((state) => ({ lastOrder: typeof updater === "function" ? updater(state.lastOrder) : updater })),
       setRecommendation: (updater) => set((state) => ({ recommendation: typeof updater === "function" ? updater(state.recommendation) : updater })),
+      setRecommendations: (updater) => set((state) => ({ recommendations: typeof updater === "function" ? updater(state.recommendations) : updater })),
+      setIsFetchingRecommendation: (fetching) => set({ isFetchingRecommendation: fetching }),
       clearCheckout: () => set({ cart: [] }),
+      resetSession: () =>
+        set({
+          cart: [],
+          customer: initialCustomer,
+          lastOrder: null,
+          recommendation: null,
+          recommendations: [],
+          isFetchingRecommendation: false,
+        }),
     }),
     {
       name: "slicematic-storage",
+      storage: createJSONStorage(() => sessionStorage),
     }
   )
 );

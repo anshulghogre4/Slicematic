@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { loadCustomerOrderHistoryByCustomerId } from "../../../../lib/data-service";
 import { hasSupabaseEnv, hasSupabaseAdminEnv } from "../../../../lib/supabase";
+import { requireCustomerOwnership } from "../../../../lib/customer-auth";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +20,9 @@ export async function GET(request: Request) {
     if (!CUSTOMER_ID_RE.test(customerId)) {
       return NextResponse.json({ ok: false, error: "customer_id must be a valid UUID" }, { status: 400 });
     }
+
+    const authError = await requireCustomerOwnership(request, { customerId });
+    if (authError) return authError;
 
     if (!hasSupabaseEnv()) {
       return NextResponse.json(

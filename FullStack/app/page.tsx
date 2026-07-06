@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import SliceMaticStage3 from "../components/SliceMaticStage3";
 import EntryPortal from "../components/EntryPortal/EntryPortal";
+import { useStore } from "../lib/store";
 
 export default function Page() {
   const router = useRouter();
@@ -48,7 +49,15 @@ export default function Page() {
   }
 
   if (!isAuthorized) {
-    return <EntryPortal onComplete={handlePortalComplete} />;
+    return (
+      <EntryPortal 
+        onComplete={handlePortalComplete} 
+        onRecommendationReady={(data) => {
+          useStore.getState().setRecommendations(data.recommendations);
+          useStore.getState().setRecommendation(data.primary ?? data.recommendations[0] ?? null);
+        }}
+      />
+    );
   }
 
   if (isAdmin) {

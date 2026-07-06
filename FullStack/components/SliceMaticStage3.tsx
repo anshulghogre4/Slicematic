@@ -18,6 +18,7 @@ import {
   Phone,
   Pizza,
   Plus,
+  RefreshCw,
   UserRound,
   ReceiptText,
   Search,
@@ -30,22 +31,25 @@ import {
   Star,
   Trash2,
   Upload,
-  Utensils
+  Utensils,
+  X
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { calculateBill, defaultPricingConfig, getLineUnitPrice, money, validateCustomer } from "../lib/pricing";
+import { CUSTOMER_FLOW_TABS, fetchOutletPricingConfig } from "../lib/customer-flow";
 import { buildSeedSummary, seedMenu } from "../lib/seed-data";
 import { applyOrderToSession, syncSessionCustomerId } from "../lib/session-customer";
 import { AdminSummary, CartLine, CustomerDetails, MenuItem, MenuPayload, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "../lib/types";
 import { useStore } from "../lib/store";
 import { useRouter } from "next/navigation";
 import ForecastPanel from "./admin/ForecastPanel";
+import RecommendationAIPanel from "./admin/RecommendationAIPanel";
+import { ADMIN_TABS, adminTabLabel, type AdminTab } from "../lib/admin-tabs";
 import CustomerOrderHistoryTable from "./CustomerOrderHistoryTable";
 import { CustomerOrderHistoryItem } from "../lib/data-service";
 
 type Step = "intake" | "recommendation" | "menu" | "checkout" | "tracking";
-type AdminTab = "overview" | "orders" | "forecast" | "menu" | "ai" | "settings";
 type Workspace = "customer" | "account" | "admin";
 type AdminAuthView = "login" | "forgot" | "reset";
 type CustomerAuthView = "login" | "forgot" | "reset";
@@ -106,9 +110,23 @@ const emptyMenuDraft: MenuDraft = {
   prepMinutes: "24"
 };
 
+function menuRowKey(section: MenuSection, id: number) {
+  return `${section}:${id}`;
+}
+
+function snapshotMenuBaseline(payload: MenuPayload) {
+  const baseline: Record<string, Pick<MenuItem, "name" | "price" | "available">> = {};
+  (["pizzas", "bases", "toppings"] as MenuSection[]).forEach((section) => {
+    payload[section].forEach((item) => {
+      baseline[menuRowKey(section, item.id)] = { name: item.name, price: item.price, available: item.available };
+    });
+  });
+  return baseline;
+}
+
 export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: () => void }) {
   const router = useRouter();
-  const { cart, setCart, customer, setCustomer, pricingConfig, setPricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setRecommendation } = useStore();
+  const { cart, setCart, customer, setCustomer, pricingConfig, setPricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setRecommendation, recommendations, setRecommendations } = useStore();
 
   const [menu, setMenu] = useState<MenuPayload>(seedMenu);
   const [query, setQuery] = useState("");
@@ -158,6 +176,8 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   const [menuSaving, setMenuSaving] = useState(false);
   const [menuImageUploading, setMenuImageUploading] = useState(false);
   const [menuCopyLoading, setMenuCopyLoading] = useState(false);
+  const [menuBaseline, setMenuBaseline] = useState<Record<string, Pick<MenuItem, "name" | "price" | "available">>>({});
+  const [menuRowStatus, setMenuRowStatus] = useState<Record<string, "saving" | "saved" | "error">>({});
   const [cartInsight, setCartInsight] = useState<CartInsight | null>(null);
   const [cartInsightLoading, setCartInsightLoading] = useState(false);
   const [opsBriefing, setOpsBriefing] = useState<OpsBriefing | null>(null);
@@ -167,7 +187,6 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   const [customerOrdersError, setCustomerOrdersError] = useState("");
   const ordersRefreshInFlight = useRef(false);
   const ordersRequestSeq = useRef(0);
-  const [recommendations, setRecommendations] = useState<Recommendation[]>([]);
   const [brand, setBrand] = useState({
     name: "SliceMatic",
     outlet: "New Ashok Nagar",
@@ -180,9 +199,17 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   });
 
   useEffect(() => {
+    const currentStore = useStore.getState();
+    if (!currentStore.customer.address || currentStore.customer.address === "Delhi NCR") {
+      currentStore.setCustomer({ ...currentStore.customer, address: "New Ashok Nagar, Delhi NCR" });
+    }
+
     fetch("/api/menu")
       .then((response) => response.json())
-      .then((payload: MenuPayload) => setMenu(payload))
+      .then((payload: MenuPayload) => {
+        setMenu(payload);
+        setMenuBaseline(snapshotMenuBaseline(payload));
+      })
       .catch(() => setMenu(seedMenu));
   }, []);
 
@@ -243,7 +270,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
             ...current,
             name: parsedCustomer.name ?? current.name,
             phone: parsedCustomer.phone ?? current.phone,
-            address: parsedCustomer.address ?? current.address,
+            address: (!parsedCustomer.address || parsedCustomer.address === "Delhi NCR") ? "New Ashok Nagar, Delhi NCR" : parsedCustomer.address,
             deliveryZone: parsedCustomer.deliveryZone ?? current.deliveryZone,
             note: parsedCustomer.note ?? current.note
           }));
@@ -267,9 +294,14 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       // Auto-fire recommendation for authenticated users who have a phone number.
       // New users (no history) get global popularity picks.
       // Returning users get personal + global + exploratory picks.
-      if (phoneFromSession) {
+      const emailFromSession = window.sessionStorage.getItem("slicematic_customer_email") ?? "";
+      if (phoneFromSession || emailFromSession) {
         setStep("recommendation");
-        void submitCustomer(nameFromSession || undefined, phoneFromSession);
+        const hasCached = useStore.getState().recommendations.length > 0;
+        const isFetching = useStore.getState().isFetchingRecommendation;
+        if (!hasCached && !isFetching) {
+          void submitCustomer(nameFromSession || undefined, phoneFromSession || undefined, false, emailFromSession);
+        }
       } else {
         setStep("menu");
       }
@@ -279,6 +311,22 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       setStep("intake");
     }
   }, []);
+
+  /**
+   * Bearer token for the protected /api/customer/* routes: "demo-bypass" for the
+   * demo identity (which never has a real Supabase session), otherwise the live
+   * Supabase access token for whichever login path (EntryPortal OTP or this
+   * component's own password/OTP login) is currently active.
+   */
+  async function getCustomerRoutesAuthToken(): Promise<string> {
+    if (typeof window === "undefined") return "";
+    const email = (window.sessionStorage.getItem("slicematic_customer_email") ?? "").trim().toLowerCase();
+    if (email === "demo@slicematic.in" || email === "9999999999") return "demo-bypass";
+    const supabase = getSupabaseAuthClient();
+    if (!supabase) return "";
+    const { data } = await supabase.auth.getSession();
+    return data.session?.access_token ?? "";
+  }
 
   async function refreshCustomerOrders(force = false) {
     if (typeof window === "undefined") return;
@@ -296,9 +344,10 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     setCustomerOrdersLoading(true);
     setCustomerOrdersError("");
     try {
+      const authToken = await getCustomerRoutesAuthToken();
       const res = await fetch(
         `/api/customer/orders?customer_id=${encodeURIComponent(customerId)}`,
-        { cache: "no-store" }
+        { cache: "no-store", headers: authToken ? { Authorization: `Bearer ${authToken}` } : undefined }
       );
       const data = await res.json();
       if (requestSeq !== ordersRequestSeq.current) return;
@@ -334,6 +383,18 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     if (workspace !== "account" || !customerLoggedIn) return;
     void refreshCustomerOrders(true);
   }, [workspace, customerLoggedIn]);
+
+  useEffect(() => {
+    void fetchOutletPricingConfig().then((config) => {
+      if (config) setPricingConfig(config);
+    });
+    const interval = window.setInterval(() => {
+      void fetchOutletPricingConfig().then((config) => {
+        if (config) setPricingConfig(config);
+      });
+    }, 30000);
+    return () => window.clearInterval(interval);
+  }, [setPricingConfig]);
 
   useEffect(() => {
     if (!toast) return;
@@ -375,8 +436,40 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     setToast(message);
   }
 
+  function adminAuthHeader(): Record<string, string> | undefined {
+    const token = adminAccessToken || (adminLoggedIn ? "demo-bypass" : "");
+    return token ? { authorization: `Bearer ${token}` } : undefined;
+  }
+
+  async function persistOutletPricing(config: PricingConfig) {
+    try {
+      const response = await fetch("/api/admin/outlet/pricing", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...adminAuthHeader()
+        },
+        body: JSON.stringify({ pricingConfig: config })
+      });
+      if (!response.ok) {
+        showToast("Financial settings could not be saved. Sign in again and retry.");
+        return;
+      }
+      const result = await response.json();
+      if (!result.ok) {
+        showToast(result.error ?? "Financial settings could not be saved.");
+      }
+    } catch {
+      showToast("Financial settings could not be saved. Check your connection and try again.");
+    }
+  }
+
   function updatePricing<K extends keyof PricingConfig>(field: K, value: PricingConfig[K]) {
-    setPricingConfig((current) => ({ ...current, [field]: value }));
+    setPricingConfig((current) => {
+      const next = { ...current, [field]: value };
+      if (workspace === "admin" && adminLoggedIn) void persistOutletPricing(next);
+      return next;
+    });
   }
 
   function updatePercent(field: "gstRate" | "bulkDiscountRate", value: string) {
@@ -458,16 +551,17 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     setStep(nextStep);
   }
 
-  async function submitCustomer(autoName?: string, autoPhone?: string) {
+  async function submitCustomer(autoName?: string, autoPhone?: string, forceRefresh = false, autoEmail?: string) {
     // When called from session restore (auto-fire), use provided name/phone.
     // When called from the intake form button, use state and validate.
     const name = autoName ?? customer.name;
     const phone = autoPhone ?? customer.phone;
+    const email = autoEmail ?? customerSessionEmail;
     const customerId = typeof window !== "undefined"
       ? window.sessionStorage.getItem("slicematic_customer_id") ?? undefined
       : undefined;
 
-    if (!autoPhone) {
+    if (!autoPhone && !autoEmail) {
       // Manual trigger from intake form — validate full customer details
       const errors = customerValidation();
       setCustomerErrors(errors);
@@ -477,6 +571,12 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       }
     }
 
+    const cachedRecs = useStore.getState().recommendations;
+    if (!forceRefresh && cachedRecs.length > 0) {
+      setStep("recommendation");
+      return;
+    }
+
     setStep("recommendation");
     setRecommendation(null);
     setRecommendations([]);
@@ -484,7 +584,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       const response = await fetch("/api/recommend", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ name, phone, customer_id: customerId })
+        body: JSON.stringify({ name, phone, email, customer_id: customerId })
       });
       if (!response.ok) {
         showToast("Recommendation unavailable — browse the menu.");
@@ -571,11 +671,11 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   function addBuilderToCart() {
     if (!selectedPizza) return;
     if (!Number.isInteger(builder.quantity)) {
-      showToast("Quantity must be a whole number from 1 to 10.");
+      showToast(`Quantity must be a whole number from 1 to ${pricingConfig.maxOrderQty}.`);
       return;
     }
-    if (builder.quantity < 1) {
-      showToast("Quantity must be between 1 and 10.");
+    if (builder.quantity < 1 || builder.quantity > pricingConfig.maxOrderQty) {
+      showToast(`Quantity must be between 1 and ${pricingConfig.maxOrderQty}.`);
       return;
     }
     if (builder.quantity > pricingConfig.maxOrderQty) {
@@ -584,7 +684,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     }
     const existingQuantity = cart.reduce((sum, line) => sum + line.quantity, 0);
     if (existingQuantity + builder.quantity > pricingConfig.maxOrderQty) {
-      showToast(`Maximum outlet capacity is ${pricingConfig.maxOrderQty} pizzas per order.`);
+      showToast(`You have ${existingQuantity} pizzas in cart. Max allowed is ${pricingConfig.maxOrderQty}.`);
       return;
     }
 
@@ -1043,6 +1143,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
 
     setCustomerAuthLoading(true);
     setCustomerAuthMessage("");
+    useStore.getState().resetSession();
     try {
       const supabase = getSupabaseAuthClient();
       if (supabase) {
@@ -1066,7 +1167,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
             sessionStorage.setItem("slicematic_customer", JSON.stringify({
               name: `${customerRow.first_name ?? ""} ${customerRow.last_name ?? ""}`.trim(),
               phone: customerRow.mobile_number ?? "",
-              address: "",
+              address: "New Ashok Nagar, Delhi NCR",
               deliveryZone: "2-4",
               note: ""
             }));
@@ -1183,12 +1284,14 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       const supabase = getSupabaseAuthClient();
       if (supabase) await supabase.auth.signOut();
     } finally {
+      useStore.getState().resetSession();
       if (typeof window !== "undefined") {
         sessionStorage.removeItem("slicematic_customer");
         sessionStorage.removeItem("slicematic_customer_email");
         sessionStorage.removeItem("slicematic_customer_id");
         sessionStorage.removeItem("slicematic_workspace");
         sessionStorage.setItem("slicematic_customer_logged_in", "false");
+        localStorage.removeItem("cf_pending");
       }
       setCustomerLoggedIn(false);
       setCustomerSessionEmail("");
@@ -1285,6 +1388,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
 
     setAdminAuthLoading(true);
     setAdminAuthMessage("");
+    useStore.getState().resetSession();
     try {
       const supabase = getSupabaseAuthClient();
       if (supabase) {
@@ -1400,6 +1504,8 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       const supabase = getSupabaseAuthClient();
       if (supabase) await supabase.auth.signOut();
     } finally {
+      useStore.getState().resetSession();
+      if (typeof window !== "undefined") localStorage.removeItem("cf_pending");
       setAdminLoggedIn(false);
       setAdminAccessToken("");
       setAdminSessionEmail("");
@@ -1462,7 +1568,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       const response = await fetch("/api/ai/cart-insight", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ customer, lines: cart })
+        body: JSON.stringify({ customer, lines: cart, pricingConfig, isGuest: !customerLoggedIn })
       });
       const result = await response.json();
       if (!result.ok) throw new Error("Cart insight unavailable");
@@ -1523,6 +1629,76 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     }));
   }
 
+  function isMenuRowDirty(section: MenuSection, item: MenuItem) {
+    const baseline = menuBaseline[menuRowKey(section, item.id)];
+    if (!baseline) return false;
+    return baseline.name !== item.name || baseline.price !== item.price || baseline.available !== item.available;
+  }
+
+  async function saveMenuRow(section: MenuSection, item: MenuItem) {
+    const key = menuRowKey(section, item.id);
+    setMenuRowStatus((current) => ({ ...current, [key]: "saving" }));
+    try {
+      const response = await fetch("/api/admin/menu", {
+        method: "PATCH",
+        headers: {
+          "content-type": "application/json",
+          ...adminAuthHeader()
+        },
+        body: JSON.stringify({
+          section,
+          id: item.id,
+          item: { name: item.name, price: item.price, available: item.available }
+        })
+      });
+      const result = await response.json();
+      if (!response.ok || !result.ok) {
+        setMenuRowStatus((current) => ({ ...current, [key]: "error" }));
+        showToast(Object.values(result.errors ?? { server: "This item could not be saved." })[0] as string);
+        return;
+      }
+
+      const saved = result.item as MenuItem;
+      setMenu((current) => ({
+        ...current,
+        [section]: current[section].map((entry) => (entry.id === item.id ? saved : entry))
+      }));
+      setMenuBaseline((current) => ({
+        ...current,
+        [key]: { name: saved.name, price: saved.price, available: saved.available }
+      }));
+      setMenuRowStatus((current) => ({ ...current, [key]: "saved" }));
+      showToast(`${saved.name} saved.`);
+      window.setTimeout(() => {
+        setMenuRowStatus((current) => {
+          const next = { ...current };
+          delete next[key];
+          return next;
+        });
+      }, 2000);
+    } catch {
+      setMenuRowStatus((current) => ({ ...current, [key]: "error" }));
+      showToast("This item could not be saved. Check your connection and try again.");
+    }
+  }
+
+  function renderRowSaveButton(section: MenuSection, item: MenuItem) {
+    const status = menuRowStatus[menuRowKey(section, item.id)];
+    const dirty = isMenuRowDirty(section, item);
+    const stateClass = status ?? (dirty ? "dirty" : "idle");
+    const label = status === "saving" ? "Saving…" : status === "saved" ? "Saved" : status === "error" ? "Retry" : "Save";
+    return (
+      <button
+        type="button"
+        className={`row-save-btn ${stateClass}`}
+        disabled={status === "saving" || (!dirty && status !== "error")}
+        onClick={() => saveMenuRow(section, item)}
+      >
+        {label}
+      </button>
+    );
+  }
+
   function nextMenuItem(section: MenuSection, draft = menuDraft): MenuItem {
     const collection = menu[section];
     const nextId = Math.max(0, ...collection.map((item) => item.id)) + 1;
@@ -1557,17 +1733,18 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     setMenuSaving(true);
     try {
       let item = nextMenuItem(menuDraftSection);
-      if (adminAccessToken) {
+      const authHeader = adminAuthHeader();
+      if (authHeader) {
         const response = await fetch("/api/admin/menu", {
           method: "POST",
           headers: {
             "content-type": "application/json",
-            authorization: `Bearer ${adminAccessToken}`
+            ...authHeader
           },
           body: JSON.stringify({ section: menuDraftSection, item })
         });
         const result = await response.json();
-        if (!result.ok) {
+        if (!response.ok || !result.ok) {
           showToast(Object.values(result.errors ?? { server: "Menu item could not be saved." })[0] as string);
           return;
         }
@@ -1578,10 +1755,23 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
         ...current,
         [menuDraftSection]: [...current[menuDraftSection], item]
       }));
+      setMenuBaseline((current) => ({
+        ...current,
+        [menuRowKey(menuDraftSection, item.id)]: { name: item.name, price: item.price, available: item.available }
+      }));
       setMenuDraft(emptyMenuDraft);
       setQuery("");
       setCategory("All");
       showToast(`${item.name} added to ${menuDraftSection}.`);
+
+      // confirm with server (catches any DB-side discrepancy or edge-cache stale hit)
+      fetch("/api/menu")
+        .then((r) => r.json())
+        .then((payload: MenuPayload) => {
+          setMenu(payload);
+          setMenuBaseline(snapshotMenuBaseline(payload));
+        })
+        .catch(() => { /* leave optimistic state on network error */ });
     } catch {
       showToast("Menu item could not be saved. Check admin access and Supabase settings.");
     } finally {
@@ -1606,11 +1796,11 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
       form.append("file", file);
       const response = await fetch("/api/admin/upload", {
         method: "POST",
-        headers: adminAccessToken ? { authorization: `Bearer ${adminAccessToken}` } : undefined,
+        headers: adminAuthHeader(),
         body: form
       });
       const result = await response.json();
-      if (!result.ok) {
+      if (!response.ok || !result.ok) {
         showToast(result.error ?? "Image upload failed.");
         return;
       }
@@ -1634,7 +1824,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
         method: "POST",
         headers: {
           "content-type": "application/json",
-          ...(adminAccessToken ? { authorization: `Bearer ${adminAccessToken}` } : {})
+          ...adminAuthHeader()
         },
         body: JSON.stringify({
           section: menuDraftSection,
@@ -1839,23 +2029,14 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                     const btn = e.currentTarget;
                     btn.disabled = true;
                     btn.textContent = "Analyzing history...";
-                    try {
-                      const cid = window.sessionStorage.getItem("slicematic_customer_id") ?? undefined;
-                      const response = await fetch("/api/recommend", {
-                        method: "POST",
-                        headers: { "content-type": "application/json" },
-                        body: JSON.stringify({ name: customer.name || "Customer", phone: customer.phone || "9999999999", customer_id: cid })
-                      });
-                      setRecommendation(await response.json());
-                    } catch {
-                      btn.textContent = "Failed. Try again.";
-                      btn.disabled = false;
-                    }
+                    await submitCustomer(customer.name || undefined, customer.phone || undefined, true, customerSessionEmail);
+                    btn.disabled = false;
+                    btn.textContent = "Generate pick";
                   }}>Generate pick</button>
                 </div>
               )}
             </article>
-            <article><ShieldCheck /><strong>Secure recovery</strong><span>Password reset and logout are built into the customer workspace.</span></article>
+            <article><ShieldCheck /><strong>Easy login</strong><span>Passwordless login using otp only.</span></article>
             <article><CreditCard /><strong>Full payment choice</strong><span>Members can use Cash, Card, or UPI; guests stay online-only.</span></article>
           </div>
         </section>
@@ -2117,9 +2298,9 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                 </div>
 
                 <div className="flow-tabs">
-                  {["menu", "recommendation", "checkout", "tracking", "intake"].map((item) => (
-                    <button key={item} className={step === item ? "active" : ""} onClick={() => goToStep(item as Step)} type="button">
-                      {item === "intake" ? "Customer Details" : item}
+                  {CUSTOMER_FLOW_TABS.map((item) => (
+                    <button key={item.id} className={step === item.id ? "active" : ""} onClick={() => goToStep(item.id as Step)} type="button">
+                      {item.label}
                     </button>
                   ))}
                 </div>
@@ -2144,11 +2325,23 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
 
                 {step === "recommendation" && (
                   <section className="glass-panel ai-recommendation" id="ai">
-                    <div>
-                      <p className="eyebrow">AI recommendations</p>
-                      <h2>{!recommendation ? "Reading order history..." : recommendations.length > 1 ? `${recommendations.length} picks for you` : recommendation.pizzaName ? `${recommendation.pizzaName} + ${recommendation.toppingName}` : "Explore our menu"}</h2>
-                      <p>{recommendation?.reason ?? "The backend queries Supabase history, sends a compact profile to OpenRouter, validates menu IDs, and logs the recommendation event."}</p>
-                      {recommendation && recommendation.confidence > 0 && <small>{recommendation.source === "openrouter" ? "OpenRouter response" : "Data-driven pick"} / confidence {Math.round(recommendation.confidence * 100)}% / {recommendation.customerTier} customer</small>}
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                      <div>
+                        <p className="eyebrow">AI recommendations</p>
+                        <h2>{!recommendation ? "Reading order history..." : recommendations.length > 1 ? `${recommendations.length} picks for you` : recommendation.pizzaName ? `${recommendation.pizzaName} + ${recommendation.toppingName}` : "Explore our menu"}</h2>
+                        <p>{recommendation?.reason ?? "The backend queries Supabase history, sends a compact profile to OpenRouter, validates menu IDs, and logs the recommendation event."}</p>
+                        {recommendation && recommendation.confidence > 0 && <small>{recommendation.source === "openrouter" ? "OpenRouter response" : "Data-driven pick"} / confidence {Math.round(recommendation.confidence * 100)}% / {recommendation.customerTier} customer</small>}
+                      </div>
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title="Refresh recommendations"
+                        onClick={() => submitCustomer(customer.name || undefined, customer.phone || undefined, true, customerSessionEmail)}
+                        disabled={!recommendation}
+                        style={{ padding: "0.5rem", borderRadius: "0.5rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
+                      >
+                        <RefreshCw size={16} />
+                      </button>
                     </div>
                     {recommendations.length > 1 ? (
                       <div className="recommendation-list">
@@ -2192,8 +2385,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                     </div>
                     <div className="menu-grid">
                       {filteredPizzas.map((pizza) => {
-                        const thinCrust = menu.bases.find((b) => b.code === "B1" || b.name.toLowerCase() === "thin crust");
-                        const thinCrustPrice = thinCrust?.price ?? 149;
+                        const defaultCrustPrice = activeBases.length > 0 ? activeBases[0].price : 0;
                         return (
                           <article className="pizza-card" key={pizza.id}>
                             <div className="pizza-media">
@@ -2224,7 +2416,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                                   </span>
                                   {pizza.name}
                                 </h3>
-                                <strong>{money(pizza.price + thinCrustPrice)}</strong>
+                                <strong>{money(pizza.price + defaultCrustPrice)}</strong>
                               </div>
                               <p>{pizza.description}</p>
                               <div className="chips"><span><ChefHat /> Fresh</span><span>{pizza.prepMinutes} min</span>{pizza.tags?.slice(0, 2).map((tag) => <span key={tag}>{tag}</span>)}</div>
@@ -2253,7 +2445,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                   <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
                   <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
                   <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
-                  <div><span>Delivery</span><b>{pricingConfig.deliveryFee > 0 && totals.subtotal < pricingConfig.freeDeliveryMin ? money(pricingConfig.deliveryFee) : "Included"}</b></div>
+                  <div><span>Delivery</span><b>{pricingConfig.deliveryFee === 0 ? "Included" : totals.deliveryCharge === 0 ? `Free (above ${money(pricingConfig.freeDeliveryMin)})` : money(totals.deliveryCharge)}</b></div>
                   <div className="total"><span>Total</span><b>{money(totals.finalTotal)}</b></div>
                 </div>
                 <div className="ai-cart-card">
@@ -2299,7 +2491,11 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
           {!adminLoggedIn ? renderAdminAuth() : (
             <>
               <div className="admin-tabs">
-                {(["overview", "orders", "forecast", "menu", "ai", "settings"] as AdminTab[]).map((tab) => <button key={tab} className={adminTab === tab ? "active" : ""} onClick={() => setAdminTab(tab)} type="button">{tab}</button>)}
+                {ADMIN_TABS.map((tab) => (
+                  <button key={tab} className={adminTab === tab ? "active" : ""} onClick={() => setAdminTab(tab)} type="button">
+                    {adminTabLabel(tab)}
+                  </button>
+                ))}
               </div>
               {adminTab === "overview" && <AdminOverview summary={adminSummary} opsBriefing={opsBriefing} opsLoading={opsLoading} onRefreshOps={() => loadOpsBriefing()} />}
               {adminTab === "orders" && (
@@ -2384,6 +2580,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                           <input value={pizza.name} onChange={(event) => updatePizza(pizza.id, "name", event.target.value)} />
                           <input type="number" min={0} value={pizza.price} onChange={(event) => updatePizza(pizza.id, "price", Number(event.target.value))} />
                           <label><input type="checkbox" checked={pizza.available} onChange={(event) => updatePizza(pizza.id, "available", event.target.checked)} /> Available</label>
+                          {renderRowSaveButton("pizzas", pizza)}
                         </article>
                       ))}
                     </>
@@ -2397,6 +2594,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                           <input value={base.name} onChange={(event) => updateMenuItem("bases", base.id, "name", event.target.value)} />
                           <input type="number" min={0} value={base.price} onChange={(event) => updateMenuItem("bases", base.id, "price", Number(event.target.value))} />
                           <label><input type="checkbox" checked={base.available} onChange={(event) => updateMenuItem("bases", base.id, "available", event.target.checked)} /> Available</label>
+                          {renderRowSaveButton("bases", base)}
                         </article>
                       ))}
                     </>
@@ -2410,13 +2608,14 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                           <input value={topping.name} onChange={(event) => updateMenuItem("toppings", topping.id, "name", event.target.value)} />
                           <input type="number" min={0} value={topping.price} onChange={(event) => updateMenuItem("toppings", topping.id, "price", Number(event.target.value))} />
                           <label><input type="checkbox" checked={topping.available} onChange={(event) => updateMenuItem("toppings", topping.id, "available", event.target.checked)} /> Available</label>
+                          {renderRowSaveButton("toppings", topping)}
                         </article>
                       ))}
                     </>
                   )}
                 </section>
               )}
-              {adminTab === "ai" && <AIPanel />}
+              {adminTab === "ai" && <RecommendationAIPanel />}
               {adminTab === "settings" && (
                 <section className="admin-card settings-console">
                   <div className="settings-head">
@@ -2475,7 +2674,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                         <label className="toggle-row"><input type="checkbox" checked={pricingConfig.guestCashAllowed} onChange={(event) => updatePricing("guestCashAllowed", event.target.checked)} /> Allow Cash for guest checkout</label>
                         <div className="settings-preview wide">
                           <strong>Live policy preview</strong>
-                          <span>GST {Math.round(pricingConfig.gstRate * 100)}%, {Math.round(pricingConfig.bulkDiscountRate * 100)}% off at {pricingConfig.bulkDiscountQty}+ pizzas, max {pricingConfig.maxOrderQty} pizzas/order, delivery fee {money(pricingConfig.deliveryFee)}, guest Cash {pricingConfig.guestCashAllowed ? "allowed" : "blocked"}.</span>
+                          <span>GST {Math.round(pricingConfig.gstRate * 100)}%, {Math.round(pricingConfig.bulkDiscountRate * 100)}% off at {pricingConfig.bulkDiscountQty}+ pizzas, max {pricingConfig.maxOrderQty} pizzas/order, delivery fee {money(pricingConfig.deliveryFee)}, guest Cash {pricingConfig.guestCashAllowed ? "allowed" : "blocked"}. Saved to Supabase — applies to all customers on next page load.</span>
                         </div>
                       </div>
                     </div>
@@ -2491,12 +2690,22 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
         <div className="builder-overlay" onClick={() => setSelectedPizza(null)}>
           <section className="builder-panel" onClick={(event) => event.stopPropagation()}>
             <img src={selectedPizza.image} alt={selectedPizza.name} />
-            <div>
+            <div style={{ position: "relative" }}>
+              <button type="button" onClick={() => setSelectedPizza(null)} style={{ position: "absolute", top: "0", right: "0", background: "none", border: "none", cursor: "pointer", padding: "0.5rem" }}><X size={24} /></button>
               <p className="eyebrow">Customize pizza</p><h2>{selectedPizza.name}</h2><p>{selectedPizza.description}</p>
               <div className="builder-group"><h3>Crust</h3>{activeBases.map((base) => <button className={builder.baseId === base.id ? "active" : ""} onClick={() => setBuilder({ ...builder, baseId: base.id })} key={base.id} type="button">{base.name}<span>{money(base.price)}</span></button>)}</div>
               <div className="builder-group"><h3>Size</h3>{activeSizes.map((size) => <button className={builder.sizeId === size.id ? "active" : ""} onClick={() => setBuilder({ ...builder, sizeId: size.id })} key={size.id} type="button">{size.name}<span>{size.extra ? `+ ${money(size.extra)}` : "Included"}</span></button>)}</div>
               <div className="builder-group toppings"><h3>Toppings</h3>{activeToppings.map((topping) => <label key={topping.id}><input type="checkbox" checked={builder.toppingIds.includes(topping.id)} onChange={(event) => setBuilder((current) => ({ ...current, toppingIds: event.target.checked ? [...current.toppingIds, topping.id] : current.toppingIds.filter((id) => id !== topping.id) }))} />{topping.name}<span>+ {money(topping.price)}</span></label>)}</div>
-              <div className="builder-footer"><input type="number" min={1} max={10} value={builder.quantity} onChange={(event) => setBuilder({ ...builder, quantity: Number(event.target.value) })} /><strong>{money(getLineUnitPrice({ id: "preview", pizzaId: selectedPizza.id, baseId: builder.baseId, sizeId: builder.sizeId, toppingIds: builder.toppingIds, quantity: 1 }, menu) * builder.quantity)}</strong><button className="primary" onClick={addBuilderToCart} type="button"><ShoppingBag /> Add to cart</button></div>
+              <div className="builder-footer"><input type="number" min={1} max={pricingConfig.maxOrderQty} value={builder.quantity} onChange={(event) => {
+                const newQty = Number(event.target.value);
+                const maxAllowed = pricingConfig.maxOrderQty;
+                if (newQty > maxAllowed) {
+                  showToast(`Maximum outlet capacity is ${pricingConfig.maxOrderQty} pizzas per order.`);
+                  setBuilder({ ...builder, quantity: maxAllowed });
+                } else {
+                  setBuilder({ ...builder, quantity: newQty });
+                }
+              }} /><strong>{money(getLineUnitPrice({ id: "preview", pizzaId: selectedPizza.id, baseId: builder.baseId, sizeId: builder.sizeId, toppingIds: builder.toppingIds, quantity: 1 }, menu) * builder.quantity)}</strong><button className="primary" onClick={addBuilderToCart} type="button"><ShoppingBag /> Add to cart</button></div>
             </div>
           </section>
         </div>
@@ -2587,21 +2796,5 @@ function OrderTable({ orders }: { orders: SavedOrder[] }) {
       <div className="order-row head"><span>Order</span><span>Customer</span><span>Payment</span><span>Total</span><span>Status</span></div>
       {orders.map((order) => <div className="order-row" key={order.id}><span>{order.id.slice(0, 8)}</span><span>{order.customerName}<small>{order.phone}</small></span><span>{order.paymentMode}</span><span>{money(order.finalTotal)}</span><span>{order.status}</span></div>)}
     </div>
-  );
-}
-
-function AIPanel() {
-  return (
-    <section className="admin-card ai-panel">
-      <Brain /><h2>OpenRouter AI Recommendation Engine</h2>
-      <p>Triggered after name and phone, before menu selection. The API builds a customer feature profile from Supabase history, sends grounded menu IDs to OpenRouter, validates returned IDs, logs `recommendation_event`, and falls back safely during rate limits.</p>
-      <pre>{`System prompt summary:
-Only recommend from provided menu IDs.
-Personalize with favourite pizza, topping, AOV, quantity, veg/spicy lean, and recency.
-Use local favourites and high-value topping signals for new customers.
-Prefer customer fit and contribution margin without forcing discounts.
-Return strict JSON: pizza_id, topping_id, reason, confidence.
-Model: OPENROUTER_MODEL (default openai/gpt-oss-20b).`}</pre>
-    </section>
   );
 }

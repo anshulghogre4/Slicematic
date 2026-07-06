@@ -1,8 +1,20 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 
-// Mock zustand persist to prevent localStorage errors in Node environment
+// Mock zustand persist to prevent localStorage errors in Node environment (no jsdom here).
+// Captures the persist options so we can assert on the configured storage engine below.
+const persistOptionsRef = vi.hoisted(() => ({ current: null as any }));
 vi.mock("zustand/middleware", () => ({
-  persist: (config: any) => config,
+  persist: (config: any, options: any) => {
+    persistOptionsRef.current = options;
+    return config;
+  },
+  // Mirrors zustand's real createJSONStorage: `getStorage` is only invoked lazily,
+  // when getItem/setItem/removeItem are actually called — never at import time.
+  createJSONStorage: (getStorage: () => Storage) => ({
+    getItem: (name: string) => getStorage().getItem(name),
+    setItem: (name: string, value: string) => getStorage().setItem(name, value),
+    removeItem: (name: string) => getStorage().removeItem(name),
+  }),
 }));
 
 import { useStore } from "./store";
@@ -57,5 +69,47 @@ describe("Global Store", () => {
     useStore.getState().setCart([{ id: "test", pizzaId: 1, baseId: 1, sizeId: "s1", toppingIds: [], quantity: 1 }]);
     useStore.getState().clearCheckout();
     expect(useStore.getState().cart).toEqual([]);
+  });
+
+  it("resetSession clears cart, customer, lastOrder, and recommendation but preserves pricingConfig", () => {
+    useStore.getState().setCart([{ id: "test", pizzaId: 1, baseId: 1, sizeId: "s1", toppingIds: [], quantity: 1 }]);
+    useStore.getState().setCustomer({ name: "Aarav", phone: "9876543210", address: "Flat 1", deliveryZone: "0-2", note: "leave at gate" });
+    useStore.getState().setLastOrder({ orderId: "abc" } as any);
+    useStore.getState().setRecommendation({ headline: "Try this" } as any);
+    useStore.getState().setPricingConfig({ ...defaultPricingConfig, gstRate: 0.15 });
+
+    useStore.getState().resetSession();
+
+    const state = useStore.getState();
+    expect(state.cart).toEqual([]);
+    expect(state.customer).toEqual({ name: "", phone: "", address: "", deliveryZone: "2-4", note: "" });
+    expect(state.lastOrder).toBeNull();
+    expect(state.recommendation).toBeNull();
+    expect(state.pricingConfig.gstRate).toBe(0.15); // Pricing config preserved!
+  });
+});
+
+describe("Global Store persistence engine", () => {
+  it("persists to sessionStorage, not localStorage", () => {
+    const sessionData: Record<string, string> = {};
+    const localData: Record<string, string> = {};
+    (globalThis as any).sessionStorage = {
+      getItem: (key: string) => sessionData[key] ?? null,
+      setItem: (key: string, value: string) => { sessionData[key] = value; },
+      removeItem: (key: string) => { delete sessionData[key]; },
+    };
+    (globalThis as any).localStorage = {
+      getItem: (key: string) => localData[key] ?? null,
+      setItem: (key: string, value: string) => { localData[key] = value; },
+      removeItem: (key: string) => { delete localData[key]; },
+    };
+
+    expect(persistOptionsRef.current?.name).toBe("slicematic-storage");
+    expect(persistOptionsRef.current?.storage).toBeTruthy();
+
+    persistOptionsRef.current.storage.setItem("probe", "value");
+
+    expect(sessionData.probe).toBe("value");
+    expect(localData.probe).toBeUndefined();
   });
 });
