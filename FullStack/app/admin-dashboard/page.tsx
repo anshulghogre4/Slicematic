@@ -30,7 +30,8 @@ import {
   Star,
   Trash2,
   Upload,
-  Utensils
+  Utensils,
+  X
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -349,12 +350,6 @@ export default function AdminDashboardPage() {
     void fetchOutletPricingConfig().then((config) => {
       if (config) setPricingConfig(config);
     });
-    const interval = window.setInterval(() => {
-      void fetchOutletPricingConfig().then((config) => {
-        if (config) setPricingConfig(config);
-      });
-    }, 30000);
-    return () => window.clearInterval(interval);
   }, [setPricingConfig]);
 
   useEffect(() => {
@@ -2296,8 +2291,7 @@ export default function AdminDashboardPage() {
                     </div>
                     <div className="menu-grid">
                       {filteredPizzas.map((pizza) => {
-                        const thinCrust = menu.bases.find((b) => b.code === "B1" || b.name.toLowerCase() === "thin crust");
-                        const thinCrustPrice = thinCrust?.price ?? 149;
+                        const defaultCrustPrice = activeBases.length > 0 ? activeBases[0].price : 0;
                         return (
                           <article className="pizza-card" key={pizza.id}>
                             <div className="pizza-media">
@@ -2328,7 +2322,7 @@ export default function AdminDashboardPage() {
                                   </span>
                                   {pizza.name}
                                 </h3>
-                                <strong>{money(pizza.price + thinCrustPrice)}</strong>
+                                <strong>{money(pizza.price + defaultCrustPrice)}</strong>
                               </div>
                               <p>{pizza.description}</p>
                               <div className="chips"><span><ChefHat /> Fresh</span><span>{pizza.prepMinutes} min</span>{pizza.tags?.slice(0, 2).map((tag) => <span key={tag}>{tag}</span>)}</div>
@@ -2629,7 +2623,8 @@ export default function AdminDashboardPage() {
         <div className="builder-overlay" onClick={() => setSelectedPizza(null)}>
           <section className="builder-panel" onClick={(event) => event.stopPropagation()}>
             <img src={selectedPizza.image} alt={selectedPizza.name} />
-            <div>
+            <div style={{ position: "relative" }}>
+              <button type="button" onClick={() => setSelectedPizza(null)} style={{ position: "absolute", top: "0", right: "0", background: "none", border: "none", cursor: "pointer", padding: "0.5rem" }}><X size={24} /></button>
               <p className="eyebrow">Customize pizza</p><h2>{selectedPizza.name}</h2><p>{selectedPizza.description}</p>
               <div className="builder-group"><h3>Crust</h3>{activeBases.map((base) => <button className={builder.baseId === base.id ? "active" : ""} onClick={() => setBuilder({ ...builder, baseId: base.id })} key={base.id} type="button">{base.name}<span>{money(base.price)}</span></button>)}</div>
               <div className="builder-group"><h3>Size</h3>{activeSizes.map((size) => <button className={builder.sizeId === size.id ? "active" : ""} onClick={() => setBuilder({ ...builder, sizeId: size.id })} key={size.id} type="button">{size.name}<span>{size.extra ? `+ ${money(size.extra)}` : "Included"}</span></button>)}</div>

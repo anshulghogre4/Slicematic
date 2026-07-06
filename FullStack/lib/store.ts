@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from "zustand/middleware";
 import { CartLine, CustomerDetails, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "./types";
 import { defaultPricingConfig } from "./pricing";
 
-const initialCustomer: CustomerDetails = { name: "", phone: "", address: "", deliveryZone: "2-4", note: "" };
+const initialCustomer: CustomerDetails = { name: "", phone: "", address: "New Ashok Nagar, Delhi NCR", deliveryZone: "2-4", note: "" };
 
 interface AppState {
   cart: CartLine[];
