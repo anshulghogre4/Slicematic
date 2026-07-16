@@ -32,9 +32,11 @@ Order/payment → kitchen ready → assignment → pickup → live trip → proo
 
 ## Proposed technology
 
-- Provisional production choice: Google Maps JavaScript + Routes API for India, behind provider interfaces.
+- Provisional MVP choice: Google Maps JavaScript + Routes API for India, operated inside eligible India free caps with hard quotas and billing alerts.
 - Zero-card developer/demo choice: TomTom; lightweight proof-of-concept alternative: Geoapify + MapLibre.
-- Compare Google, TomTom, Geoapify, and Mapbox on representative Delhi addresses before lock-in.
+- Compare Google, Mappls, Mapbox, TomTom, and Geoapify on representative Delhi addresses before lock-in.
+- Use private SliceMatic realtime transport for GPS marker movement and OR-Tools for stop sequencing; routine GPS updates must not consume paid route/geocode calls.
+- Preserve an OSRM/MapLibre scale path for high-volume routing while retaining managed address validation where India accuracy requires it.
 - Supabase private Broadcast for status/location; authenticated snapshot and polling fallback.
 - Foreground rider PWA for the demo; native/provider integration required for dependable background GPS.
 

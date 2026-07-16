@@ -24,6 +24,7 @@ Start every FullStack task here, then read [[handoff]] and the pages relevant to
 
 - [[architecture]] — boundaries, workspaces, request and data flow
 - [[components]] — UI component responsibilities and coupling
+- [[ui-map]] — live visual baseline, screen inventory, screenshots, and next UI placement rules
 - [[knowledge-graph]] — dependency and blast-radius map
 - [[state-management]] — Zustand, session storage, and identity state
 - [[css-system]] — styling conventions and tokens
@@ -55,7 +56,7 @@ Start every FullStack task here, then read [[handoff]] and the pages relevant to
 | Pricing or checkout | [[business-rules]], [[payments]] | `lib/pricing.ts`, payment/order routes |
 | Authentication | [[auth-flows]], [[current-state]] | `lib/*-auth.ts`, `components/EntryPortal/` |
 | Database change | [[database-schema]], [[source-map]] | `supabase/schema.sql`, `lib/data-service.ts` |
-| UI change | [[components]], [[css-system]] | both large workspace files and `app/globals.css` |
+| UI change | [[ui-map]], [[components]], [[css-system]] | live screenshots, both large workspace files, and `app/globals.css` |
 | API change | [[api-contracts]], [[architecture]] | matching `app/api/**/route.ts` and tests |
 | AI feature | relevant feature page | route, prompt, fallback, event logging |
 | Forecast | [[feature-forecasting]] | `lib/forecast-service.ts`, `scripts/` |

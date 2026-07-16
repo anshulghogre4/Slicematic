@@ -132,12 +132,26 @@ Leading delivery products expose a lifecycle rather than only a map: preparation
 
 Decision for this project:
 
-- India MVP maps/routing: Google Maps JavaScript API + server-side Routes API.
+- India MVP maps/routing: Google Maps JavaScript API + server-side Routes API, operated inside the eligible India free caps.
+- Cost controls: configure hard quotas and billing alerts before any production key is enabled.
 - Realtime: private Supabase Broadcast channel per active delivery.
 - Initial reliability fallback: authenticated snapshot endpoint and 20–30 second polling.
-- Provider abstraction: `MapProvider`/`RoutingProvider` interfaces so Mapbox can be accuracy-tested before production lock-in.
+- Optimization: use Google OR-Tools in our service layer; do not pay a map provider merely to sequence a small delivery batch.
+- Provider abstraction: `MapProvider`/`GeocodingProvider`/`RoutingProvider` interfaces so Mapbox and Mappls can be accuracy-tested before production lock-in.
+- Scale path: if managed route/matrix calls become a material cost, move high-volume routing to OSRM while retaining Google or Mappls for address validation and traffic-sensitive fallback.
 - Rider client: foreground web/PWA tracking for the demo; do not promise dependable background tracking until a native rider app or delivery-as-a-service provider exists.
 - State authority: PostgreSQL transaction/RPC first, broadcast second. Realtime messages never become the system of record.
+
+### Chosen low-cost implementation path
+
+1. Render the admin/customer map with Google Maps during the MVP and keep its browser key referrer-restricted.
+2. Send rider GPS pings through SliceMatic's private realtime channel; moving a marker must not call Routes, Geocoding, or Places.
+3. Recompute a route only on assignment, explicit refresh, material off-route deviation, or a bounded ETA refresh interval.
+4. Cache outlet coordinates, customer-selected coordinates, route polylines, and quote results only where provider terms permit it; never geocode the same saved address on every page load.
+5. Use OR-Tools for batch ordering and persist the stop sequence and versioned fee quote.
+6. Set per-key quotas, server-side rate limits, usage telemetry, and billing alerts. A free tier is a ceiling to protect, not an availability guarantee.
+7. Keep Mappls as the India-specific accuracy/cost challenger and Mapbox as the managed customization/cost challenger in the Sprint 0 bake-off.
+8. Re-evaluate OSRM/MapLibre once observed volume, ETA error, and operations cost are available; do not self-host the entire India stack prematurely.
 
 ## Map, geocoding, and routing API options
 
@@ -321,6 +335,31 @@ Costs/risks: server hosting, map-data updates, India address quality, monitoring
 
 Verdict: not actually free after operations. Consider only when scale, data control, or vendor independence justifies running geospatial infrastructure.
 
+### Option H — Mappls/MapmyIndia
+
+Best fit: India-specific address, POI, routing, navigation, tracking, and last-mile comparison against Google.
+
+Current public position:
+
+- Developer access starts free and the signup page advertises no credit card for initial access.
+- Maps, search/geocoding, routes/navigation, tracking, geofencing, and route-optimization products are available.
+- Developer build/test access starts free; commercial applications can move to higher transaction and support plans.
+- Zepto publicly uses MapmyIndia SDKs and APIs for customer and delivery experience, making it a relevant India quick-commerce benchmark.
+
+Conditions/cautions:
+
+- Exact production quotas and overage prices are less transparent than Google or Mapbox and may require a sales quote.
+- Treat free access as development/trial capacity until commercial limits are confirmed in writing.
+- Test apartment/locality lookup, pin placement, two-wheeler routes, live traffic, SDK ergonomics, and storage/attribution terms on the same Delhi corpus.
+
+Official references:
+
+- https://about.mappls.com/api/
+- https://www.mapmyindia.com/api/landing-page/
+- https://www.mapmyindia.com/api/global-api/
+
+Verdict: include in the production bake-off; it may provide better India-specific economics or address coverage, but do not select it solely on an unspecified free tier.
+
 ### HERE caution
 
 HERE's no-payment Limited plan lists 1,000 daily requests and supports map/search/routing APIs. However, HERE's current Limited/Base exclusions define asset management to include locating, tracking/displaying, routing, or deriving analytics for an actively managed person/vehicle/cargo. That conflicts directly with rider tracking unless a suitable commercial agreement is obtained.
@@ -333,9 +372,10 @@ Verdict: do not use the free/Limited plan for SliceMatic rider tracking without 
 
 1. Zero-card demo: TomTom first; Geoapify second.
 2. Fastest ultra-small proof of concept: Geoapify + MapLibre.
-3. India production candidate: Google Maps Platform India.
-4. UI/customization comparison: Mapbox.
-5. Open renderer portability: MapLibre, but pair it with hosted geocoding/routing.
+3. Recommended SliceMatic MVP: Google Maps Platform India, protected by quotas and billing alerts.
+4. India-specific production comparison: Mappls/MapmyIndia.
+5. Managed UI/customization and free-tier comparison: Mapbox.
+6. Lowest long-term per-request cost at proven scale: MapLibre + self-hosted OSRM/OR-Tools, with managed geocoding retained where accuracy requires it.
 
 Do not mix provider data casually. Each provider has rules about caching, permanent storage, attribution, and displaying its results on another provider's map.
 
@@ -354,7 +394,7 @@ For each provider, test the same 100–300 representative Delhi addresses and tr
 | Data-storage/attribution compatibility | 5% |
 | Reliability, quotas, support | 5% |
 
-Sprint deliverable: `plans/map-provider-bakeoff.md` with raw results, estimated cost at 100/1,000/10,000 monthly orders, and final ADR.
+Sprint deliverable: `plans/map-provider-bakeoff.md` with raw results, estimated cost at 100/1,000/10,000 monthly orders, free-cap exhaustion scenarios, self-hosting operations cost, and final ADR.
 
 ## Current gaps
 
@@ -456,9 +496,11 @@ Duration: 2–3 engineering days plus product review. This is a release gate, no
 
 ### S0-04 Provider spike
 
-- Test Google, TomTom, Geoapify, and Mapbox on 100–300 representative New Ashok Nagar/Delhi delivery addresses. Keep LocationIQ as a fallback comparison if time permits.
+- Test Google, Mappls, Mapbox, TomTom, and Geoapify on 100–300 representative New Ashok Nagar/Delhi delivery addresses. Keep LocationIQ as a fallback comparison if time permits.
 - Measure address match, apartment/locality usefulness, route plausibility, ETA error, two-wheeler suitability, map load cost, and route cost.
 - Calculate map, autocomplete/geocode, route, and ETA-refresh usage separately at 100/1,000/10,000 monthly orders.
+- Prove that normal GPS marker updates generate zero provider route/geocode calls and that deviation/refresh triggers are rate-limited.
+- Model self-hosted OSRM infrastructure and maintenance separately rather than calling the open-source path “free.”
 - Acceptance: documented scorecard and provider ADR; free-tier and commercial-use terms verified; no key is exposed to source control.
 
 Sprint 0 exit gate: authorization and migration design approved. No live tracking implementation starts before this gate.

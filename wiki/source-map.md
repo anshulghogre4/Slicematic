@@ -15,6 +15,7 @@ Use this page to verify compiled claims without rediscovering the entire reposit
 | Runtime and dependencies | `FullStack/package.json`, `next.config.mjs` | `FullStack/README.md` | [[architecture]], [[scripts-tooling]] |
 | Customer workspace | `app/page.tsx`, `components/EntryPortal/EntryPortal.tsx`, `components/SliceMaticStage3.tsx` | `lib/customer-flow.ts`, `lib/session-customer.ts` | [[components]], [[auth-flows]] |
 | Admin workspace | `app/admin-dashboard/page.tsx` | `components/admin/*`, `lib/admin-tabs.ts` | [[components]], [[architecture]] |
+| Live UI baseline | `wiki/assets/ui-map/*.png` | `app/page.tsx`, `app/admin-dashboard/page.tsx`, `app/payment/page.tsx`, `app/confirmation/page.tsx` | [[ui-map]] |
 | Domain types | `lib/types.ts` | API and component imports | [[architecture]], [[api-contracts]] |
 | Pricing and validation | `lib/pricing.ts` | `lib/pricing.test.ts`, outlet pricing routes | [[business-rules]] |
 | Client state | `lib/store.ts` | `lib/store.test.ts`, session call sites | [[state-management]] |

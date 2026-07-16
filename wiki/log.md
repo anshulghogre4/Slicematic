@@ -51,3 +51,23 @@ Entries use `## [YYYY-MM-DD] operation | title` so agents and shell tools can pa
 - Added a separate provider-options section to the sprint with quotas, card/billing requirements, commercial limitations, caching/attribution cautions, and selection ladder.
 - Identified TomTom as the strongest no-credit-card developer option, Geoapify as the simplest small free prototype, and Google as the provisional India production option.
 - Excluded HERE's Limited/Base plans from rider tracking because their published excluded-use terms cover asset tracking.
+
+## [2026-07-16] query | Low-cost map architecture decision
+
+- Selected Google Maps Platform India as the provisional MVP provider, protected by hard quotas, billing alerts, request budgets, and server-side key restrictions.
+- Added Mappls as the India-specific production challenger and retained Mapbox as the managed customization/cost challenger.
+- Assigned live GPS transport to private SliceMatic realtime channels and stop sequencing to OR-Tools so normal tracking does not generate paid provider calls.
+- Added a future MapLibre plus OSRM migration path for high-volume routing, without depending on public OpenStreetMap or Nominatim services in production.
+
+## [2026-07-16] query | Live UI map and screenshot baseline
+
+- Logged into the live Chrome-controlled app with `demo@slicematic.in` and OTP `1111`.
+- Captured screenshots for admin overview, orders, forecast, menu, AI, settings, nested menu pages, nested settings pages, customer menu, recommendations, customer details, payment checkout, and confirmation tracking.
+- Created [[ui-map]] as the durable screen inventory and UI placement guide for delivery tracking, rider fees, forecast refresh, voice assistant, and AI service work.
+- Placed a cash test order to verify `/payment` to `/confirmation`; Admin Orders now shows the new cash order and the current confirmation tracking page is static/simulated.
+
+## [2026-07-16] query | UI map interaction coverage
+
+- Added live screenshots for customer Recommendation, AI Cart Strategist with a cart line, and the Customize modal.
+- Linked [[ui-map]] from [[source-map]] so future UI work can trace screenshots back to route and tab source.
+- Confirmed the Customize modal is a first-class customer workflow for crust, size, toppings, quantity, and add-to-cart behavior.
