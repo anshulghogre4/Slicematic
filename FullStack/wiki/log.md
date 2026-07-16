@@ -156,3 +156,21 @@ Entries use `## [YYYY-MM-DD] operation | title` so agents and shell tools can pa
 - Added frontend-first R8-R11 planning: cart/recommendation extraction, customer ordering shell cleanup, admin command/table workspace, and shared loading/empty/error/mobile polish.
 - Added R8 edge cases for missing/invalid recommendation IDs, AI cart strategist failure/no-op states, max quantity enforcement, mobile cart reachability, and keyboard flow.
 - Reconfirmed that SQL, RLS, maps, rider tracking, and live dispatch remain gated until frontend decomposition and fallback contracts are complete.
+
+## [2026-07-16] ingest | Revamp R8 cart and recommendation extraction
+
+- Added shared customer-ordering components for cart rail, cart line items, AI cart strategist, recommendation lane, and ordering flow tabs.
+- Added `lib/cart-rail.ts` with focused tests for resolved line summaries, missing menu references, and delivery charge labels.
+- Replaced duplicated cart, recommendation, AI cart strategist, flow tab, and admin tab navigation JSX in both giant workspaces.
+- Preserved pricing, cart mutation, recommendation/AI fetches, routing, toasts, validation, and Zustand ownership in parent orchestrators.
+- Started R9/R10/R11 without completing them: `CustomerFlowTabs`, `AdminTabNav`, and recommendation skeleton loading are now shared.
+- Preserved the delivery security gate: no SQL, RLS, maps, rider tracking, realtime, or delivery API changes.
+- Validation: full `npm run test` passed 114/114; `npx tsc --noEmit` and `git diff --check` passed.
+
+## [2026-07-16] ingest | Revamp R9-R10 intake and orders workspace extraction
+
+- Added shared `CustomerIntakeForm` and replaced duplicated customer intake form JSX in both giant workspaces.
+- Added shared `AdminOrdersWorkspace` and `OrderTable` for admin orders presentation and selected-order detail composition.
+- Preserved parent ownership for validation, step navigation, filters, pagination, URL state, admin refresh state, and data fetching.
+- Preserved the delivery security gate: no SQL, RLS, maps, rider tracking, realtime, or delivery API changes.
+- Validation: full `npm run test` passed 114/114; `npx tsc --noEmit` passed.

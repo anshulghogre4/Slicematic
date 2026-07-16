@@ -65,6 +65,19 @@ Read [[index]] first. Durable delivery design now lives in [[delivery-operations
   - This file is now the single operational sprint source of truth for the revamp and delivery-intelligence roadmap.
   - `frontend-architecture-restructure.md`, `ui-revamp-implementation-plan.md`, `ui-inspiration-research.md`, `ui-ux-improvement-plan.md`, and `database-schema-evolution-plan.md` remain reference inputs.
   - Added the R8-R11 frontend-first queue, R8 acceptance criteria, backend gates, and missing edge cases.
+- Completed Revamp R8 cart and recommendation extraction:
+  - Added shared `CartRail`, `CartLineItem`, `AiCartStrategistCard`, and `RecommendationLane`.
+  - Added `lib/cart-rail.ts` plus tests for line summaries, missing menu references, and delivery labels.
+  - Replaced duplicated cart/recommendation/AI cart strategist JSX in both giant workspaces.
+  - Preserved pricing, cart mutation, AI/recommendation fetches, routing, toasts, validation, and Zustand writes in the parents.
+  - Started R9/R10/R11 safely with `CustomerFlowTabs`, `AdminTabNav`, and recommendation skeleton loading.
+  - No SQL, RLS, map, rider, realtime, or delivery API changes were made.
+- Continued Revamp R9-R10 frontend extraction:
+  - Added shared `CustomerIntakeForm` and replaced duplicated customer intake JSX in both giant workspaces.
+  - Added shared `AdminOrdersWorkspace` and `OrderTable` for admin orders presentation, with selected-order detail composition.
+  - Kept filters, pagination, admin refresh state, URL state, validation, and data fetching in parent workspaces.
+  - Verified `npx tsc --noEmit` and full `npm run test` 114/114.
+  - No SQL, RLS, map, rider, realtime, or delivery API changes were made.
 
 ## Files changed
 
@@ -111,8 +124,21 @@ Read [[index]] first. Durable delivery design now lives in [[delivery-operations
 - `FullStack/features/menu/components/MenuCatalog.tsx`
 - `FullStack/features/menu/components/PizzaBuilderDialog.tsx`
 - `FullStack/features/menu/components/index.ts`
+- `FullStack/features/customer-ordering/components/CustomerIntakeForm.tsx`
+- `FullStack/features/admin-dashboard/components/AdminOrdersWorkspace.tsx`
+- `FullStack/features/admin-dashboard/components/OrderTable.tsx`
+- `FullStack/features/admin-dashboard/components/index.ts`
+- `FullStack/features/customer-ordering/components/AiCartStrategistCard.tsx`
+- `FullStack/features/customer-ordering/components/CartLineItem.tsx`
+- `FullStack/features/customer-ordering/components/CartRail.tsx`
+- `FullStack/features/customer-ordering/components/CustomerFlowTabs.tsx`
+- `FullStack/features/customer-ordering/components/RecommendationLane.tsx`
+- `FullStack/features/customer-ordering/components/index.ts`
+- `FullStack/features/admin-dashboard/components/AdminTabNav.tsx`
 - `FullStack/lib/menu-catalog.ts`
 - `FullStack/lib/menu-catalog.test.ts`
+- `FullStack/lib/cart-rail.ts`
+- `FullStack/lib/cart-rail.test.ts`
 - `FullStack/wiki/state-management.md`
 - `FullStack/wiki/components.md`
 - `FullStack/wiki/decisions.md`
@@ -120,25 +146,25 @@ Read [[index]] first. Durable delivery design now lives in [[delivery-operations
 - `AGENTS.md`
 - `CLAUDE.md`
 
-FullStack application code was changed in Revamp Sprints R1-R7A. No SQL schema was changed.
+FullStack application code was changed in Revamp Sprints R1-R8, with small R9/R10/R11 starter slices. No SQL schema was changed.
 
 ## Next action
 
-Current next frontend build sprint after R7A: **R8 cart rail and recommendation-lane extraction**, while the separate DB/RLS delivery foundation remains gated.
+Current next frontend build sprint after R8: **continue R9/R10/R11 frontend decomposition**, while the separate DB/RLS delivery foundation remains gated.
 
-- Extract cart presentation and AI recommendation presentation without moving pricing, API, or store mutations into UI components.
+- Continue extracting customer ordering shell/intake/mobile cart placement, admin command/order workspace, and shared loading/empty/error states.
 - Continue using the UI primitive bridge for intentionally migrated surfaces.
-- Preserve the completed menu/builder, admin selection, and confirmation lifecycle contracts.
+- Preserve the completed menu/builder, cart/recommendation, admin selection, and confirmation lifecycle contracts.
 - Do not implement live rider tracking or maps until DB/RLS and provider bake-off gates are complete.
 
 Use `FullStack/plans/fullstack-delivery-intelligence-sprints.md` as the sprint control file. Consult [[ui-map]], `FullStack/plans/ui-inspiration-research.md`, `FullStack/plans/ui-revamp-implementation-plan.md`, `FullStack/plans/frontend-architecture-restructure.md`, and `FullStack/plans/database-schema-evolution-plan.md` only as supporting references unless a durable fact changes.
 
-R8 acceptance focus:
+Next frontend acceptance focus:
 
-1. Extract `CartRail`, `CartLineItem`, `RecommendationLane`, and `AiCartStrategistCard` presentation boundaries.
-2. Keep pricing, cart mutation, recommendation/AI fetches, router navigation, Zustand writes, toasts, and validation in the parent orchestrators.
-3. Cover empty cart, unavailable recommendation IDs, invalid AI suggestions, max quantity, guest/member copy, mobile cart reachability, and keyboard flow.
-4. Update both `components/SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx` until duplicated shared sections are fully removed.
+1. Finish R9 by extracting customer intake/shell layout and mobile cart behavior without moving validation/API/store ownership.
+2. Finish R10 by extracting admin command bar, orders table workspace, and selected-order drawer wrapper.
+3. Finish R11 by adding skeleton/empty/error states to order table, AI panel, cart insight, confirmation, and mobile visual smoke.
+4. Keep DB/RLS, maps, rider tracking, dispatch, and delivery APIs gated.
 
 Do not implement precise rider tracking before:
 
@@ -159,11 +185,13 @@ Then execute modular extraction and contract tests before deploying recommendati
 - `npm run test`: passed 104/104 on 2026-07-16 after R3-R6 batch.
 - `npm run test`: passed 107/107 on 2026-07-16 after R5 confirmation and R6 order context.
 - `npm run test`: passed 111/111 on 2026-07-16 after R7A menu and builder extraction.
+- `npm run test`: passed 114/114 on 2026-07-16 after R9-R10 intake and admin orders workspace extraction.
 - `npx tsc --noEmit`: passed on 2026-07-16 after R1.
 - `npx tsc --noEmit`: passed on 2026-07-16 after R2.
 - `npx tsc --noEmit`: passed on 2026-07-16 after R3-R6 batch.
 - `npx tsc --noEmit`: passed on 2026-07-16 after R5 confirmation and R6 order context.
 - `npx tsc --noEmit`: passed on 2026-07-16 after R7A menu and builder extraction.
+- `npx tsc --noEmit`: passed on 2026-07-16 after R9-R10 intake and admin orders workspace extraction.
 - Earlier full `npm test`: 92 passed, one `resetSession()` address assertion failed; R1 corrected that focused store assertion.
 
 At the end of every material task, update affected pages and append to [[log]].

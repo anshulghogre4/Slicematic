@@ -4,6 +4,29 @@ This file maintains a timestamp-based record of the modifications, debugging ses
 
 ---
 
+### [2026-07-16 17:03:48 IST] - Revamp R9-R10 intake and orders workspace extraction
+- Continued the frontend-only revamp sprint without SQL, RLS, maps, rider tracking, realtime, or delivery API changes.
+- Added shared `CustomerIntakeForm` and replaced duplicated customer intake form JSX in both giant workspaces.
+- Added shared `AdminOrdersWorkspace` and `OrderTable` for the admin orders surface, with compact/detailed variants and selected-order detail composition.
+- Updated both `components/SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx` under the Dual-File Rule.
+- Preserved parent ownership for validation, routing, order filtering, pagination, URL state, Supabase/admin refresh state, and selected-order state.
+- Validation: full `npm run test` passed 114/114; `npx tsc --noEmit` passed.
+- Files: features/customer-ordering/components/CustomerIntakeForm.tsx, features/admin-dashboard/components/AdminOrdersWorkspace.tsx, features/admin-dashboard/components/OrderTable.tsx, components/SliceMaticStage3.tsx, app/admin-dashboard/page.tsx, plans/fullstack-delivery-intelligence-sprints.md, wiki/*
+
+---
+
+### [2026-07-16 16:37:41 IST] - Revamp R8 cart and recommendation extraction
+- Completed the frontend-only R8 extraction without SQL, RLS, map, rider, or delivery API changes.
+- Added `features/customer-ordering/components` for `CartRail`, `CartLineItem`, `AiCartStrategistCard`, `RecommendationLane`, and `CustomerFlowTabs`.
+- Added `lib/cart-rail.ts` and tests for cart-line summaries, missing menu references, and delivery-fee labels.
+- Replaced duplicated cart rail, recommendation lane, AI cart strategist, customer flow tabs, and admin tab navigation JSX in both giant workspaces.
+- Started R9/R10/R11 safely with shared `CustomerFlowTabs`, shared `AdminTabNav`, and recommendation skeleton loading via the existing `Skeleton` primitive.
+- Preserved parent ownership for pricing, cart mutation, API fetches, routing, toasts, validation, and Zustand writes.
+- Validation: full `npm run test` passed 114/114; `npx tsc --noEmit` and `git diff --check` passed.
+- Files: features/customer-ordering/components/*, lib/cart-rail.ts, lib/cart-rail.test.ts, components/SliceMaticStage3.tsx, app/admin-dashboard/page.tsx, plans/fullstack-delivery-intelligence-sprints.md, wiki/*
+
+---
+
 ### [2026-07-16 16:09:52 IST] - Sprint control consolidation and R8-R11 planning
 - Consolidated the active sprint decision into `plans/fullstack-delivery-intelligence-sprints.md` as the single operational sprint source of truth.
 - Marked the other planning files as reference inputs for architecture, UI direction, visual inspiration, polish, and DB/RLS gates.

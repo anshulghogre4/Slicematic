@@ -128,6 +128,39 @@ type AdminTab = "overview" | "orders" | "menu" | "settings" | "forecast" | "ai"
 - **Boundary:** Parent workspaces retain builder state, capacity validation, cart merging, toast behavior, and navigation.
 - **Consistency:** Both integrations now use `pricingConfig.maxOrderQty`; the previous admin hardcoded limit of 10 was removed.
 
+### 12. `CartRail`, `CartLineItem`, and `AiCartStrategistCard`
+- **Files:** `features/customer-ordering/components/CartRail.tsx`, `CartLineItem.tsx`, `AiCartStrategistCard.tsx`, `lib/cart-rail.ts`
+- **Role:** Shared customer cart presentation for both giant workspaces, including order mode, line items, totals, delivery label, AI cart strategist copy/action, and checkout CTA.
+- **Boundary:** Parent workspaces still own pricing calculation, cart mutation, AI cart-insight fetches, validation, toasts, and navigation.
+- **Tests:** `lib/cart-rail.test.ts` covers cart line summaries, missing menu references, and delivery-fee labels.
+
+### 13. `RecommendationLane`
+- **File:** `features/customer-ordering/components/RecommendationLane.tsx`
+- **Role:** Shared recommendation presentation for loading, single recommendation, multiple recommendations, unavailable recommendation items, refresh action, build action, and browse-menu action.
+- **Boundary:** Parent workspaces still own recommendation fetches, store writes, fallback behavior, and builder opening.
+- **R11 polish:** Uses the shared `Skeleton` primitive while recommendation data is loading.
+
+### 14. `CustomerFlowTabs`
+- **File:** `features/customer-ordering/components/CustomerFlowTabs.tsx`
+- **Role:** Shared customer ordering step tabs with tab semantics for intake, recommendation, menu, checkout, and tracking.
+- **Boundary:** Parent workspaces own transition validation and route navigation.
+
+### 15. `AdminTabNav`
+- **File:** `features/admin-dashboard/components/AdminTabNav.tsx`
+- **Role:** Shared admin tab navigation for overview, orders, menu, settings, forecast, and AI.
+- **State:** `/admin-dashboard` keeps URL-backed tab state through `selectAdminTab`; the Stage3 duplicate keeps local tab state.
+
+### 16. `CustomerIntakeForm`
+- **File:** `features/customer-ordering/components/CustomerIntakeForm.tsx`
+- **Role:** Shared customer intake form for name, phone, address, delivery zone, validation errors, and continue action.
+- **Boundary:** Parent workspaces still own validation, customer draft state, step transition, toast behavior, and routing.
+
+### 17. `AdminOrdersWorkspace` and `OrderTable`
+- **Files:** `features/admin-dashboard/components/AdminOrdersWorkspace.tsx`, `features/admin-dashboard/components/OrderTable.tsx`
+- **Role:** Shared admin orders table/workspace with compact and detailed table variants plus selected-order detail composition.
+- **Boundary:** Parent workspaces still own admin auth, filters, pagination, URL-backed selected order state, refresh state, and Supabase/API calls.
+- **Safety:** No rider, ETA, map, delivery tracking, SQL, or RLS behavior is added by this extraction.
+
 ---
 
 ## Key UI Sections (Account Page)

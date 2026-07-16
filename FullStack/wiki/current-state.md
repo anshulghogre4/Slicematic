@@ -19,8 +19,8 @@ Related pages: [[architecture]], [[database-schema]], [[payments]], [[feature-re
 | Check | Result | Date |
 |---|---|---|
 | `npm run build` | Passed: compilation, type checking, page generation | 2026-07-16 |
-| `npm run test` | Passed: 111 tests across 19 suites | 2026-07-16 |
-| `npx tsc --noEmit` | Passed after Revamp R7A | 2026-07-16 |
+| `npm run test` | Passed: 114 tests across 20 suites after Revamp R9-R10 | 2026-07-16 |
+| `npx tsc --noEmit` | Passed after Revamp R9-R10 | 2026-07-16 |
 | Structural extraction | 405 entities, 1,109 relationships across 77 code files | 2026-07-16 |
 
 The earlier `resetSession()` expectation mismatch was corrected in Revamp R1; the current full suite is green.

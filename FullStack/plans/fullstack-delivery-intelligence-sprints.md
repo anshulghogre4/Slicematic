@@ -21,9 +21,9 @@ Delivery Sprint 0 and Delivery Sprint 1 below remain valid, but live delivery tr
 
 ### Sprint control file decision
 
-As of 2026-07-16, `FullStack/plans/ui-revamp-implementation-plan.md` is the operational sprint source of truth for the `new-revamp-1` frontend revamp branch.
+As of 2026-07-16, this file is the operational sprint source of truth for the `new-revamp-1` frontend revamp branch and the later delivery-intelligence roadmap.
 
-This file remains the delivery-intelligence, maps, AI-service, forecast-service, and microservice backlog. Pull items from here into the UI revamp sprint file only when the frontend is ready and the relevant DB/RLS/provider gates are satisfied.
+The UI revamp, architecture, inspiration, UI/UX, and database schema plans remain supporting references. Pull durable facts from those files into this sprint file only when priorities change or a sprint gate is satisfied.
 
 Use the other plan files as supporting references:
 
@@ -41,10 +41,10 @@ These sprints continue the current harmless frontend decomposition before any SQ
 
 | Revamp sprint | Status | Owner boundary | Main deliverable | Acceptance |
 |---|---|---|---|---|
-| R8 - Cart rail and recommendation lane extraction | Next | Customer ordering frontend | Extract cart presentation, cart line item rendering, recommendation cards/lane, and AI cart strategist presentation from both giant workspaces | Both `SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx` compose shared components; pricing, cart mutation, API calls, router navigation, and Zustand ownership remain in the parents; empty/loading/error AI states are visible; tests and TypeScript pass |
-| R9 - Customer ordering shell cleanup | Planned | Customer ordering frontend | Extract the customer ordering step layout, intake/recommend/menu shell, step navigation, and mobile cart placement into feature components | `/` behavior remains unchanged; admin duplicate uses the same extracted pieces or clearly stops duplicating customer sections; no manual dual-file sync remains for customer ordering presentation |
-| R10 - Admin command shell and table workspace | Planned | Admin dashboard frontend | Extract admin top command bar, side/tab navigation, order table workspace, and selected-order drawer wrapper | `/admin-dashboard?tab=orders&order=...` stays deep-linkable; table rows remain keyboard selectable; order context drawer shows honest no-dispatch placeholders until schema exists |
-| R11 - Loading, empty, error, and mobile polish pass | Planned | Shared UI quality | Add consistent skeletons and empty/error states for menu, recommendations, cart insight, order table, forecast, AI panel, and confirmation; tighten responsive behavior | No async surface has only plain text loading; reduced-motion is honored; mobile does not hide checkout/cart actions; visual smoke is captured once the dev server is reachable |
+| R8 - Cart rail and recommendation lane extraction | Done | Customer ordering frontend | Extract cart presentation, cart line item rendering, recommendation cards/lane, and AI cart strategist presentation from both giant workspaces | Completed 2026-07-16. Both giant workspaces now compose shared cart/recommendation components; pricing, cart mutation, API calls, router navigation, toasts, and Zustand ownership remain in the parents; cart-line missing-item helpers are tested |
+| R9 - Customer ordering shell cleanup | In progress | Customer ordering frontend | Extract the customer ordering step layout, intake/recommend/menu shell, step navigation, and mobile cart placement into feature components | `CustomerFlowTabs` and `CustomerIntakeForm` are extracted and shared. Remaining: larger shell/menu-step composition, mobile cart placement, and removal of the admin duplicate's hidden customer shell |
+| R10 - Admin command shell and table workspace | In progress | Admin dashboard frontend | Extract admin top command bar, side/tab navigation, order table workspace, and selected-order drawer wrapper | `AdminTabNav`, `AdminOrdersWorkspace`, and shared `OrderTable` now drive both admin workspaces. Remaining: top command bar extraction, filter/pagination wrapper cleanup, and richer loading/empty states |
+| R11 - Loading, empty, error, and mobile polish pass | Started | Shared UI quality | Add consistent skeletons and empty/error states for menu, recommendations, cart insight, order table, forecast, AI panel, and confirmation; tighten responsive behavior | Recommendation lane now uses the shared `Skeleton` primitive while loading. Remaining: order table, AI panel, cart insight, confirmation/mobile visual smoke, and broader empty/error pass |
 
 ### R8 implementation notes
 

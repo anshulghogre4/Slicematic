@@ -28,8 +28,9 @@ npm run test:watch    # Watch mode
 | `lib/delivery-state.test.ts` | Delivery transition contract scaffold |
 | `lib/order-journey.test.ts` | Recorded order status to customer journey mapping |
 | `lib/menu-catalog.test.ts` | Available filtering, category/query matching, starting crust price |
+| `lib/cart-rail.test.ts` | Cart line summaries, missing menu references, delivery charge labels |
 
-Latest verified full run: **111/111 tests passed across 19 files** on 2026-07-16 after Revamp R7A.
+Latest verified full run: **114/114 tests passed across 20 files** on 2026-07-16 after Revamp R9-R10 intake and admin orders workspace extraction.
 
 ---
 
@@ -58,7 +59,7 @@ Latest verified full run: **111/111 tests passed across 19 files** on 2026-07-16
 - React component rendering (no React Testing Library setup)
 - Full browser/API integration against live external services
 - E2E flows (no Playwright/Cypress setup)
-- EntryPortal, SliceMaticStage3 UI behaviour
+- EntryPortal, SliceMaticStage3 UI behaviour, and extracted customer-ordering React rendering
 
 These are candidates for future test expansion.
 

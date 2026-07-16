@@ -17,7 +17,6 @@ import {
   Phone,
   Pizza,
   Plus,
-  RefreshCw,
   UserRound,
   ReceiptText,
   Search,
@@ -26,26 +25,27 @@ import {
   ShieldCheck,
   ShoppingBag,
   Sparkles,
-  Trash2,
   Upload,
   Utensils
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { calculateBill, defaultPricingConfig, getLineUnitPrice, money, validateCustomer } from "../lib/pricing";
-import { CUSTOMER_FLOW_TABS, fetchOutletPricingConfig } from "../lib/customer-flow";
+import { calculateBill, defaultPricingConfig, money, validateCustomer } from "../lib/pricing";
+import { fetchOutletPricingConfig } from "../lib/customer-flow";
 import { buildSeedSummary, seedMenu } from "../lib/seed-data";
 import { applyOrderToSession, syncSessionCustomerId } from "../lib/session-customer";
-import { AdminSummary, CartLine, CustomerDetails, MenuItem, MenuPayload, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "../lib/types";
+import { AdminSummary, CustomerDetails, MenuItem, MenuPayload, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "../lib/types";
 import { useStore } from "../lib/store";
 import { useRouter } from "next/navigation";
 import ForecastPanel from "./admin/ForecastPanel";
 import RecommendationAIPanel from "./admin/RecommendationAIPanel";
-import { OrderContextPanel } from "./admin/OrderContextPanel";
-import { ADMIN_TABS, adminTabLabel, type AdminTab } from "../lib/admin-tabs";
+import { type AdminTab } from "../lib/admin-tabs";
 import CustomerOrderHistoryTable from "./CustomerOrderHistoryTable";
 import { CustomerOrderHistoryItem } from "../lib/data-service";
+import { AdminOrdersWorkspace } from "../features/admin-dashboard/components/AdminOrdersWorkspace";
 import { MenuCatalog, PizzaBuilderDialog } from "../features/menu/components";
+import { CartRail, CustomerFlowTabs, CustomerIntakeForm, RecommendationLane } from "../features/customer-ordering/components";
+import { AdminTabNav } from "../features/admin-dashboard/components/AdminTabNav";
 
 type Step = "intake" | "recommendation" | "menu" | "checkout" | "tracking";
 type Workspace = "customer" | "account" | "admin";
@@ -111,7 +111,6 @@ const emptyMenuDraft: MenuDraft = {
 function menuRowKey(section: MenuSection, id: number) {
   return `${section}:${id}`;
 }
-
 function snapshotMenuBaseline(payload: MenuPayload) {
   const baseline: Record<string, Pick<MenuItem, "name" | "price" | "available">> = {};
   (["pizzas", "bases", "toppings"] as MenuSection[]).forEach((section) => {
@@ -2181,25 +2180,6 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     );
   }
 
-  function renderLine(line: CartLine) {
-    const pizza = menu.pizzas.find((item) => item.id === line.pizzaId);
-    const base = menu.bases.find((item) => item.id === line.baseId);
-    const size = menu.sizes.find((item) => item.id === line.sizeId);
-    const toppings = line.toppingIds.map((id) => menu.toppings.find((item) => item.id === id)?.name).filter(Boolean);
-    return (
-      <article className="cart-line" key={line.id}>
-        <div>
-          <strong>{line.quantity} x {pizza?.name}</strong>
-          <span>{base?.name} / {size?.name} / {toppings.length ? toppings.join(", ") : "No extra toppings"}</span>
-        </div>
-        <div>
-          <b>{money(getLineUnitPrice(line, menu) * line.quantity)}</b>
-          <button type="button" onClick={() => removeCartLine(line.id)} aria-label="Remove line"><Trash2 /></button>
-        </div>
-      </article>
-    );
-  }
-
   return (
     <main className="app-frame">
       <header className="topbar">
@@ -2290,118 +2270,43 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                   <img src="/assets/pizza-hero.jpg" alt="Fresh pizza" />
                 </div>
 
-                <div className="flow-tabs">
-                  {CUSTOMER_FLOW_TABS.map((item) => (
-                    <button key={item.id} className={step === item.id ? "active" : ""} onClick={() => goToStep(item.id as Step)} type="button">
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
+                <CustomerFlowTabs activeStep={step} onSelectStep={goToStep} />
 
                 {step === "intake" && (
-                  <section className="glass-panel intake-grid">
-                    <div>
-                      <p className="eyebrow">Customer intake</p>
-                      <h2>Validated contact details before AI recommendation.</h2>
-                      <p className="muted">Stage 2 rules are preserved: name is alphabets/spaces only, phone must be Indian mobile format, and every failure gets a specific message.</p>
-                    </div>
-                    <div className="form-grid">
-                      <label>Name<input value={customer.name} onChange={(event) => setCustomer({ ...customer, name: event.target.value })} placeholder="Aarav Sharma" />{customerErrors.name && <em>{customerErrors.name}</em>}</label>
-                      <label>Phone<input value={customer.phone} onChange={(event) => setCustomer({ ...customer, phone: event.target.value })} placeholder="9876543210" />{customerErrors.phone && <em>{customerErrors.phone}</em>}</label>
-                      <label>Delivery radius<select value={customer.deliveryZone ?? ""} onChange={(event) => setCustomer({ ...customer, deliveryZone: event.target.value as CustomerDetails["deliveryZone"] })}><option value="">Choose radius</option><option value="0-2">0-2 km priority zone</option><option value="2-4">2-4 km launch radius</option><option value="4-6">4-6 km expansion waitlist</option></select>{customerErrors.deliveryZone && <em>{customerErrors.deliveryZone}</em>}</label>
-                      <label className="wide">Delivery address<textarea value={customer.address} onChange={(event) => setCustomer({ ...customer, address: event.target.value })} placeholder="Flat, landmark, street, New Ashok Nagar" />{customerErrors.address && <em>{customerErrors.address}</em>}</label>
-                      <label className="wide">Delivery note<input value={customer.note ?? ""} onChange={(event) => setCustomer({ ...customer, note: event.target.value })} placeholder="Ring bell once, leave with security..." /></label>
-                      <button className="primary wide" type="button" onClick={() => submitCustomer()}><Brain /> Get AI recommendation</button>
-                    </div>
-                  </section>
+                  <CustomerIntakeForm customer={customer} errors={customerErrors} onCustomerChange={setCustomer} onSubmit={() => submitCustomer()} />
                 )}
 
                 {step === "recommendation" && (
-                  <section className="glass-panel ai-recommendation" id="ai">
-                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                      <div>
-                        <p className="eyebrow">AI recommendations</p>
-                        <h2>{!recommendation ? "Reading order history..." : recommendations.length > 1 ? `${recommendations.length} picks for you` : recommendation.pizzaName ? `${recommendation.pizzaName} + ${recommendation.toppingName}` : "Explore our menu"}</h2>
-                        <p>{recommendation?.reason ?? "The backend queries Supabase history, sends a compact profile to OpenRouter, validates menu IDs, and logs the recommendation event."}</p>
-                        {recommendation && recommendation.confidence > 0 && <small>{recommendation.source === "openrouter" ? "OpenRouter response" : "Data-driven pick"} / confidence {Math.round(recommendation.confidence * 100)}% / {recommendation.customerTier} customer</small>}
-                      </div>
-                      <button
-                        type="button"
-                        className="icon-btn"
-                        title="Refresh recommendations"
-                        onClick={() => submitCustomer(customer.name || undefined, customer.phone || undefined, true, customerSessionEmail)}
-                        disabled={!recommendation}
-                        style={{ padding: "0.5rem", borderRadius: "0.5rem", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}
-                      >
-                        <RefreshCw size={16} />
-                      </button>
-                    </div>
-                    {recommendations.length > 1 ? (
-                      <div className="recommendation-list">
-                        {recommendations.map((rec, idx) => (
-                          <article key={rec.recommendationId ?? idx} className="recommendation-card">
-                            <div className="recommendation-card-head">
-                              <span className="recommendation-rank">#{idx + 1}</span>
-                              <strong>{rec.pizzaName} + {rec.toppingName}</strong>
-                              <small>{Math.round(rec.confidence * 100)}% confidence</small>
-                            </div>
-                            <p>{rec.reason}</p>
-                            <button className="primary" type="button" onClick={() => {
-                              const pizza = menu.pizzas.find((item) => item.id === rec.pizzaId);
-                              if (pizza) openBuilder(pizza, true);
-                            }}><Sparkles /> Build this combo</button>
-                          </article>
-                        ))}
-                      </div>
-                    ) : null}
-                    <div className="recommendation-actions">
-                      {recommendations.length <= 1 && recommendation?.pizzaId ? (
-                        <button className="primary" type="button" disabled={!recommendation} onClick={() => {
-                          const pizza = menu.pizzas.find((item) => item.id === recommendation?.pizzaId);
-                          if (pizza) openBuilder(pizza, true);
-                        }}><Sparkles /> Build this combo</button>
-                      ) : null}
-                      <button type="button" onClick={() => goToStep("menu")}><Utensils /> Browse menu</button>
-                    </div>
-                  </section>
+                  <RecommendationLane
+                    recommendation={recommendation}
+                    recommendations={recommendations}
+                    pizzas={menu.pizzas}
+                    onRefresh={() => submitCustomer(customer.name || undefined, customer.phone || undefined, true, customerSessionEmail)}
+                    onBuild={(pizza) => openBuilder(pizza, true)}
+                    onBrowseMenu={() => goToStep("menu")}
+                  />
                 )}
 
                 {step === "menu" && <MenuCatalog pizzas={menu.pizzas} bases={menu.bases} category={category} query={query} onCategoryChange={setCategory} onCustomize={openBuilder} onAdd={addPizzaDirectToCart} formatMoney={money} />}
               </section>
 
-              <aside className="cart-panel">
-                <div className="cart-head"><div><p className="eyebrow">Your order</p><h2>Cart</h2></div><ShoppingBag /></div>
-                <div className={customerLoggedIn ? "order-mode member" : "order-mode guest"}>
-                  <div><UserRound /><strong>{customerOrderMode}</strong></div>
-                  <span>{customerLoggedIn ? `Logged in as ${customerSessionEmail}` : "No account session. Online payment only."}</span>
-                  {!customerLoggedIn && <button type="button" onClick={openAccount}>Sign in for Cash</button>}
-                </div>
-                {cart.length ? cart.map(renderLine) : <div className="empty-cart">Your cart is waiting.<br /><span>Build a pizza to see live totals.</span></div>}
-                <div className="summary">
-                  <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
-                  <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
-                  <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
-                  <div><span>Delivery</span><b>{pricingConfig.deliveryFee === 0 ? "Included" : totals.deliveryCharge === 0 ? `Free (above ${money(pricingConfig.freeDeliveryMin)})` : money(totals.deliveryCharge)}</b></div>
-                  <div className="total"><span>Total</span><b>{money(totals.finalTotal)}</b></div>
-                </div>
-                <div className="ai-cart-card">
-                  <div><Brain /><strong>AI cart strategist</strong></div>
-                  {cartInsight ? (
-                    <>
-                      <h3>{cartInsight.headline}</h3>
-                      <p>{cartInsight.message}</p>
-                      <small>{cartInsight.expectedImpact} / confidence {Math.round(cartInsight.confidence * 100)}%</small>
-                      <button type="button" onClick={applyCartInsight}>{cartInsight.nextAction}</button>
-                    </>
-                  ) : (
-                    <>
-                      <p>Get a margin-aware pairing, discount cue, or checkout reassurance based on this cart.</p>
-                      <button type="button" onClick={getCartInsight} disabled={cartInsightLoading}><Sparkles /> {cartInsightLoading ? "Reading cart" : "Ask AI"}</button>
-                    </>
-                  )}
-                </div>
-                <button className="primary" disabled={!cart.length} onClick={() => router.push("/payment")} type="button">Continue to checkout <Send /></button>
-              </aside>
+              <CartRail
+                cart={cart}
+                menu={menu}
+                totals={totals}
+                pricingConfig={pricingConfig}
+                customerLoggedIn={customerLoggedIn}
+                customerOrderMode={customerOrderMode}
+                customerSessionEmail={customerSessionEmail}
+                cartInsight={cartInsight}
+                cartInsightLoading={cartInsightLoading}
+                onOpenAccount={openAccount}
+                onRemoveLine={removeCartLine}
+                onAskCartInsight={getCartInsight}
+                onApplyCartInsight={applyCartInsight}
+                onCheckout={() => router.push("/payment")}
+                formatMoney={money}
+              />
             </section>
           )}
           {/* Checkout and Tracking moved to /payment and /confirmation */}
@@ -2426,22 +2331,21 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
           </div>
           {!adminLoggedIn ? renderAdminAuth() : (
             <>
-              <div className="admin-tabs">
-                {ADMIN_TABS.map((tab) => (
-                  <button key={tab} className={adminTab === tab ? "active" : ""} onClick={() => setAdminTab(tab)} type="button">
-                    {adminTabLabel(tab)}
-                  </button>
-                ))}
-              </div>
+              <AdminTabNav activeTab={adminTab} onSelectTab={setAdminTab} />
               {adminTab === "overview" && <AdminOverview summary={adminSummary} opsBriefing={opsBriefing} opsLoading={opsLoading} onRefreshOps={() => loadOpsBriefing()} />}
               {adminTab === "orders" && (
-                <section className="admin-card">
-                  <div className="filters"><input type="date" value={adminDateFilter} onChange={(event) => setAdminDateFilter(event.target.value)} /><select value={adminPaymentFilter} onChange={(event) => setAdminPaymentFilter(event.target.value)}><option>All</option><option>UPI</option><option>Card</option><option>Cash</option></select></div>
-                  <div className={selectedOrderId ? "admin-orders-workspace has-selection" : "admin-orders-workspace"}>
-                    <OrderTable orders={filteredOrders} selectedOrderId={selectedOrderId} onSelectOrder={setSelectedOrderId} />
-                    {adminSummary.recentOrders.find((order) => order.id === selectedOrderId) ? <OrderContextPanel order={adminSummary.recentOrders.find((order) => order.id === selectedOrderId)!} onClose={() => setSelectedOrderId("")} /> : null}
-                  </div>
-                </section>
+                <AdminOrdersWorkspace
+                  orders={filteredOrders}
+                  allOrders={adminSummary.recentOrders}
+                  selectedOrderId={selectedOrderId}
+                  onSelectOrder={setSelectedOrderId}
+                  filters={(
+                    <div className="filters">
+                      <input type="date" value={adminDateFilter} onChange={(event) => setAdminDateFilter(event.target.value)} />
+                      <select value={adminPaymentFilter} onChange={(event) => setAdminPaymentFilter(event.target.value)}><option>All</option><option>UPI</option><option>Card</option><option>Cash</option></select>
+                    </div>
+                  )}
+                />
               )}
               {adminTab === "forecast" && <ForecastPanel summary={adminSummary} authHeaders={adminAuthHeader()} />}
               {adminTab === "menu" && (
@@ -2631,7 +2535,6 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
     </main>
   );
 }
-
 function AdminOverview({ summary, opsBriefing, opsLoading, onRefreshOps }: { summary: AdminSummary; opsBriefing: OpsBriefing | null; opsLoading: boolean; onRefreshOps: () => void }) {
   const forecastPeak = summary.forecast[0];
   const onlineRevenue = summary.paymentMix.filter((item) => item.mode !== "Cash").reduce((sum, item) => sum + item.revenue, 0);
@@ -2703,14 +2606,5 @@ function AdminOverview({ summary, opsBriefing, opsLoading, onRefreshOps }: { sum
         )}
       </div>
     </section>
-  );
-}
-
-function OrderTable({ orders, selectedOrderId, onSelectOrder }: { orders: SavedOrder[]; selectedOrderId?: string; onSelectOrder?: (orderId: string) => void }) {
-  return (
-    <div className="order-table">
-      <div className="order-row head"><span>Order</span><span>Customer</span><span>Payment</span><span>Total</span><span>Status</span></div>
-      {orders.map((order) => <button className={selectedOrderId === order.id ? "order-row is-selected" : "order-row"} key={order.id} type="button" onClick={() => onSelectOrder?.(order.id)} aria-pressed={selectedOrderId === order.id} aria-label={`View order ${order.id.slice(0, 8)} for ${order.customerName}`}><span>{order.id.slice(0, 8)}</span><span>{order.customerName}<small>{order.phone}</small></span><span>{order.paymentMode}</span><span>{money(order.finalTotal)}</span><span>{order.status}</span></button>)}
-    </div>
   );
 }
