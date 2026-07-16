@@ -24,6 +24,12 @@ npm run test:watch    # Watch mode
 | `lib/cashfree.test.ts` | Cashfree order creation + verification |
 | `lib/razorpay.test.ts` | Razorpay order verification |
 | `lib/data-service.test.ts` | DB query helpers (mocked Supabase) |
+| `lib/session/checkoutSession.test.ts` | Checkout identity and Cashfree return recovery |
+| `lib/delivery-state.test.ts` | Delivery transition contract scaffold |
+| `lib/order-journey.test.ts` | Recorded order status to customer journey mapping |
+| `lib/menu-catalog.test.ts` | Available filtering, category/query matching, starting crust price |
+
+Latest verified full run: **111/111 tests passed across 19 files** on 2026-07-16 after Revamp R7A.
 
 ---
 
@@ -50,7 +56,7 @@ npm run test:watch    # Watch mode
 ## What Is NOT Tested
 
 - React component rendering (no React Testing Library setup)
-- API route integration tests (no mock server)
+- Full browser/API integration against live external services
 - E2E flows (no Playwright/Cypress setup)
 - EntryPortal, SliceMaticStage3 UI behaviour
 

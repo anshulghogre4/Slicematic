@@ -76,7 +76,7 @@ These project-level skills exist and should be checked before implementing from 
 | `tdd` | When writing new tests |
 | `webapp-testing` | Component/integration testing patterns |
 | `web-design-guidelines` | UI/UX decisions |
-| `tailwind-design-system` | ⚠️ THIS PROJECT USES VANILLA CSS — do not apply Tailwind skill |
+| `tailwind-design-system` | Optional for planned token/component migration work; do not apply scattered Tailwind utilities without the bridge plan |
 
 ---
 

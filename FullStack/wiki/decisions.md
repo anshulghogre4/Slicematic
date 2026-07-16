@@ -78,19 +78,19 @@
 
 ---
 
-## ADR-005: Vanilla CSS Over Tailwind
+## ADR-005: Styling System Migration Policy
 
 **Date:** Stage 3  
-**Status:** Firm (non-negotiable)
+**Status:** Superseded / updated for revamp branch
 
-**Decision:** All styling uses hand-written Vanilla CSS in `app/globals.css`.
+**Decision:** The old vanilla-CSS-only rule is no longer project direction. Existing screens may remain on `app/globals.css`, while new revamp work may introduce Tailwind CSS v4 or an equivalent token-driven component system when it is added through a deliberate migration plan.
 
 **Rationale:**
-- Full design control without Tailwind's class noise
-- Custom design tokens that don't need the Tailwind config
-- `globals.css` serves as living documentation of the design system
+- The current global CSS is useful legacy inventory, but it makes a polished, animated UI harder to scale.
+- The revamp needs shared primitives, skeleton loaders, motion tokens, accessible overlays, and reusable variants.
+- Styling choices should serve project quality, maintainability, performance, and accessibility rather than a fixed tool preference.
 
-**Rule:** No Tailwind classes anywhere. Not even `cn()` utilities. If you find Tailwind, remove it.
+**Rule:** Do not add random one-off utility soup. New styling systems must be bridged through semantic tokens, reusable UI primitives, accessibility rules, and staged migration notes.
 
 ---
 

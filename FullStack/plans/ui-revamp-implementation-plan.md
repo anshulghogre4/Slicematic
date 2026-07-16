@@ -11,6 +11,93 @@ baseline: FullStack/wiki/ui-map.md
 
 This plan turns the current screenshot-backed UI baseline in `FullStack/wiki/ui-map.md` and the delivery sprint in `FullStack/plans/fullstack-delivery-intelligence-sprints.md` into a concrete revamp path.
 
+## Planning Source Of Truth
+
+Use this file as the single sprint control file for the `new-revamp-1` frontend revamp branch.
+
+Supporting plans remain authoritative for their own domains, but they should not become competing sprint trackers:
+
+- `frontend-architecture-restructure.md` informs extraction boundaries, state ownership, routing, persistence, and performance.
+- `ui-inspiration-research.md` informs visual direction, motion, skeletons, admin cockpit patterns, checkout, and confirmation layout.
+- `ui-ux-improvement-plan.md` is the quick-polish backlog; pull items into this file before implementation.
+- `fullstack-delivery-intelligence-sprints.md` remains the delivery, AI service, forecast service, maps, and microservice backlog.
+- `database-schema-evolution-plan.md` remains the DB/RLS migration and production-hardening reference.
+
+Rule for this branch: continue frontend extraction and UI contracts first. Do not start SQL, RLS, live rider tracking, map provider integration, rider PWA, or delivery fee persistence until the explicit gates below are satisfied.
+
+## Revamp Branch Sprint Execution
+
+This branch uses a smaller revamp execution overlay before the delivery-domain sprints. The overlay keeps early work harmless: stabilize route/session architecture first, then migrate UI surfaces.
+
+| Revamp sprint | Status | Build slice | Notes |
+|---|---|---|---|
+| R1 — Checkout/session foundation | Done | Centralized storage keys, checkout session helpers, `/payment` Cashfree recovery wiring, focused tests | Completed 2026-07-16. Protects cart → payment → confirmation before visual/component extraction. |
+| R2 — Checkout component extraction | Done | Extract checkout summary/payment trust panel, keep business-rule totals unchanged | Completed 2026-07-16. Uses R1 helpers; no delivery fee rewrite yet. |
+| R3 — UI primitive bridge | Done | Add semantic tokens, `Button`, `Card`, `Skeleton`, `StatusPill`, reduced-motion rules | Completed 2026-07-16 as a CSS/token + primitive bridge, without introducing Tailwind yet. |
+| R4 — Forecast pilot panel | Done | Refresh forecast button, chart skeleton, run status, fallback state | Completed 2026-07-16 with existing forecast refresh route and Random Forest metadata. |
+| R5 — Payment/confirmation pilot | Done | Premium payment summary, cash confirmation, order lifecycle shell | Completed 2026-07-16 with `OrderJourneyRail`, honest recorded-state copy, and removal of fake rider/map/ETA claims. |
+| R6 — Admin shell extraction | Done | Admin layout shell, tab routing, orders context panel | Completed 2026-07-16 with URL-backed tab/order selection, accessible selectable rows, and a responsive order context panel in both admin surfaces. |
+| R7A — Customer menu extraction | Done | Shared menu catalogue, pizza builder dialog, filtering tests | Completed 2026-07-16 in both giant workspaces; normalized builder maximum quantity to `pricingConfig.maxOrderQty`. |
+| R7 — DB/RLS and delivery foundation | Gated | Auth/RLS hardening, delivery quote/status schema review | Do not implement until frontend extraction is stable and DB review questions are answered. |
+
+### Next Revamp Sprints
+
+| Revamp sprint | Status | Build slice | Notes |
+|---|---|---|---|
+| R8 - Cart rail and recommendation lane extraction | Next | Extract cart presentation, recommendation lane, cart insight skeleton/states | Keep pricing, routing, API calls, validation, and store mutation in the parent orchestrators. Update both giant workspaces until the duplicated sections are removed. |
+| R9 - Customer ordering shell cleanup | Pending | Introduce a customer ordering feature shell around menu, builder, cart, recommendations, and intake | Route/page still composes; feature shell owns view layout only. No delivery fee quote or provider call yet. |
+| R10 - Admin orders workspace extraction | Pending | Move order table/context panel into feature components and add loading/empty/error/stale surfaces | Keep actions read-only for delivery; dispatch/rider controls remain disabled placeholders until DB/RLS gates. |
+| R11 - AI console and menu assistant typed contract | Pending | Add typed assistant/tester UI, grounded response shape, service health cards, deterministic fallback display | No microphone-first UX, no raw audio retention, no remote AI microservice split yet. |
+| R12 - Route boundaries, loading/error pages, and visual smoke refresh | Pending | Add route-level loading/error surfaces and update screenshot baseline for changed screens | Browser verification required when local dev server is available. |
+
+### Current Next Sprint: R8
+
+R8 is the next implementation sprint.
+
+Scope:
+
+- Extract `CartRail` as a controlled presentation component.
+- Extract `RecommendationLane` as a controlled presentation component.
+- Add or reuse skeleton/loading/empty/error states for cart insight and recommendation fetches.
+- Keep `add`, `remove`, `checkout`, `AI insight`, `recommendation refresh`, and `router.push()` behavior in the current parent components.
+- Add pure tests for cart/recommendation view helpers where logic is extracted.
+- Update both `components/SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx` until the duplicated shared customer UI is fully removed.
+
+Out of scope:
+
+- No delivery fee calculator.
+- No map, route, geocode, or provider SDK.
+- No SQL migration or RLS policy change.
+- No remote recommendation/voice microservice.
+- No persistent activity/preference writes from the browser.
+
+Acceptance:
+
+- `npm run test` passes.
+- `npx tsc --noEmit` passes.
+- Customer cart, direct add, customized add, remove, checkout CTA, AI cart strategist, and recommendation acceptance remain behaviorally unchanged.
+- Empty cart, recommendation unavailable, AI failure, and reduced-motion states are visible and honest.
+- No duplicated cart/recommendation JSX remains in the two giant files beyond orchestration and callbacks.
+
+### Backend And Delivery Gates
+
+These must remain gates, not hidden frontend assumptions:
+
+- **Auth/RLS:** customer ownership, admin role checks, and broad `using (true)` policies must be reviewed before any customer/order/delivery data is exposed through direct browser queries.
+- **Delivery quote:** distance, ETA, customer fee, rider payout, and serviceability must come from a server-authoritative quote; browser-supplied values are display hints only.
+- **Maps:** provider bake-off and quota/billing controls must complete before SDK integration. Marker movement must not call routing/geocoding on every GPS ping.
+- **Realtime/location:** customer tracking must not show rider coordinates until assignment authorization, retention policy, stale-state behavior, and fallback polling are approved.
+- **AI/voice:** assistant answers must be grounded in menu IDs and current prices. Typed input ships before push-to-talk; raw audio is not stored by default.
+- **Forecast service:** current Random Forest refresh remains compatible; persistence/microservice work waits for run tables and deployment strategy.
+
+Missing edge cases to keep in every upcoming ticket:
+
+- Empty cart, invalid persisted cart, unavailable menu item in cart, and max quantity drift.
+- Recommendation item removed/unavailable after response, duplicate recommendation acceptance, AI timeout, fallback response, and customer opt-out.
+- Payment return without valid checkout session, duplicated payment callback, cash order refresh, and confirmation without last-order handoff.
+- Admin tab reload with selected order missing, stale selected order, no orders, failed admin summary fetch, and demo-bypass disabled.
+- Reduced motion, keyboard-only modal/cart usage, focus return after dialog close, long item names, mobile sticky footer overlap, and screen-reader status for async updates.
+
 The goal is not a cosmetic reskin. SliceMatic needs two clear product modes:
 
 1. Customer ordering: fast menu discovery, trustworthy customization, visible cart confidence, transparent delivery fees, and honest post-order tracking.

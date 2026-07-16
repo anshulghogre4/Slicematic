@@ -4,6 +4,75 @@ This file maintains a timestamp-based record of the modifications, debugging ses
 
 ---
 
+### [2026-07-16 16:09:52 IST] - Sprint control consolidation and R8-R11 planning
+- Consolidated the active sprint decision into `plans/fullstack-delivery-intelligence-sprints.md` as the single operational sprint source of truth.
+- Marked the other planning files as reference inputs for architecture, UI direction, visual inspiration, polish, and DB/RLS gates.
+- Added the frontend-first R8-R11 sequence: cart/recommendation extraction, customer ordering shell cleanup, admin command/table workspace, and shared loading/empty/error/mobile polish.
+- Added R8 component boundaries, parent-owned behavior rules, and edge cases for recommendations, AI cart strategist, max quantity, mobile cart reachability, and keyboard flow.
+- Reconfirmed that DB/RLS, maps, rider tracking, and live dispatch remain gated until frontend decomposition and fallback contracts are ready.
+- Files: plans/fullstack-delivery-intelligence-sprints.md, wiki/handoff.md, wiki/log.md, CHANGELOG.md
+
+---
+
+### [2026-07-16 15:55:42 IST] - Revamp R7A menu and pizza-builder extraction
+- Used separate menu, builder, and architecture-audit agents, then integrated centrally under the Dual-File Rule.
+- Added `MenuCatalog` with shared available-item/category/query filtering and focused helper tests.
+- Added the controlled, accessible `PizzaBuilderDialog` while keeping cart mutation and validation in the parent workspaces.
+- Replaced duplicated catalogue and builder JSX in both giant workspace files.
+- Normalized the admin builder's stale hardcoded quantity limit to `pricingConfig.maxOrderQty`.
+- Validation: full `npm run test` passed 111/111; `npx tsc --noEmit` and `git diff --check` passed.
+- Files: features/menu/components/MenuCatalog.tsx, features/menu/components/PizzaBuilderDialog.tsx, features/menu/components/index.ts, lib/menu-catalog.ts, lib/menu-catalog.test.ts, components/SliceMaticStage3.tsx, app/admin-dashboard/page.tsx, plans/*, wiki/*
+
+---
+
+### [2026-07-16 15:33:38 IST] - Revamp R5 confirmation and R6 admin order context
+- Finished the R5 confirmation lifecycle with a reusable `OrderJourneyRail`, deterministic state mapping, and focused tests.
+- Replaced the simulated map, named rider, and invented ETA with explicit recorded-state and delivery-pending messaging.
+- Finished the safe R6 order-context slice with selectable order rows, URL-backed `?tab=orders&order=...` state, and a responsive details panel.
+- Applied the Dual-File Rule to both admin workspaces and kept delivery/RLS/API behavior unchanged.
+- Removed the stale commented checkout fragment and corrected the sprint handoff.
+- Validation: full `npm run test` passed 107/107; `npx tsc --noEmit` and `git diff --check` passed.
+- Files: app/confirmation/page.tsx, app/payment/page.tsx, app/admin-dashboard/page.tsx, components/SliceMaticStage3.tsx, components/admin/OrderContextPanel.tsx, features/order-tracking/*, lib/order-journey.test.ts, app/globals.css, plans/ui-revamp-implementation-plan.md, wiki/*
+
+---
+
+### [2026-07-16 15:09:54 IST] - Revamp Sprint R3-R6 batch foundation
+- Ran the next four revamp sprint slices as a batch with sprint-specific subagents and consolidated the safe landed work.
+- R3 UI primitive bridge: added `components/ui` primitives (`Button`, `Card`, `Skeleton`, `StatusPill`) plus semantic `sui-*` CSS tokens/classes and reduced-motion support in `app/globals.css`.
+- R4 Forecast pilot: added refresh action/state to `ForecastPanel`, including loading/success/failure status, skeleton fallback, previous-forecast preservation, and auth-header support for the existing `/api/admin/forecast/refresh` route.
+- R5 Payment pilot: moved `CheckoutSummary` onto the new primitives for the payment action, basket remove action, payment card surface, and payment status pill without changing pricing or payment behavior.
+- R6 Admin shell scaffold: added URL-backed admin tab parsing/selection so `/admin-dashboard?tab=forecast` can restore the forecast tab, and added a tested delivery-state contract scaffold for future dispatch/tracking controls.
+- Dual-file rule: updated both `app/admin-dashboard/page.tsx` and `components/SliceMaticStage3.tsx` for the forecast panel auth-header prop.
+- Validation: full `npm run test` passed 104/104; `npx tsc --noEmit` passed.
+- Known cleanup: `app/payment/page.tsx` contains a non-rendering commented legacy fragment with corrupted ellipsis bytes from the pre-extraction block; safe at runtime and compile-time, but should be removed in a cleanup pass before push.
+- Files: app/globals.css, components/ui/*, components/admin/ForecastPanel.tsx, features/checkout/components/CheckoutSummary.tsx, app/admin-dashboard/page.tsx, components/SliceMaticStage3.tsx, lib/admin-tabs.ts, lib/delivery-state.ts, lib/delivery-state.test.ts, plans/ui-revamp-implementation-plan.md, wiki/components.md, wiki/handoff.md, wiki/log.md, wiki/source-map.md
+
+---
+
+### [2026-07-16 14:49:26 IST] - Revamp Sprint R2 checkout component extraction
+- Completed the next revamp implementation sprint by extracting the checkout review/payment decision surface into a feature component.
+- Added `FullStack/features/checkout/components/CheckoutSummary.tsx` for basket lines, member/guest policy, bill totals, payment mode cards, payment action, and payment status rendering.
+- Updated `/payment` so the route owns data, menu loading, pricing calculation, payment side effects, and navigation, while `CheckoutSummary` owns checkout UI rendering.
+- Preserved existing business-rule totals, payment mode behavior, Cashfree/Razorpay flows, and CSS class names; no visual redesign was introduced in R2.
+- Kept R3 as the next planned sprint: UI primitive bridge with semantic tokens, `Button`, `Card`, `Skeleton`, `StatusPill`, and reduced-motion rules.
+- Verification: full `npm run test` passed 98/98; `npx tsc --noEmit` passed.
+- Files: app/payment/page.tsx, features/checkout/components/CheckoutSummary.tsx, plans/ui-revamp-implementation-plan.md, plans/frontend-architecture-restructure.md, wiki/handoff.md, wiki/log.md, wiki/source-map.md
+
+---
+
+### [2026-07-16 14:25:39 IST] - Revamp Sprint R1 checkout/session foundation
+- Completed the first revamp implementation sprint by centralizing browser storage keys and checkout payment-recovery helpers.
+- Added `FullStack/lib/session/storageKeys.ts` for shared session/local storage key ownership.
+- Added `FullStack/lib/session/checkoutSession.ts` and focused tests for member/guest checkout identity plus Cashfree pending-payment recovery.
+- Updated `/payment` to use the checkout session helpers instead of raw customer/Cashfree storage strings.
+- Updated `lib/store.ts`, `lib/session-customer.ts`, and `lib/store.test.ts` to use the centralized key constants and align the reset-session expectation with the actual initial customer draft.
+- Removed stale "vanilla CSS only" guidance from wiki decisions/tooling; current direction is best-fit styling through a planned token/component bridge.
+- Updated sprint planning docs so R1 is complete and R2/R3 are the next build slices.
+- Verification: `npm run test -- lib/session/checkoutSession.test.ts lib/store.test.ts` passed 12/12; full `npm run test` passed 98/98; `npx tsc --noEmit` passed.
+- Files: app/payment/page.tsx, lib/session/storageKeys.ts, lib/session/checkoutSession.ts, lib/session/checkoutSession.test.ts, lib/store.ts, lib/store.test.ts, lib/session-customer.ts, plans/ui-revamp-implementation-plan.md, plans/frontend-architecture-restructure.md, plans/fullstack-delivery-intelligence-sprints.md, wiki/css-system.md, wiki/decisions.md, wiki/scripts-tooling.md
+
+---
+
 ### [2026-07-06 00:43:52] - Customer session and privacy hardening (TDD)
 
 **Context:** A security audit found two real issues: (1) `GET /api/customer/profile` and `GET /api/customer/orders` had **zero authentication** — anyone who knew or guessed a customer's email/phone/`customer_id` could pull their full name, phone, email, and order history via curl; (2) `lib/store.ts`'s Zustand `persist()` defaulted to `localStorage` with no clearing on logout, so Customer A's cart/name/phone/address/last order stayed on a shared browser and leaked into Customer B's session on the same machine — even after Customer A logged out. This directly failed the `code-review-excellence` skill's own Security checklist ("Is authentication required where needed? Are authorization checks before every action?").

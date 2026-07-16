@@ -29,6 +29,42 @@ Read [[index]] first. Durable delivery design now lives in [[delivery-operations
 - Updated [[css-system]] so the old "NO Tailwind" rule is clearly marked historical and the current token/component bridge is documented.
 - Added `FullStack/plans/frontend-architecture-restructure.md` as the solution/frontend architecture plan for splitting giant files, route composition, feature folders, store persistence, URL state, and performance.
 - Added `FullStack/plans/database-schema-evolution-plan.md` as the Supabase schema and RLS evolution plan for customer auth ownership, preferences/activity, delivery quotes, riders, tracking, forecast runs, AI logs, and production-safe policies.
+- Completed Revamp Sprint R1 checkout/session foundation:
+  - Added `lib/session/storageKeys.ts`.
+  - Added `lib/session/checkoutSession.ts`.
+  - Added focused checkout session tests.
+  - Updated `/payment` to use checkout helpers for member/guest identity and Cashfree return recovery.
+  - Updated store/session-customer helpers to use centralized storage keys.
+  - Removed stale "vanilla CSS only" constraints from wiki guidance.
+  - Updated sprint docs with the revamp branch execution overlay.
+- Completed Revamp Sprint R2 checkout component extraction:
+  - Added `features/checkout/components/CheckoutSummary.tsx`.
+  - Updated `/payment` so the route owns data/payment side effects and the feature component owns the checkout review/payment UI.
+  - Preserved existing CSS classes, business-rule totals, and payment behavior.
+  - Full tests and TypeScript pass after extraction.
+- Completed Revamp Sprint R3-R6 batch foundation:
+  - Added `components/ui` primitives: `Button`, `Card`, `Skeleton`, and `StatusPill`.
+  - Added `sui-*` CSS bridge tokens/classes and reduced-motion support in `app/globals.css`.
+  - Added forecast refresh/status/skeleton pilot to `components/admin/ForecastPanel.tsx`.
+  - Passed admin auth headers into `ForecastPanel` from both `app/admin-dashboard/page.tsx` and `components/SliceMaticStage3.tsx`.
+  - Started payment pilot by moving `CheckoutSummary` actions/surfaces to the new primitives without changing payment behavior.
+  - Added URL-backed admin tab state for `/admin-dashboard?tab=...`.
+  - Added `lib/delivery-state.ts` and tests as the future delivery tracking state contract scaffold.
+- Finished Revamp R5 confirmation and the R6 admin order-context slice:
+  - Added the reusable, tested `OrderJourneyRail` and integrated it into `/confirmation`.
+  - Removed the simulated route, named rider, and invented ETA from customer confirmation.
+  - Added selectable admin order rows and `OrderContextPanel` in both duplicated admin surfaces.
+  - Added URL-backed `/admin-dashboard?tab=orders&order=...` selection while keeping the Stage3 duplicate local.
+  - Kept delivery tracking honest and made no SQL, RLS, realtime, provider, or dispatch API changes.
+- Completed Revamp R7A customer menu extraction:
+  - Added shared `MenuCatalog` and tested menu filtering/starting-price helpers.
+  - Added controlled, accessible `PizzaBuilderDialog`.
+  - Replaced duplicated menu and builder JSX in both giant workspaces.
+  - Normalized both builder copies to `pricingConfig.maxOrderQty` while leaving business mutations in the parents.
+- Consolidated the next-plan decision into `FullStack/plans/fullstack-delivery-intelligence-sprints.md`:
+  - This file is now the single operational sprint source of truth for the revamp and delivery-intelligence roadmap.
+  - `frontend-architecture-restructure.md`, `ui-revamp-implementation-plan.md`, `ui-inspiration-research.md`, `ui-ux-improvement-plan.md`, and `database-schema-evolution-plan.md` remain reference inputs.
+  - Added the R8-R11 frontend-first queue, R8 acceptance criteria, backend gates, and missing edge cases.
 
 ## Files changed
 
@@ -47,14 +83,64 @@ Read [[index]] first. Durable delivery design now lives in [[delivery-operations
 - `FullStack/wiki/ai-microservices.md`
 - `FullStack/wiki/ui-map.md`
 - `FullStack/wiki/assets/ui-map/*.png`
+- `FullStack/lib/session/storageKeys.ts`
+- `FullStack/lib/session/checkoutSession.ts`
+- `FullStack/lib/session/checkoutSession.test.ts`
+- `FullStack/app/payment/page.tsx`
+- `FullStack/lib/store.ts`
+- `FullStack/lib/store.test.ts`
+- `FullStack/lib/session-customer.ts`
+- `FullStack/features/checkout/components/CheckoutSummary.tsx`
+- `FullStack/components/ui/Button.tsx`
+- `FullStack/components/ui/Card.tsx`
+- `FullStack/components/ui/Skeleton.tsx`
+- `FullStack/components/ui/StatusPill.tsx`
+- `FullStack/components/ui/index.ts`
+- `FullStack/components/admin/ForecastPanel.tsx`
+- `FullStack/components/SliceMaticStage3.tsx`
+- `FullStack/app/admin-dashboard/page.tsx`
+- `FullStack/app/globals.css`
+- `FullStack/lib/admin-tabs.ts`
+- `FullStack/lib/delivery-state.ts`
+- `FullStack/lib/delivery-state.test.ts`
+- `FullStack/features/order-tracking/orderJourney.ts`
+- `FullStack/features/order-tracking/components/OrderJourneyRail.tsx`
+- `FullStack/lib/order-journey.test.ts`
+- `FullStack/components/admin/OrderContextPanel.tsx`
+- `FullStack/app/confirmation/page.tsx`
+- `FullStack/features/menu/components/MenuCatalog.tsx`
+- `FullStack/features/menu/components/PizzaBuilderDialog.tsx`
+- `FullStack/features/menu/components/index.ts`
+- `FullStack/lib/menu-catalog.ts`
+- `FullStack/lib/menu-catalog.test.ts`
+- `FullStack/wiki/state-management.md`
+- `FullStack/wiki/components.md`
+- `FullStack/wiki/decisions.md`
+- `FullStack/wiki/scripts-tooling.md`
 - `AGENTS.md`
 - `CLAUDE.md`
 
-No FullStack application code or SQL schema was changed in this planning sprint.
+FullStack application code was changed in Revamp Sprints R1-R7A. No SQL schema was changed.
 
 ## Next action
 
-Use [[ui-map]], `FullStack/plans/ui-inspiration-research.md`, `FullStack/plans/ui-revamp-implementation-plan.md`, `FullStack/plans/frontend-architecture-restructure.md`, and `FullStack/plans/database-schema-evolution-plan.md` as the baseline for all upcoming UI implementation. Start Sprint 0 with frontend architecture extraction, DB/RLS hardening, and a design-system bridge decision before component migration. Do not implement precise rider tracking before:
+Current next frontend build sprint after R7A: **R8 cart rail and recommendation-lane extraction**, while the separate DB/RLS delivery foundation remains gated.
+
+- Extract cart presentation and AI recommendation presentation without moving pricing, API, or store mutations into UI components.
+- Continue using the UI primitive bridge for intentionally migrated surfaces.
+- Preserve the completed menu/builder, admin selection, and confirmation lifecycle contracts.
+- Do not implement live rider tracking or maps until DB/RLS and provider bake-off gates are complete.
+
+Use `FullStack/plans/fullstack-delivery-intelligence-sprints.md` as the sprint control file. Consult [[ui-map]], `FullStack/plans/ui-inspiration-research.md`, `FullStack/plans/ui-revamp-implementation-plan.md`, `FullStack/plans/frontend-architecture-restructure.md`, and `FullStack/plans/database-schema-evolution-plan.md` only as supporting references unless a durable fact changes.
+
+R8 acceptance focus:
+
+1. Extract `CartRail`, `CartLineItem`, `RecommendationLane`, and `AiCartStrategistCard` presentation boundaries.
+2. Keep pricing, cart mutation, recommendation/AI fetches, router navigation, Zustand writes, toasts, and validation in the parent orchestrators.
+3. Cover empty cart, unavailable recommendation IDs, invalid AI suggestions, max quantity, guest/member copy, mobile cart reachability, and keyboard flow.
+4. Update both `components/SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx` until duplicated shared sections are fully removed.
+
+Do not implement precise rider tracking before:
 
 1. Admin/customer/rider authorization and RLS are hardened.
 2. Delivery and kitchen state transitions are approved.
@@ -67,6 +153,17 @@ Then execute modular extraction and contract tests before deploying recommendati
 ## Existing verification baseline
 
 - `npm run build`: passed on 2026-07-16.
-- `npm test`: 92 passed, one `resetSession()` address assertion failed.
+- `npm run test -- lib/session/checkoutSession.test.ts lib/store.test.ts`: passed 12/12 on 2026-07-16 after R1.
+- `npm run test`: passed 98/98 on 2026-07-16 after R1.
+- `npm run test`: passed 98/98 on 2026-07-16 after R2.
+- `npm run test`: passed 104/104 on 2026-07-16 after R3-R6 batch.
+- `npm run test`: passed 107/107 on 2026-07-16 after R5 confirmation and R6 order context.
+- `npm run test`: passed 111/111 on 2026-07-16 after R7A menu and builder extraction.
+- `npx tsc --noEmit`: passed on 2026-07-16 after R1.
+- `npx tsc --noEmit`: passed on 2026-07-16 after R2.
+- `npx tsc --noEmit`: passed on 2026-07-16 after R3-R6 batch.
+- `npx tsc --noEmit`: passed on 2026-07-16 after R5 confirmation and R6 order context.
+- `npx tsc --noEmit`: passed on 2026-07-16 after R7A menu and builder extraction.
+- Earlier full `npm test`: 92 passed, one `resetSession()` address assertion failed; R1 corrected that focused store assertion.
 
 At the end of every material task, update affected pages and append to [[log]].

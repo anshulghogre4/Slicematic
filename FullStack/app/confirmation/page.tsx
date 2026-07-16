@@ -1,11 +1,15 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Check, Utensils } from "lucide-react";
+import { Utensils } from "lucide-react";
 import { useStore } from "../../lib/store";
 import { money } from "../../lib/pricing";
 import { PaymentMode } from "../../lib/types";
 import { markOrdersNeedRefresh } from "../../lib/session-customer";
+import { Button } from "../../components/ui/Button";
+import { Card } from "../../components/ui/Card";
+import { StatusPill } from "../../components/ui/StatusPill";
+import { OrderJourneyRail } from "../../features/order-tracking/components/OrderJourneyRail";
 
 function paymentConfirmation(mode: PaymentMode) {
   if (mode === "UPI") return "UPI payment requested. Order processing will begin upon confirmation.";
@@ -19,34 +23,37 @@ export default function ConfirmationScreen() {
 
   if (!lastOrder) {
     return (
-      <main className="app-frame" style={{ maxWidth: 1200, margin: "0 auto", padding: "1rem", textAlign: "center" }}>
+      <main className="app-frame confirmation-empty">
         <h2>No active order found</h2>
-        <button className="primary" onClick={() => { markOrdersNeedRefresh(); router.push("/"); }}>Return to menu</button>
+        <Button variant="primary" onClick={() => { markOrdersNeedRefresh(); router.push("/"); }}>Return to menu</Button>
       </main>
     );
   }
 
   return (
-    <main className="app-frame" style={{ maxWidth: 1200, margin: "0 auto", padding: "1rem" }}>
+    <main className="app-frame confirmation-shell">
       <section className="tracking-page" id="tracking">
         <div className="tracking-page-head">
           <div>
             <p className="eyebrow">Order journey</p>
             <h1>Track your SliceMatic order</h1>
-            <p>The cart is closed now. The customer sees fulfilment status, rider progress, and final bill on a dedicated page.</p>
+            <p>Your order is confirmed. Follow verified kitchen and delivery updates here as they become available.</p>
           </div>
-          <button type="button" onClick={() => { markOrdersNeedRefresh(); clearCheckout(); router.push("/"); }}><Utensils /> New order</button>
+          <Button variant="secondary" onClick={() => { markOrdersNeedRefresh(); clearCheckout(); router.push("/"); }}><Utensils /> New order</Button>
         </div>
         <section className="tracking-grid">
-          <div className="map-card"><div className="route-line" /><span className="pin store">S</span><span className="pin home">H</span><div className="rider-card">Ravi assigned<br /><small>Arrives in 34 min</small></div></div>
-          <div className="tracking-card">
-            <p className="eyebrow">Live tracking</p><h2>Order {lastOrder.id.slice(0, 8)} confirmed</h2>
+          <OrderJourneyRail orderId={lastOrder.id} status={lastOrder.status} />
+          <Card className="tracking-card confirmation-status-card" tone="soft">
+            <div className="confirmation-status-card__heading">
+              <div><p className="eyebrow">Payment status</p><h2>Order confirmed</h2></div>
+              <StatusPill tone={lastOrder.paymentMode === "Cash" ? "warning" : "success"}>
+                {lastOrder.paymentMode === "Cash" ? "Pay on delivery" : "Payment recorded"}
+              </StatusPill>
+            </div>
             <div className="payment-confirmation">{paymentConfirmation(lastOrder.paymentMode)}</div>
-            {["Order accepted", "In the oven", "Quality check", "Out for delivery", "At doorstep"].map((item, index) => (
-              <div className="timeline-item" key={item}><span className={index < 2 ? "done" : ""}>{index < 2 ? <Check /> : index + 1}</span><div><strong>{item}</strong><small>{index === 1 ? "Kitchen is baking selected crust and toppings." : "Tracked in the order lifecycle."}</small></div></div>
-            ))}
-          </div>
-          <div className="tracking-card final-bill">
+            <p className="confirmation-status-card__note">Keep this page open or return later from your order history. Updates shown here reflect recorded order data.</p>
+          </Card>
+          <Card className="tracking-card final-bill">
             <p className="eyebrow">Final bill</p><h2>{money(lastOrder.finalTotal)}</h2>
             <div className="bill-lines">
               {lastOrder.lines.map((line, index) => (
@@ -65,7 +72,7 @@ export default function ConfirmationScreen() {
               <div className="total"><span>Final payable</span><b>{money(lastOrder.finalTotal)}</b></div>
             </div>
             <small>Delivery zone {lastOrder.deliveryZone ?? customer.deliveryZone} km / {lastOrder.address ?? customer.address}</small>
-          </div>
+          </Card>
         </section>
       </section>
     </main>

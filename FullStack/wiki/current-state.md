@@ -19,10 +19,11 @@ Related pages: [[architecture]], [[database-schema]], [[payments]], [[feature-re
 | Check | Result | Date |
 |---|---|---|
 | `npm run build` | Passed: compilation, type checking, page generation | 2026-07-16 |
-| `npm test` | 92 passed, 1 failed across 15 suites | 2026-07-16 |
+| `npm run test` | Passed: 111 tests across 19 suites | 2026-07-16 |
+| `npx tsc --noEmit` | Passed after Revamp R7A | 2026-07-16 |
 | Structural extraction | 405 entities, 1,109 relationships across 77 code files | 2026-07-16 |
 
-The failing test is `lib/store.test.ts`: `resetSession()` expects an empty address but receives the `initialCustomer` default address, `New Ashok Nagar, Delhi NCR`. This is a behavior/test contract mismatch, not a build failure.
+The earlier `resetSession()` expectation mismatch was corrected in Revamp R1; the current full suite is green.
 
 ## Runtime modes
 
@@ -41,4 +42,3 @@ Fallback behavior is part of the product demo strategy. It must not be treated a
 6. The large customer and admin workspace files create duplication and regression risk; confirm both before shared UI changes.
 
 See [[contradictions]] for documentation drift and [[handoff]] for the active next actions.
-

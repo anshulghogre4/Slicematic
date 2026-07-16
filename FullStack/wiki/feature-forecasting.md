@@ -33,6 +33,13 @@ The Node.js backend interfaces with the Python script via a caching mechanism ra
 ### 3. Frontend Display
 The forecast is consumed by the `AdminSummary` component in the admin dashboard. It highlights the `topPeaks` so managers instantly know when the kitchen will be slammed, and displays the RMSE to build trust in the model's current accuracy.
 
+Revamp Sprint R4 added an operational refresh pilot in `components/admin/ForecastPanel.tsx`:
+
+- `Refresh forecast` calls the existing protected `/api/admin/forecast/refresh` route.
+- The previous successful forecast remains visible while refresh is running or if refresh fails.
+- The panel shows refresh status, failure messaging, a skeleton fallback for empty forecast data, and Random Forest run metadata from `ForecastMeta`.
+- Both `app/admin-dashboard/page.tsx` and `components/SliceMaticStage3.tsx` pass admin auth headers into the panel per the dual-file rule.
+
 ## Possible Interview Questions & Talking Points
 
 - **Why use a RandomForest instead of an LLM or time-series specific model (like ARIMA)?**

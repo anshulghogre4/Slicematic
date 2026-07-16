@@ -30,6 +30,20 @@ Order/payment → kitchen ready → assignment → pickup → live trip → proo
 - Customer tracking must show last-update age and degraded state; never simulate live motion.
 - Preferences use explicit choices plus derived affinity; explicit exclusions always win.
 
+## Current implementation scaffold
+
+Revamp Sprint R6 added `lib/delivery-state.ts` and `lib/delivery-state.test.ts` as a pure TypeScript state-contract scaffold. It does not persist delivery data yet and does not enable live rider tracking. It currently defines:
+
+- delivery statuses from `unassigned` through `delivered`/`cancelled`
+- allowed actor-based transitions for admin, rider, and system actions
+- terminal delivery states
+- statuses where live location is allowed to be shown
+- customer/admin-readable labels for future UI controls
+
+This scaffold should feed future DB migrations, admin dispatch controls, rider PWA actions, and customer tracking copy. SQL/RLS work is still required before live delivery implementation.
+
+Revamp R5/R6 now consume that safety direction in the UI. `/confirmation` uses a recorded-status `OrderJourneyRail` and no longer renders a fake route, named rider, or invented ETA. Admin Orders can open a real order context panel, but it explicitly withholds dispatch, rider location, and ETA until the delivery schema and policies exist.
+
 ## Proposed technology
 
 - Provisional MVP choice: Google Maps JavaScript + Routes API for India, operated inside eligible India free caps with hard quotas and billing alerts.

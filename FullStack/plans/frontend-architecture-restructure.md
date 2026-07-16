@@ -605,11 +605,20 @@ Create ADRs later if approved:
 
 Recommended first architecture slice:
 
-1. Add `lib/session/storageKeys.ts`.
-2. Add `lib/session/checkoutSession.ts`.
-3. Replace scattered string storage keys in `/payment` only.
-4. Extract `features/checkout/components/CheckoutSummary.tsx`.
-5. Add a test around checkout recovery after refresh.
+1. [x] Add `lib/session/storageKeys.ts`.
+2. [x] Add `lib/session/checkoutSession.ts`.
+3. [x] Replace scattered string storage keys in `/payment` only.
+4. [x] Extract `features/checkout/components/CheckoutSummary.tsx`.
+5. [x] Add a test around checkout recovery after refresh.
+
+Current sprint note:
+
+- R1 implemented the session/helper foundation. R2 extracted `CheckoutSummary` while preserving existing CSS classes and payment behavior.
+- R3 added `components/ui` primitives and `sui-*` CSS bridge tokens/classes.
+- R4 added the forecast refresh pilot on the existing `ForecastPanel`.
+- R5 partially migrated checkout/payment to primitives; confirmation extraction remains.
+- R6 added URL-backed admin tab state and a tested delivery-state contract scaffold. Full admin drawer extraction remains later.
+- R7A extracted the duplicated customer catalogue into `features/menu/components/MenuCatalog.tsx` and the duplicated customizer into `PizzaBuilderDialog.tsx`. Both giant workspaces now compose these controlled components; cart mutation, customer validation, routing, and store ownership remain in their orchestrators.
 
 Why this first:
 

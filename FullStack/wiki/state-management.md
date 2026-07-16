@@ -4,7 +4,7 @@
 
 ## Zustand Store (`lib/store.ts`)
 
-**Persistence:** `sessionStorage` key `"slicematic-storage"`  
+**Persistence:** `sessionStorage` key `SESSION_STORAGE_KEYS.zustandStore` (`"slicematic-storage"`)
 **Why sessionStorage:** Cart should not survive browser close. Auth isolation per tab.
 
 ### State Shape
@@ -45,7 +45,9 @@ const { cart, setCart, customer, setCustomer, pricingConfig, ... } = useStore();
 
 ## SessionStorage Keys (Manual Auth State)
 
-These are **not** in Zustand — they're set manually via `window.sessionStorage`:
+These are **not** in Zustand — they're set manually via `window.sessionStorage`.
+
+Runtime code should import keys from `lib/session/storageKeys.ts` instead of repeating string literals. Checkout/payment route recovery should go through `lib/session/checkoutSession.ts`:
 
 ```typescript
 // Auth decision keys
@@ -98,6 +100,25 @@ applyOrderToSession(order: SavedOrder)
 syncSessionCustomerId(id: string)
   // Updates stored customer ID if server returns a resolved one
 ```
+
+---
+
+## `lib/session/checkoutSession.ts`
+
+Checkout-specific session helpers added in Revamp Sprint R1:
+
+```typescript
+readCheckoutSessionIdentity(sessionStorage)
+  // Returns member/guest mode, stored email, and stored customer ID
+
+writeCashfreePendingPayment(localStorage, pending)
+  // Stores pending Cashfree order handoff before redirect
+
+completeCashfreeReturn(localStorage, returnOrderId)
+  // Reads and clears pending Cashfree state on return to /payment?order_id=...
+```
+
+The `/payment` route uses these helpers so checkout refresh/redirect behavior is tested without scattering raw storage keys.
 
 ---
 

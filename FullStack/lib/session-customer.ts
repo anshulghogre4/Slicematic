@@ -1,4 +1,5 @@
 import { getSupabaseBrowserClient } from "./supabase";
+import { SESSION_STORAGE_KEYS } from "./session/storageKeys";
 
 const DEMO_CUSTOMER_EMAIL = "demo@slicematic.in";
 const DEMO_CUSTOMER_PHONE = "9999999999";
@@ -27,16 +28,16 @@ function withAuthHeader(token: string, extra?: Record<string, string>) {
 
 export function syncSessionCustomerId(customerId: string | null | undefined) {
   if (typeof window === "undefined" || !customerId) return;
-  window.sessionStorage.setItem("slicematic_customer_id", customerId);
+  window.sessionStorage.setItem(SESSION_STORAGE_KEYS.customerId, customerId);
 }
 
 /** Ensure the logged-in session has a Supabase customer row (email + phone lookup). */
 export async function syncSessionCustomerRecord(): Promise<string | null> {
   if (typeof window === "undefined") return null;
 
-  const email = (window.sessionStorage.getItem("slicematic_customer_email") ?? "").trim().toLowerCase();
-  const customerJson = window.sessionStorage.getItem("slicematic_customer");
-  const existingId = window.sessionStorage.getItem("slicematic_customer_id");
+  const email = (window.sessionStorage.getItem(SESSION_STORAGE_KEYS.customerEmail) ?? "").trim().toLowerCase();
+  const customerJson = window.sessionStorage.getItem(SESSION_STORAGE_KEYS.customer);
+  const existingId = window.sessionStorage.getItem(SESSION_STORAGE_KEYS.customerId);
   if (!email || !customerJson) return existingId;
 
   let parsed: { name?: string; phone?: string; address?: string };
@@ -81,7 +82,7 @@ export async function syncSessionCustomerRecord(): Promise<string | null> {
 
 export function markOrdersNeedRefresh() {
   if (typeof window === "undefined") return;
-  window.sessionStorage.setItem("slicematic_refresh_orders", "1");
+  window.sessionStorage.setItem(SESSION_STORAGE_KEYS.refreshOrders, "1");
 }
 
 export function applyOrderToSession(order: { linkedCustomerId?: string | null }) {

@@ -6,6 +6,12 @@
 
 ## Component Inventory
 
+### 0. Shared UI primitives
+- **Files:** `components/ui/Button.tsx`, `components/ui/Card.tsx`, `components/ui/Skeleton.tsx`, `components/ui/StatusPill.tsx`
+- **Role:** Small token-backed primitives introduced in Revamp Sprint R3
+- **CSS bridge:** `sui-*` classes in `app/globals.css`
+- **Rules:** Use these for new/migrated surfaces before adding one-off styling; keep accessibility and reduced-motion behavior in the primitive layer where possible.
+
 ### 1. `SliceMaticStage3` ⭐ MAIN COMPONENT
 - **File:** `components/SliceMaticStage3.tsx` (~2700 lines)
 - **Route:** Rendered at `/` (customer workspace)
@@ -81,12 +87,46 @@ type AdminTab = "overview" | "orders" | "menu" | "settings" | "forecast" | "ai"
 - **File:** `components/admin/ForecastPanel.tsx`
 - **Role:** Demand forecast chart (admin-only)
 - **Data:** `ForecastPoint[]` + `ForecastMeta` from `AdminSummary`
+- **Revamp Sprint R4:** Adds refresh action/state, skeleton fallback, previous-forecast preservation, and auth-header support for `/api/admin/forecast/refresh`
 
 ---
 
 ### 6. `RecommendationAIPanel`
 - **File:** `components/admin/RecommendationAIPanel.tsx`
 - **Role:** AI recommendation testing UI for admins
+
+---
+
+### 7. `CheckoutSummary`
+- **File:** `features/checkout/components/CheckoutSummary.tsx`
+- **Route:** Used by `/payment`
+- **Role:** Renders the checkout review and payment decision surface
+- **Owns UI for:** basket lines, member/guest payment policy, bill totals, payment mode cards, primary payment/place-order button, and payment status text
+- **Does not own:** payment API calls, router navigation, menu loading, pricing calculation, or order placement side effects; those remain in `app/payment/page.tsx`
+- **Sprint:** Extracted in Revamp Sprint R2 as the first feature-folder UI component before the broader UI primitive bridge; partially migrated to shared primitives in R3/R5
+
+### 8. `OrderJourneyRail`
+- **Files:** `features/order-tracking/components/OrderJourneyRail.tsx`, `features/order-tracking/orderJourney.ts`
+- **Route:** Used by `/confirmation`
+- **Role:** Converts recorded order status into a five-step customer lifecycle without implying live rider data.
+- **Safety:** Rider, ETA, and map details remain explicitly unavailable until delivery schema/RLS/realtime work is approved.
+
+### 9. `OrderContextPanel`
+- **File:** `components/admin/OrderContextPanel.tsx`
+- **Role:** Responsive selected-order detail surface using existing order, customer, payment, total, and line-item data.
+- **State:** `/admin-dashboard` persists selection in `?tab=orders&order=...`; the duplicated Stage3 admin workspace keeps local selection.
+- **Safety:** Dispatch, rider location, and ETA are labelled unavailable; no delivery API or schema behavior is fabricated.
+
+### 10. `MenuCatalog`
+- **Files:** `features/menu/components/MenuCatalog.tsx`, `lib/menu-catalog.ts`
+- **Role:** Shared customer pizza catalogue used by both giant workspaces, including category/query filtering, starting price, metadata, customize, and direct-add actions.
+- **Boundary:** Receives menu data and callbacks; it does not own customer validation, cart mutation, navigation, or persisted state.
+
+### 11. `PizzaBuilderDialog`
+- **File:** `features/menu/components/PizzaBuilderDialog.tsx`
+- **Role:** Controlled accessible pizza customizer for crust, size, toppings, quantity, and preview total.
+- **Boundary:** Parent workspaces retain builder state, capacity validation, cart merging, toast behavior, and navigation.
+- **Consistency:** Both integrations now use `pricingConfig.maxOrderQty`; the previous admin hardcoded limit of 10 was removed.
 
 ---
 

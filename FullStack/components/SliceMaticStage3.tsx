@@ -6,7 +6,6 @@ import {
   BadgePercent,
   Brain,
   Check,
-  ChefHat,
   CreditCard,
   Download,
   Flame,
@@ -26,13 +25,10 @@ import {
   Settings2,
   ShieldCheck,
   ShoppingBag,
-  SlidersHorizontal,
   Sparkles,
-  Star,
   Trash2,
   Upload,
-  Utensils,
-  X
+  Utensils
 } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
@@ -45,9 +41,11 @@ import { useStore } from "../lib/store";
 import { useRouter } from "next/navigation";
 import ForecastPanel from "./admin/ForecastPanel";
 import RecommendationAIPanel from "./admin/RecommendationAIPanel";
+import { OrderContextPanel } from "./admin/OrderContextPanel";
 import { ADMIN_TABS, adminTabLabel, type AdminTab } from "../lib/admin-tabs";
 import CustomerOrderHistoryTable from "./CustomerOrderHistoryTable";
 import { CustomerOrderHistoryItem } from "../lib/data-service";
+import { MenuCatalog, PizzaBuilderDialog } from "../features/menu/components";
 
 type Step = "intake" | "recommendation" | "menu" | "checkout" | "tracking";
 type Workspace = "customer" | "account" | "admin";
@@ -169,6 +167,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   const [adminSummary, setAdminSummary] = useState<AdminSummary>(buildSeedSummary());
   const [adminPaymentFilter, setAdminPaymentFilter] = useState("All");
   const [adminDateFilter, setAdminDateFilter] = useState("");
+  const [selectedOrderId, setSelectedOrderId] = useState("");
   const [menuDraftSection, setMenuDraftSection] = useState<MenuSection>("pizzas");
   const [menuAdminPage, setMenuAdminPage] = useState<MenuAdminPage>("create");
   const [settingsPage, setSettingsPage] = useState<SettingsPage>("brand");
@@ -419,12 +418,6 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
   const totals = useMemo(() => calculateBill(cart, menu, pricingConfig), [cart, menu, pricingConfig]);
   const customerOrderMode = customerLoggedIn ? "Member order" : "Guest order";
   const customerPaymentPolicy = customerLoggedIn || pricingConfig.guestCashAllowed ? "Cash, Card, and UPI available" : "Guest checkout requires UPI or Card";
-
-  const filteredPizzas = activePizzas.filter((pizza) => {
-    const matchesCategory = category === "All" || pizza.tags?.includes(category);
-    const haystack = `${pizza.name} ${pizza.description} ${pizza.tags?.join(" ")}`.toLowerCase();
-    return matchesCategory && haystack.includes(query.toLowerCase());
-  });
 
   const filteredOrders = adminSummary.recentOrders.filter((order) => {
     const matchesPayment = adminPaymentFilter === "All" || order.paymentMode === adminPaymentFilter;
@@ -2373,64 +2366,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
                   </section>
                 )}
 
-                {step === "menu" && (
-                  <section className="menu-section">
-                    <div className="section-head">
-                      <div><h2>Signature pizzas</h2></div>
-                      <div className="category-row">
-                        {["All", "Veg", "Chicken", "Cheese", "Spicy"].map((item) => (
-                          <button key={item} className={category === item ? "active" : ""} onClick={() => setCategory(item)} type="button">{item}</button>
-                        ))}
-                      </div>
-                    </div>
-                    <div className="menu-grid">
-                      {filteredPizzas.map((pizza) => {
-                        const defaultCrustPrice = activeBases.length > 0 ? activeBases[0].price : 0;
-                        return (
-                          <article className="pizza-card" key={pizza.id}>
-                            <div className="pizza-media">
-                              <img src={pizza.image} alt={pizza.name} />
-                              <span><Sparkles /> {pizza.badge}</span>
-                              <b><Star /> 4.{pizza.id}</b>
-                            </div>
-                            <div className="pizza-body">
-                              <div>
-                                <h3 style={{ display: "inline-flex", alignItems: "center" }}>
-                                  <span style={{
-                                    display: "inline-flex",
-                                    alignItems: "center",
-                                    justifyContent: "center",
-                                    width: "12px",
-                                    height: "12px",
-                                    border: `1px solid ${pizza.tags?.includes("Veg") ? "#10b981" : "#ef4444"}`,
-                                    padding: "2px",
-                                    marginRight: "8px",
-                                    flexShrink: 0
-                                  }}>
-                                    <span style={{
-                                      width: "6px",
-                                      height: "6px",
-                                      borderRadius: "50%",
-                                      backgroundColor: pizza.tags?.includes("Veg") ? "#10b981" : "#ef4444"
-                                    }} />
-                                  </span>
-                                  {pizza.name}
-                                </h3>
-                                <strong>{money(pizza.price + defaultCrustPrice)}</strong>
-                              </div>
-                              <p>{pizza.description}</p>
-                              <div className="chips"><span><ChefHat /> Fresh</span><span>{pizza.prepMinutes} min</span>{pizza.tags?.slice(0, 2).map((tag) => <span key={tag}>{tag}</span>)}</div>
-                            </div>
-                            <div className="pizza-actions">
-                              <button className="primary" onClick={() => openBuilder(pizza)} type="button"><SlidersHorizontal /> Customize</button>
-                              <button onClick={() => addPizzaDirectToCart(pizza)} type="button" aria-label={`Add ${pizza.name}`}><Plus /></button>
-                            </div>
-                          </article>
-                        );
-                      })}
-                    </div>
-                  </section>
-                )}
+                {step === "menu" && <MenuCatalog pizzas={menu.pizzas} bases={menu.bases} category={category} query={query} onCategoryChange={setCategory} onCustomize={openBuilder} onAdd={addPizzaDirectToCart} formatMoney={money} />}
               </section>
 
               <aside className="cart-panel">
@@ -2501,10 +2437,13 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
               {adminTab === "orders" && (
                 <section className="admin-card">
                   <div className="filters"><input type="date" value={adminDateFilter} onChange={(event) => setAdminDateFilter(event.target.value)} /><select value={adminPaymentFilter} onChange={(event) => setAdminPaymentFilter(event.target.value)}><option>All</option><option>UPI</option><option>Card</option><option>Cash</option></select></div>
-                  <OrderTable orders={filteredOrders} />
+                  <div className={selectedOrderId ? "admin-orders-workspace has-selection" : "admin-orders-workspace"}>
+                    <OrderTable orders={filteredOrders} selectedOrderId={selectedOrderId} onSelectOrder={setSelectedOrderId} />
+                    {adminSummary.recentOrders.find((order) => order.id === selectedOrderId) ? <OrderContextPanel order={adminSummary.recentOrders.find((order) => order.id === selectedOrderId)!} onClose={() => setSelectedOrderId("")} /> : null}
+                  </div>
                 </section>
               )}
-              {adminTab === "forecast" && <ForecastPanel summary={adminSummary} />}
+              {adminTab === "forecast" && <ForecastPanel summary={adminSummary} authHeaders={adminAuthHeader()} />}
               {adminTab === "menu" && (
                 <section className="admin-card menu-editor">
                   <div className="admin-page-head">
@@ -2686,30 +2625,7 @@ export default function SliceMaticStage3({ onUnauthorize }: { onUnauthorize?: ()
         </section>
       )}
 
-      {selectedPizza && (
-        <div className="builder-overlay" onClick={() => setSelectedPizza(null)}>
-          <section className="builder-panel" onClick={(event) => event.stopPropagation()}>
-            <img src={selectedPizza.image} alt={selectedPizza.name} />
-            <div style={{ position: "relative" }}>
-              <button type="button" onClick={() => setSelectedPizza(null)} style={{ position: "absolute", top: "0", right: "0", background: "none", border: "none", cursor: "pointer", padding: "0.5rem" }}><X size={24} /></button>
-              <p className="eyebrow">Customize pizza</p><h2>{selectedPizza.name}</h2><p>{selectedPizza.description}</p>
-              <div className="builder-group"><h3>Crust</h3>{activeBases.map((base) => <button className={builder.baseId === base.id ? "active" : ""} onClick={() => setBuilder({ ...builder, baseId: base.id })} key={base.id} type="button">{base.name}<span>{money(base.price)}</span></button>)}</div>
-              <div className="builder-group"><h3>Size</h3>{activeSizes.map((size) => <button className={builder.sizeId === size.id ? "active" : ""} onClick={() => setBuilder({ ...builder, sizeId: size.id })} key={size.id} type="button">{size.name}<span>{size.extra ? `+ ${money(size.extra)}` : "Included"}</span></button>)}</div>
-              <div className="builder-group toppings"><h3>Toppings</h3>{activeToppings.map((topping) => <label key={topping.id}><input type="checkbox" checked={builder.toppingIds.includes(topping.id)} onChange={(event) => setBuilder((current) => ({ ...current, toppingIds: event.target.checked ? [...current.toppingIds, topping.id] : current.toppingIds.filter((id) => id !== topping.id) }))} />{topping.name}<span>+ {money(topping.price)}</span></label>)}</div>
-              <div className="builder-footer"><input type="number" min={1} max={pricingConfig.maxOrderQty} value={builder.quantity} onChange={(event) => {
-                const newQty = Number(event.target.value);
-                const maxAllowed = pricingConfig.maxOrderQty;
-                if (newQty > maxAllowed) {
-                  showToast(`Maximum outlet capacity is ${pricingConfig.maxOrderQty} pizzas per order.`);
-                  setBuilder({ ...builder, quantity: maxAllowed });
-                } else {
-                  setBuilder({ ...builder, quantity: newQty });
-                }
-              }} /><strong>{money(getLineUnitPrice({ id: "preview", pizzaId: selectedPizza.id, baseId: builder.baseId, sizeId: builder.sizeId, toppingIds: builder.toppingIds, quantity: 1 }, menu) * builder.quantity)}</strong><button className="primary" onClick={addBuilderToCart} type="button"><ShoppingBag /> Add to cart</button></div>
-            </div>
-          </section>
-        </div>
-      )}
+      {selectedPizza && <PizzaBuilderDialog pizza={selectedPizza} menu={menu} value={builder} maxQuantity={pricingConfig.maxOrderQty} onChange={setBuilder} onAddToCart={addBuilderToCart} onClose={() => setSelectedPizza(null)} />}
 
       {toast && <div className="toast">{toast}</div>}
     </main>
@@ -2790,11 +2706,11 @@ function AdminOverview({ summary, opsBriefing, opsLoading, onRefreshOps }: { sum
   );
 }
 
-function OrderTable({ orders }: { orders: SavedOrder[] }) {
+function OrderTable({ orders, selectedOrderId, onSelectOrder }: { orders: SavedOrder[]; selectedOrderId?: string; onSelectOrder?: (orderId: string) => void }) {
   return (
     <div className="order-table">
       <div className="order-row head"><span>Order</span><span>Customer</span><span>Payment</span><span>Total</span><span>Status</span></div>
-      {orders.map((order) => <div className="order-row" key={order.id}><span>{order.id.slice(0, 8)}</span><span>{order.customerName}<small>{order.phone}</small></span><span>{order.paymentMode}</span><span>{money(order.finalTotal)}</span><span>{order.status}</span></div>)}
+      {orders.map((order) => <button className={selectedOrderId === order.id ? "order-row is-selected" : "order-row"} key={order.id} type="button" onClick={() => onSelectOrder?.(order.id)} aria-pressed={selectedOrderId === order.id} aria-label={`View order ${order.id.slice(0, 8)} for ${order.customerName}`}><span>{order.id.slice(0, 8)}</span><span>{order.customerName}<small>{order.phone}</small></span><span>{order.paymentMode}</span><span>{money(order.finalTotal)}</span><span>{order.status}</span></button>)}
     </div>
   );
 }

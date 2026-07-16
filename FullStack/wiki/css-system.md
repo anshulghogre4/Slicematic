@@ -1,6 +1,6 @@
 # 🎨 SliceMatic — CSS Design System
 
-> Vanilla CSS only. All tokens and conventions documented here.
+> Legacy CSS inventory plus the current token/component migration bridge.
 
 ---
 
@@ -20,12 +20,11 @@ Current rules:
 4. Do not mix random inline styles, long duplicated utility strings, and legacy classes on the same surface without extracting or documenting the bridge.
 5. Dark mode is not currently implemented; if added, it must be token-driven.
 
-Historical rules below describe the legacy baseline, not the future migration target.
+Legacy baseline notes below describe how the current screens are styled today, not a restriction on the future migration target.
 
-1. **NO Tailwind** — EVER. Not even `@apply`. Vanilla CSS only.
-2. **All design tokens** live in `app/globals.css` inside the `:root {}` block.
-3. **All layout classes** are in `app/globals.css`. Never create ad-hoc inline styles without checking here first.
-4. **Dark mode**: Not currently implemented. Light theme only.
+1. Most current design tokens live in `app/globals.css` inside the `:root {}` block.
+2. Most current layout classes are in `app/globals.css`; check existing classes before duplicating a pattern.
+3. Dark mode is not currently implemented. Light theme only until a token-driven dark mode pass is planned.
 
 ---
 

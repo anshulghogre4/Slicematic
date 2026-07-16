@@ -9,6 +9,85 @@ scope: preferences, activity, dispatch, rider fees, ETA, live tracking, forecast
 
 # FullStack Delivery Intelligence Sprint Plan
 
+## Revamp Branch Execution Overlay
+
+The `new-revamp-1` branch starts with a harmless frontend foundation overlay before delivery schema or tracking implementation:
+
+1. **R1 — Checkout/session foundation:** centralize storage keys and checkout payment-recovery helpers, wire `/payment`, add focused tests.
+2. **R2 — Checkout component extraction:** extract checkout summary/payment trust panel without changing pricing/business rules.
+3. **R3 — UI primitive bridge:** introduce semantic tokens, skeletons, status pills, and reusable primitives before broad page rewrites.
+
+Delivery Sprint 0 and Delivery Sprint 1 below remain valid, but live delivery tracking, rider state, and DB/RLS changes should wait until this frontend foundation is stable and reviewed.
+
+### Sprint control file decision
+
+As of 2026-07-16, `FullStack/plans/ui-revamp-implementation-plan.md` is the operational sprint source of truth for the `new-revamp-1` frontend revamp branch.
+
+This file remains the delivery-intelligence, maps, AI-service, forecast-service, and microservice backlog. Pull items from here into the UI revamp sprint file only when the frontend is ready and the relevant DB/RLS/provider gates are satisfied.
+
+Use the other plan files as supporting references:
+
+- `plans/frontend-architecture-restructure.md` supplies architecture rules and target folder boundaries.
+- `plans/ui-revamp-implementation-plan.md` supplies screen-by-screen UI direction.
+- `plans/ui-inspiration-research.md` supplies visual references and product feel.
+- `plans/ui-ux-improvement-plan.md` supplies tactical polish ideas.
+- `plans/database-schema-evolution-plan.md` supplies gated DB/RLS design, not immediate implementation.
+
+Do not split the active sprint queue across those files. When priorities change, update this section first and then only update reference docs if a durable fact changes.
+
+### Revamp R8-R11 frontend-first execution plan
+
+These sprints continue the current harmless frontend decomposition before any SQL, RLS, rider tracking, map provider, or live dispatch implementation.
+
+| Revamp sprint | Status | Owner boundary | Main deliverable | Acceptance |
+|---|---|---|---|---|
+| R8 - Cart rail and recommendation lane extraction | Next | Customer ordering frontend | Extract cart presentation, cart line item rendering, recommendation cards/lane, and AI cart strategist presentation from both giant workspaces | Both `SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx` compose shared components; pricing, cart mutation, API calls, router navigation, and Zustand ownership remain in the parents; empty/loading/error AI states are visible; tests and TypeScript pass |
+| R9 - Customer ordering shell cleanup | Planned | Customer ordering frontend | Extract the customer ordering step layout, intake/recommend/menu shell, step navigation, and mobile cart placement into feature components | `/` behavior remains unchanged; admin duplicate uses the same extracted pieces or clearly stops duplicating customer sections; no manual dual-file sync remains for customer ordering presentation |
+| R10 - Admin command shell and table workspace | Planned | Admin dashboard frontend | Extract admin top command bar, side/tab navigation, order table workspace, and selected-order drawer wrapper | `/admin-dashboard?tab=orders&order=...` stays deep-linkable; table rows remain keyboard selectable; order context drawer shows honest no-dispatch placeholders until schema exists |
+| R11 - Loading, empty, error, and mobile polish pass | Planned | Shared UI quality | Add consistent skeletons and empty/error states for menu, recommendations, cart insight, order table, forecast, AI panel, and confirmation; tighten responsive behavior | No async surface has only plain text loading; reduced-motion is honored; mobile does not hide checkout/cart actions; visual smoke is captured once the dev server is reachable |
+
+### R8 implementation notes
+
+R8 should be the next build sprint because R7A already extracted `MenuCatalog` and `PizzaBuilderDialog`, while cart, recommendation, and AI strategist presentation remain embedded beside them in both large files.
+
+Safe component boundaries:
+
+- `CartRail`: receives cart lines, totals, customer/order mode labels, and callbacks; renders empty cart, line items, bill summary, AI card slot, and checkout button state.
+- `CartLineItem`: receives one cart line and callback props; no direct store mutation.
+- `RecommendationLane`: receives current recommendation(s), loading/error state, refresh/build/browse callbacks, and menu-safe item labels.
+- `AiCartStrategistCard`: receives insight, loading/error state, and ask/apply/dismiss callbacks; no direct AI fetch.
+
+Keep in parent/orchestrator for now:
+
+- `calculateBill`, pricing config, and max-order validation.
+- `setCart`, `setRecommendation`, `setRecommendations`, and Zustand calls.
+- `/api/recommend` and `/api/ai/cart-insight` fetches.
+- `router.push("/payment")`.
+- Toasts and customer/session validation.
+
+R8 edge cases to include:
+
+- Empty cart with disabled checkout and a clear return-to-menu path.
+- Max quantity reached before accepting direct add, builder add, recommendation add, or AI strategist add.
+- Recommended pizza/topping unavailable or missing from the current menu.
+- Recommendation API unavailable, returning invalid IDs, returning one item, or returning multiple items.
+- AI strategist loading, failure, no actionable suggestion, duplicate suggestion already in cart, or suggestion exceeding max quantity.
+- Guest versus logged-in copy differences remain intact.
+- Mobile cart remains reachable after menu extraction; checkout CTA must not be hidden below long recommendation content.
+- Keyboard focus order remains menu/recommendation -> cart -> checkout, with no modal focus leak from the builder.
+
+### Gates before DB/RLS and delivery implementation
+
+The database/RLS work in `plans/database-schema-evolution-plan.md` is still required before production delivery tracking, but it should not start as live feature work until these frontend gates are done:
+
+1. Customer ordering presentation is extracted enough that `SliceMaticStage3.tsx` no longer owns cart/recommendation/menu JSX directly.
+2. Admin orders presentation is extracted enough that delivery placeholders can be replaced by real state without rewriting the whole dashboard.
+3. Checkout/confirmation display contracts are explicit: client totals are display-only, server order/quote data will become authoritative.
+4. UI fallbacks exist for no map, no rider, no ETA, stale location, provider failure, and unassigned-ready orders.
+5. The app has route/loading/error boundaries or component-level equivalents for every async surface being touched.
+
+After those gates, begin DB/RLS work in this order: auth ownership and role hardening, activity/preference capture, delivery quote and immutable fee rules, lifecycle events, then rider assignment/tracking.
+
 ## Outcome
 
 Turn SliceMatic's current “order saved → static confirmation” experience into a secure post-order delivery system that:

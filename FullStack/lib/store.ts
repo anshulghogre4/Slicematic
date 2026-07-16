@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { CartLine, CustomerDetails, PaymentMode, PricingConfig, Recommendation, SavedOrder } from "./types";
 import { defaultPricingConfig } from "./pricing";
+import { SESSION_STORAGE_KEYS } from "./session/storageKeys";
 
 const initialCustomer: CustomerDetails = { name: "", phone: "", address: "New Ashok Nagar, Delhi NCR", deliveryZone: "2-4", note: "" };
 
@@ -64,7 +65,7 @@ export const useStore = create<AppState>()(
         }),
     }),
     {
-      name: "slicematic-storage",
+      name: SESSION_STORAGE_KEYS.zustandStore,
       storage: createJSONStorage(() => sessionStorage),
     }
   )

@@ -19,6 +19,7 @@ vi.mock("zustand/middleware", () => ({
 
 import { useStore } from "./store";
 import { defaultPricingConfig } from "./pricing";
+import { SESSION_STORAGE_KEYS } from "./session/storageKeys";
 
 describe("Global Store", () => {
   beforeEach(() => {
@@ -82,7 +83,7 @@ describe("Global Store", () => {
 
     const state = useStore.getState();
     expect(state.cart).toEqual([]);
-    expect(state.customer).toEqual({ name: "", phone: "", address: "", deliveryZone: "2-4", note: "" });
+    expect(state.customer).toEqual({ name: "", phone: "", address: "New Ashok Nagar, Delhi NCR", deliveryZone: "2-4", note: "" });
     expect(state.lastOrder).toBeNull();
     expect(state.recommendation).toBeNull();
     expect(state.pricingConfig.gstRate).toBe(0.15); // Pricing config preserved!
@@ -104,7 +105,7 @@ describe("Global Store persistence engine", () => {
       removeItem: (key: string) => { delete localData[key]; },
     };
 
-    expect(persistOptionsRef.current?.name).toBe("slicematic-storage");
+    expect(persistOptionsRef.current?.name).toBe(SESSION_STORAGE_KEYS.zustandStore);
     expect(persistOptionsRef.current?.storage).toBeTruthy();
 
     persistOptionsRef.current.storage.setItem("probe", "value");

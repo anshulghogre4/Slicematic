@@ -105,3 +105,54 @@ Entries use `## [YYYY-MM-DD] operation | title` so agents and shell tools can pa
 - Proposed additive schema changes for `customer.auth_user_id`, role-checked admin policies, customer-owned RLS, preference/activity enrichment, delivery quotes, delivery fee rules, riders, assignments, status events, sparse location pings, forecast runs/points, and AI interaction logs.
 - Added the recommended "Apple-like delivery operations cockpit" structure and lifecycle-first confirmation structure.
 - Updated [[css-system]] to mark the old no-Tailwind rule as historical and document the current Tailwind/component-system bridge.
+
+## [2026-07-16] ingest | Revamp Sprint R1 checkout/session foundation
+
+- Implemented the first revamp branch build slice from `FullStack/plans/frontend-architecture-restructure.md`.
+- Added centralized storage keys in `lib/session/storageKeys.ts` and checkout recovery helpers in `lib/session/checkoutSession.ts`.
+- Updated `/payment` to read member/guest checkout identity and Cashfree pending-payment recovery through helpers instead of raw storage strings.
+- Updated `lib/store.ts`, `lib/session-customer.ts`, and tests to use shared key constants.
+- Removed remaining stale "vanilla CSS only" wiki/tooling guidance; the current styling direction is a deliberate token/component bridge using the best-fit stack.
+- Validation: focused Vitest checkout/store tests passed 12/12; full `npm run test` passed 98/98; `npx tsc --noEmit` passed.
+
+## [2026-07-16] ingest | Revamp Sprint R2 checkout component extraction
+
+- Extracted `features/checkout/components/CheckoutSummary.tsx` from `/payment`.
+- Kept `/payment` responsible for data, payment side effects, pricing calculation, and navigation.
+- Kept `CheckoutSummary` responsible for basket rendering, payment policy, totals, payment mode cards, action button, and payment status rendering.
+- Preserved existing CSS classes and business-rule totals so R2 is an architecture slice, not a visual redesign.
+- Validation: full `npm run test` passed 98/98; `npx tsc --noEmit` passed.
+
+## [2026-07-16] ingest | Revamp Sprint R3-R6 batch foundation
+
+- Used sprint-specific subagents for R3 UI primitives, R4 forecast pilot, R5 payment/confirmation pilot, and R6 admin shell review; consolidated the safe landed work in the root agent.
+- Added `components/ui` primitives (`Button`, `Card`, `Skeleton`, `StatusPill`) and `sui-*` CSS bridge classes/tokens with reduced-motion support.
+- Enhanced `ForecastPanel` with refresh action/state, status pill, skeleton fallback, and previous-forecast preservation using the existing `/api/admin/forecast/refresh` route.
+- Migrated `CheckoutSummary` payment/basket actions and surface wrappers to the new primitives without changing pricing/payment behavior.
+- Added URL-backed admin tab state via `parseAdminTab()` and `selectAdminTab()` for `/admin-dashboard?tab=...`.
+- Added `lib/delivery-state.ts` plus tests as a future dispatch/tracking state contract scaffold.
+- Validation: full `npm run test` passed 104/104; `npx tsc --noEmit` passed.
+
+## [2026-07-16] ingest | Revamp R5 confirmation and R6 admin order context
+
+- Added a reusable order-journey contract/component to `/confirmation` and removed simulated map/rider/ETA claims.
+- Added an accessible admin selected-order context panel with URL-backed selection on `/admin-dashboard` and matching Dual-File integration.
+- Preserved the delivery security gate: no SQL, RLS, realtime, map provider, or dispatch API changes were made.
+- Cleaned the stale checkout comment and obsolete handoff instructions.
+- Validation: full `npm run test` passed 107/107; `npx tsc --noEmit` and `git diff --check` passed.
+
+## [2026-07-16] ingest | Revamp R7A menu and pizza-builder extraction
+
+- Extracted the duplicated customer catalogue and pizza builder into controlled feature components.
+- Applied both integrations to `components/SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx` under the Dual-File Rule.
+- Added four menu filtering/starting-price tests and normalized builder capacity to the configured outlet maximum.
+- Preserved route, store, pricing, customer validation, cart mutation, and API ownership in the parent workspaces.
+- Validation: full `npm run test` passed 111/111; `npx tsc --noEmit` and `git diff --check` passed.
+
+## [2026-07-16] ingest | Sprint control consolidation and R8-R11 planning
+
+- Designated `plans/fullstack-delivery-intelligence-sprints.md` as the single operational sprint source of truth.
+- Kept architecture, UI revamp, inspiration, UI/UX, and database schema plans as reference inputs rather than separate active queues.
+- Added frontend-first R8-R11 planning: cart/recommendation extraction, customer ordering shell cleanup, admin command/table workspace, and shared loading/empty/error/mobile polish.
+- Added R8 edge cases for missing/invalid recommendation IDs, AI cart strategist failure/no-op states, max quantity enforcement, mobile cart reachability, and keyboard flow.
+- Reconfirmed that SQL, RLS, maps, rider tracking, and live dispatch remain gated until frontend decomposition and fallback contracts are complete.

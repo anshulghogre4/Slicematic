@@ -2,28 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Check, CreditCard, Phone, ReceiptText, Send, ShieldCheck, ShoppingBag, Sparkles, UserRound, Trash2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { useStore } from "../../lib/store";
-import { calculateBill, getLineUnitPrice, money } from "../../lib/pricing";
-import { CartLine, MenuPayload, PaymentMode } from "../../lib/types";
+import { calculateBill } from "../../lib/pricing";
+import { MenuPayload } from "../../lib/types";
 import { seedMenu } from "../../lib/seed-data";
 import { applyOrderToSession } from "../../lib/session-customer";
 import { fetchOutletPricingConfig } from "../../lib/customer-flow";
-
-const paymentModes: Array<{ mode: PaymentMode; icon: React.ReactNode; copy: string }> = [
-  { 
-    mode: "UPI", 
-    icon: (
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="lucide lucide-upi-triangles">
-        <polygon points="3,6 13,12 3,18" fill="currentColor" fillOpacity="0.4" stroke="currentColor" strokeWidth="2" />
-        <polygon points="10,6 20,12 10,18" fill="currentColor" stroke="currentColor" strokeWidth="2" />
-      </svg>
-    ), 
-    copy: "Confirm receipt before fulfillment." 
-  },
-  { mode: "Card", icon: <CreditCard />, copy: "Process on POS or payment link." },
-  { mode: "Cash", icon: <ReceiptText />, copy: "Collect at delivery or counter." }
-];
+import {
+  completeCashfreeReturn,
+  readCheckoutSessionIdentity,
+  writeCashfreePendingPayment,
+} from "../../lib/session/checkoutSession";
+import { CheckoutSummary } from "../../features/checkout/components/CheckoutSummary";
 
 async function loadRazorpayScript() {
   return new Promise((resolve) => {
@@ -45,28 +36,9 @@ async function loadCashfreeSDK() {
   return await load({ mode: "sandbox" });
 }
 
-function renderLine(line: CartLine, menu: MenuPayload, index: number, onRemove: (id: string) => void) {
-  const pizza = menu.pizzas.find((item) => item.id === line.pizzaId);
-  const base = menu.bases.find((item) => item.id === line.baseId);
-  const size = menu.sizes.find((item) => item.id === line.sizeId);
-  const toppings = line.toppingIds.map((id) => menu.toppings.find((item) => item.id === id)?.name).filter(Boolean);
-  return (
-    <article className="cart-line" key={line.id ?? `${line.pizzaId}-${index}`}>
-      <div>
-        <strong>{line.quantity} x {pizza?.name}</strong>
-        <span>{base?.name} / {size?.name} / {toppings.length ? toppings.join(", ") : "No extra toppings"}</span>
-      </div>
-      <div>
-        <b>{money(getLineUnitPrice(line, menu) * line.quantity)}</b>
-        <button type="button" onClick={() => onRemove(line.id)} aria-label="Remove line"><Trash2 /></button>
-      </div>
-    </article>
-  );
-}
-
 export default function PaymentScreen() {
   const router = useRouter();
-  const { cart, customer, pricingConfig, paymentMode, setPaymentMode, lastOrder, setLastOrder, recommendation, setCart, setPricingConfig } = useStore();
+  const { cart, customer, pricingConfig, paymentMode, setPaymentMode, setLastOrder, recommendation, setCart, setPricingConfig } = useStore();
   const [placingOrder, setPlacingOrder] = useState(false);
   const [paymentStatusMessage, setPaymentStatusMessage] = useState("");
   const [toast, setToast] = useState("");
@@ -90,9 +62,10 @@ export default function PaymentScreen() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
-    setCustomerLoggedIn(window.sessionStorage.getItem("slicematic_customer_logged_in") === "true");
-    setSessionEmail(window.sessionStorage.getItem("slicematic_customer_email") ?? "");
-    setSessionCustomerId(window.sessionStorage.getItem("slicematic_customer_id") || null);
+    const identity = readCheckoutSessionIdentity(window.sessionStorage);
+    setCustomerLoggedIn(identity.customerLoggedIn);
+    setSessionEmail(identity.sessionEmail);
+    setSessionCustomerId(identity.sessionCustomerId);
   }, []);
 
   const customerOrderMode = customerLoggedIn ? "Member order" : "Guest order";
@@ -137,10 +110,8 @@ export default function PaymentScreen() {
     const params = new URLSearchParams(window.location.search);
 
     const cfReturnOrderId = params.get("order_id");
-    const cfPending = localStorage.getItem("cf_pending");
-    if (cfReturnOrderId && cfPending) {
-      const pending = JSON.parse(cfPending) as { orderId: string; amountPaise: number; payload: unknown };
-      localStorage.removeItem("cf_pending");
+    const pending = completeCashfreeReturn(window.localStorage, cfReturnOrderId);
+    if (pending) {
       window.history.replaceState({}, "", window.location.pathname);
       setPlacingOrder(true);
       setPaymentStatusMessage("Verifying UPI payment…");
@@ -236,11 +207,11 @@ export default function PaymentScreen() {
         return;
       }
 
-      localStorage.setItem("cf_pending", JSON.stringify({
+      writeCashfreePendingPayment(window.localStorage, {
         orderId: created.cfOrderId,
         amountPaise: created.amountPaise,
         payload: orderPayload,
-      }));
+      });
 
       const cashfree = await loadCashfreeSDK();
       cashfree.checkout({
@@ -350,47 +321,24 @@ export default function PaymentScreen() {
           <button type="button" onClick={() => router.push("/")}><ArrowLeft /> Back to cart</button>
         </div>
 
-        <div className="checkout-layout">
-          <section className="checkout-review-card">
-            <div className="cart-head"><div><p className="eyebrow">Order review</p><h2>Basket</h2></div><ShoppingBag /></div>
-            <div className={customerLoggedIn ? "order-mode member" : "order-mode guest"}>
-              <div><UserRound /><strong>{customerOrderMode}</strong></div>
-              <span>{customerLoggedIn ? `Logged in as ${sessionEmail || customer.name}` : "Guest checkout. UPI/Card required unless owner enables guest cash."}</span>
-            </div>
-            {cart.length ? cart.map((line, idx) => renderLine(line, menu, idx, (id) => setCart((current) => current.filter((item) => item.id !== id)))) : <div className="empty-cart">Your cart is empty.<br /><span>Go back to menu and build a pizza.</span></div>}
-            <div className="summary">
-              <div><span>Subtotal</span><b>{money(totals.subtotal)}</b></div>
-              <div><span>Quantity discount</span><b>- {money(totals.discount)}</b></div>
-              <div><span>GST {Math.round(pricingConfig.gstRate * 100)}%</span><b>{money(totals.gst)}</b></div>
-              <div><span>Delivery</span><b>{pricingConfig.deliveryFee === 0 ? "Included" : totals.deliveryCharge === 0 ? `Free (above ${money(pricingConfig.freeDeliveryMin)})` : money(totals.deliveryCharge)}</b></div>
-              <div className="total"><span>Total payable</span><b>{money(totals.finalTotal)}</b></div>
-            </div>
-          </section>
-
-          <section className="checkout-payment-card">
-            <div className="checkout-head">
-              <div><p className="eyebrow">Payment</p><h2>Select payment mode</h2></div>
-              <div className={customerLoggedIn ? "checkout-policy member" : "checkout-policy guest"}>
-                <strong>{customerOrderMode}</strong>
-                <span>{customerPaymentPolicy}</span>
-              </div>
-            </div>
-            <div className="payment-grid">
-              {paymentModes.map((payment) => {
-                const disabledForGuest = !customerLoggedIn && !pricingConfig.guestCashAllowed && payment.mode === "Cash";
-                return (
-                  <button key={payment.mode} className={paymentMode === payment.mode ? "active" : ""} disabled={disabledForGuest} onClick={() => disabledForGuest ? showToast("Cash is available after customer login.") : setPaymentMode(payment.mode)} type="button">
-                    {payment.icon}<strong>{payment.mode}</strong><span>{disabledForGuest ? "Login required. Guests use UPI or Card only." : payment.copy}</span>
-                  </button>
-                );
-              })}
-            </div>
-            <button className="primary" disabled={!cart.length || placingOrder} aria-busy={placingOrder} onClick={placeOrder} type="button">
-              <Send /> {placingOrder ? "Processing payment…" : paymentMode === "Cash" ? "Place order" : "Pay & place order"}
-            </button>
-            {paymentStatusMessage && <p className="payment-status" role="status" aria-live="polite">{paymentStatusMessage}</p>}
-          </section>
-        </div>
+        <CheckoutSummary
+          cart={cart}
+          menu={menu}
+          totals={totals}
+          pricingConfig={pricingConfig}
+          customerLoggedIn={customerLoggedIn}
+          customerOrderMode={customerOrderMode}
+          customerPaymentPolicy={customerPaymentPolicy}
+          sessionEmail={sessionEmail}
+          customerName={customer.name}
+          paymentMode={paymentMode}
+          placingOrder={placingOrder}
+          paymentStatusMessage={paymentStatusMessage}
+          onRemoveLine={(id) => setCart((current) => current.filter((item) => item.id !== id))}
+          onSelectPaymentMode={setPaymentMode}
+          onGuestCashBlocked={() => showToast("Cash is available after customer login.")}
+          onPlaceOrder={placeOrder}
+        />
       </section>
       {toast && <div className="toast">{toast}</div>}
     </main>
