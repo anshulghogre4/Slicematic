@@ -1,124 +1,129 @@
-# AGENTS.md — Codex Rules for SliceMatic
+# AGENTS.md - Codex Rules for SliceMatic
 
-> Read this file automatically. Applies to all Codex sessions on this repo.
+Read this file automatically. It applies to all Codex sessions on this repo.
 
----
+## Active Project Root
 
-## 🧠 Start Every Session By Reading the Wiki
+SliceMatic Stage 3 is the active project. Treat `FullStack/` as the working root for implementation, planning, wiki maintenance, screenshots, and UI design work.
 
-```bash
-# Run this mentally at the start of EVERY session:
-1. Read wiki/index.md
-2. Read wiki/handoff.md
-3. Read wiki/AGENTS.md for ingest/query/lint and writeback rules
-4. Read the specific wiki page for your task
-```
+Stage 1 and Stage 2 artifacts are reference-only unless the user explicitly asks for them:
 
-The wiki lives at: `Slicematic/wiki/`
+- Stage 1: `documents/`, `Project_Requirements/`
+- Stage 2: `gradio-MVP/`, `GRADIO-MVP-2/`
+- Stage 3: `FullStack/` - active development
 
----
+## Start Every Session By Reading The FullStack Wiki
 
-## Project Context
+Read these before material FullStack work:
 
-SliceMatic is a graded team project for FDE Academy (single-outlet pizza ordering SaaS).
+1. `FullStack/wiki/index.md`
+2. `FullStack/wiki/handoff.md`
+3. `FullStack/wiki/AGENTS.md`
+4. The task-specific wiki page, usually from `FullStack/wiki/index.md`
 
-**Three stages:**
-- Stage 1 = PRD + Business Economics (`documents/`)
-- Stage 2 = Gradio Python MVPs (`gradio-MVP/`, `GRADIO-MVP-2/`) — **do not touch for Stage 3 work**
-- Stage 3 = Next.js + Supabase FullStack (`FullStack/`) ← **ACTIVE DEVELOPMENT**
+For UI work, also read:
 
----
+- `FullStack/wiki/ui-map.md`
+- `FullStack/wiki/components.md`
+- `FullStack/wiki/css-system.md`
 
-## Critical Rules
+## Critical Implementation Rules
 
-### The Dual-File Rule — MOST IMPORTANT
-When editing shared UI sections, changes must go in BOTH:
+### Dual-File Rule
+
+Shared customer/admin UI is duplicated in:
+
 - `FullStack/components/SliceMaticStage3.tsx`
 - `FullStack/app/admin-dashboard/page.tsx`
 
-Use `grep` to confirm both files are updated:
-```bash
-grep -n "YOUR_CHANGED_TEXT" FullStack/components/SliceMaticStage3.tsx
-grep -n "YOUR_CHANGED_TEXT" FullStack/app/admin-dashboard/page.tsx
-```
+When editing shared sections, update both files or explicitly document why only one file changed. Verify with search before finishing.
 
-### CSS
-- Vanilla CSS only. No Tailwind. Ever.
-- All styles: `FullStack/app/globals.css`
-- Check existing classes in `wiki/css-system.md` first
+### Styling And Design System
+
+The legacy app uses `FullStack/app/globals.css`. New UI work may modernize the styling system, but do it deliberately:
+
+- Tailwind CSS v4 is allowed for new design-system work if introduced through a migration plan.
+- A stronger component system is allowed: semantic tokens, reusable UI primitives, CVA-style variants, accessible dialog/popover/select primitives, and typed utilities.
+- Do not mix random inline styles, one-off utility soup, and legacy CSS without a bridge plan.
+- Keep existing vanilla CSS stable until a screen or component is intentionally migrated.
+- Prefer semantic tokens over hardcoded color values.
+
+### Customer Experience Bar
+
+Customer-facing screens should feel polished and alive:
+
+- Use meaningful illustrations or product imagery where they clarify ordering, customization, delivery, or tracking.
+- Add skeleton loaders for menu, recommendations, forecast, order lists, maps, tracking, and AI panels.
+- Add tasteful motion: page/section entry, cart updates, modal transitions, map/rider progress, order timeline, and loading states.
+- Respect `prefers-reduced-motion`.
+- Keep animations under 300ms for routine UI and avoid `transition: all`.
+- Maintain visible focus states, keyboard navigation, labels, `aria-live` for async state, and readable long-content behavior.
 
 ### Supabase
-- Always guard DB calls with `hasSupabaseEnv()` / `hasSupabaseAdminEnv()`
-- Fall back gracefully when Supabase is absent
+
+- Always guard DB calls with `hasSupabaseEnv()` or `hasSupabaseAdminEnv()`.
+- Fall back gracefully when Supabase is absent.
+- Do not weaken production auth while preserving demo behavior.
 
 ### Business Rules
-- Never change pricing constants without reading `wiki/business-rules.md`
-- Bill formula: subtotal → discount → taxable → GST → delivery → finalTotal
 
----
+Before pricing, checkout, delivery fee, or payout work, read:
+
+- `FullStack/wiki/business-rules.md`
+
+Bill formula:
+
+```text
+subtotal -> discount -> taxable -> GST -> delivery -> finalTotal
+```
 
 ## Commands
 
+Run from `FullStack/`:
+
 ```bash
-cd FullStack
-
-# Dev
 npm run dev
-
-# Test
 npm run test
 npm run test:watch
-
-# Build (only if asked)
 npm run build
 ```
 
----
+Only run `npm run build` when asked or when risk justifies it.
 
-## Mandatory: Update Changelog
+## Required Writeback
 
-After every code change, add to `FullStack/CHANGELOG.md`:
-```
+After every material FullStack change:
+
+1. Update affected `FullStack/wiki/*.md` pages.
+2. Update `FullStack/wiki/handoff.md`.
+3. Append to `FullStack/wiki/log.md`.
+4. Update `FullStack/CHANGELOG.md` for code changes.
+5. Refresh screenshots in `FullStack/wiki/assets/ui-map/` for material UI changes.
+
+Changelog format:
+
+```md
 ### [YYYY-MM-DD HH:MM:SS IST] - Title
 - What changed
 - Files: file1.tsx, file2.css
 ```
 
-## Mandatory: Update Wiki Handoff
+## Sensitive Files
 
-At end of session, update `wiki/handoff.md`:
-- What was done
-- Files changed
-- Next steps
+Never echo secrets from:
 
-## Mandatory: Update the LLM Wiki
+- `.env`
+- `FullStack/.env`
+- `.mcp.json`
+- `db/supabase.md`
+- any credential-bearing local config
 
-For every material `FullStack/` change, follow `wiki/AGENTS.md`:
-- Update the affected topic pages.
-- Record source/wiki conflicts in `wiki/contradictions.md`.
-- Append an ingest, query, or lint entry to `wiki/log.md`.
-- Keep `wiki/index.md` as the navigation entry point.
+Environment variable names are fine; values are not.
 
----
+## Git Hygiene
 
-## Sensitive Files (Never Echo Secrets)
+- Do not restore user-deleted root noise unless explicitly asked.
+- Do not commit local runtime logs, `.codex/`, `.next/`, `node_modules/`, or generated caches.
+- Plans and wiki artifacts for Stage 3 belong under `FullStack/`.
 
-- `.env` in both root and `FullStack/`
-- `.mcp.json` (Apify token)
-- `db/supabase.md` (DB credentials)
-- `FullStack/.env` (Supabase keys, payment keys)
-
----
-
-## Two Gradio Implementations (Stage 2 — Reference Only)
-
-| | `gradio-MVP/app.py` | `GRADIO-MVP-2/app.py` |
-|---|---|---|
-| Flow | Cart-based, multiple lines | Sequential 5-stage |
-| More stable | ❌ | ✅ (3 verification iterations) |
-
-These are Stage 2 artifacts. Do NOT modify them for Stage 3 work unless explicitly asked.
-
----
-
-*Last updated: 2026-07-06*
+Last updated: 2026-07-16
