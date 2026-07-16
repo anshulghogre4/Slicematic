@@ -1,100 +1,87 @@
-# 🍕 SliceMatic LLM Wiki — Master Index
-
-> **This wiki is the shared brain for ALL AI agents (Antigravity, Cursor, Claude Code).**  
-> Maintained in the Karpathy-style: structured Markdown, human-curated, compounding over time.  
-> **START HERE before every session. Read `handoff.md` next.**
-
+---
+title: SliceMatic FullStack LLM Wiki
+type: index
+status: maintained
+scope: FullStack/
+last_compiled: 2026-07-16
 ---
 
-## 📚 Wiki Pages
+# SliceMatic FullStack LLM Wiki
 
-| Page | What it covers |
-|---|---|
-| [index.md](./index.md) | This file — master map |
-| [architecture.md](./architecture.md) | System design, data flow, dual-file pattern |
-| [components.md](./components.md) | Every component, its role, imports, and key patterns |
-| [api-contracts.md](./api-contracts.md) | All API routes, payloads, responses |
-| [css-system.md](./css-system.md) | Design tokens, class inventory, styling rules |
-| [state-management.md](./state-management.md) | Zustand store, sessionStorage, state flow |
-| [business-rules.md](./business-rules.md) | Pricing, validation, GST, discount constants |
-| [auth-flows.md](./auth-flows.md) | Customer auth, admin auth, guest mode, OTP |
-| [payments.md](./payments.md) | Cashfree, Razorpay, Cash flow |
-| [database-schema.md](./database-schema.md) | Full Supabase schema, table definitions, column mappings |
-| [env-vars.md](./env-vars.md) | All environment variables, required vs optional, degradation behaviour |
-| [testing.md](./testing.md) | Vitest test files, coverage, known gaps |
-| [scripts-tooling.md](./scripts-tooling.md) | npm scripts, Python forecast, seed scripts, skills inventory |
-| [decisions.md](./decisions.md) | Architecture Decision Records (WHY things are built this way) |
-| [knowledge-graph.md](./knowledge-graph.md) | Entity relationships — who calls what |
-| [handoff.md](./handoff.md) | **Current session state — ALWAYS update this at end of session** |
+This is the persistent, LLM-maintained knowledge layer for `FullStack/`. It compiles facts scattered across code, tests, schema, and project documents into a smaller set of trusted, interlinked pages.
 
----
+Start every FullStack task here, then read [[handoff]] and the pages relevant to the change. Maintenance rules live in [[AGENTS]].
 
-## ⚠️ Known Gotchas (Read Before You Burn Time)
+## Current truth
 
-| Gotcha | Detail |
-|---|---|
-| **PhonePe routes exist but are dead** | `app/api/payments/phonepe-*` routes exist but have no UI wiring. Ignore them. |
-| **EntryPortal has its own CSS** | `components/EntryPortal/EntryPortal.css` — the ONLY component with a separate CSS file |
-| **DB column names ≠ TypeScript names** | `pizza_type_id` → `id`, `pizza_name` → `name`, `is_available` → `available`. See `database-schema.md` |
-| **Supabase schema is `slicematic.*`** | NOT `public.*`. All queries must use `.schema("slicematic")` |
-| **`tailwind-design-system` skill exists but DO NOT USE** | The project uses Vanilla CSS. Applying that skill will break things. |
-| **`graphify-out/` is stale** | Auto-generated, not maintained. Use `wiki/knowledge-graph.md` instead. |
-| **Forecast requires Python** | `npm run forecast:refresh` calls `scripts/forecast_model.py` via Python. Needs scikit-learn installed. |
-| **Razorpay Config ID** | `RAZORPAY_CONFIG_ID` is required for the card payment overlay — easy to miss |
-| **Stage 2 test stale assertion** | `GRADIO-MVP-2/test_edge_cases.py` has one wrong expected value. App is correct, not the test. |
+- [[current-state]] — verified build/test status, runtime modes, known risks
+- [[handoff]] — latest session context and next actions
+- [[contradictions]] — known documentation/code drift and unresolved claims
+- [[source-map]] — provenance map from wiki topics to authoritative files
+- [[log]] — append-only history of ingest, query, and lint operations
 
----
+## System map
 
-## 🧭 Quick Orientation
+- [[architecture]] — boundaries, workspaces, request and data flow
+- [[components]] — UI component responsibilities and coupling
+- [[knowledge-graph]] — dependency and blast-radius map
+- [[state-management]] — Zustand, session storage, and identity state
+- [[css-system]] — styling conventions and tokens
 
-```
-SliceMatic = Single-outlet pizza ordering SaaS (FDE Academy graded project)
-Stage 1 = PRD + Business Economics (docs/)
-Stage 2 = Gradio MVPs (gradio-MVP/, GRADIO-MVP-2/)
-Stage 3 = Next.js FullStack + Supabase (FullStack/) ← ACTIVE DEVELOPMENT
-```
+## Domain and integrations
 
-**The main working directory is:** `f:\Preparation\FDE_Slicemate\Slicematic\FullStack\`
+- [[business-rules]] — pricing, validation, delivery, and checkout invariants
+- [[database-schema]] — Supabase/PostgreSQL model
+- [[api-contracts]] — route inventory and payload contracts
+- [[auth-flows]] — customer, guest, admin, and demo authorization
+- [[payments]] — Razorpay, Cashfree, and cash workflows
+- [[feature-recommendation]] — personalized recommendation engine
+- [[feature-ai-strategist]] — cart insight and upsell engine
+- [[feature-forecasting]] — offline Python forecast pipeline
+- [[delivery-operations]] — proposed rider, dispatch, fees, ETA, and live tracking domain
+- [[ai-microservices]] — modularization, menu voice assistant, recommendation service, and forecast service
 
----
+## Operations
 
-## ⚡ Critical Rules (Read Before Touching Code)
+- [[env-vars]] — configuration and graceful-degradation behavior
+- [[testing]] — test inventory, current result, and coverage gaps
+- [[scripts-tooling]] — build, seed, forecast, and storage scripts
+- [[decisions]] — architecture decision records
 
-1. **Dual-file rule**: `SliceMaticStage3.tsx` and `admin-dashboard/page.tsx` share ~90% of UI logic. **Changes to shared sections MUST be applied to BOTH files.**
-2. **CSS**: Vanilla CSS ONLY — NO Tailwind. All tokens in `app/globals.css` `:root` block.
-3. **State**: Zustand via `lib/store.ts` persisted to `sessionStorage`.
-4. **Supabase is optional**: All features must gracefully degrade without Supabase env vars.
-5. **No hardcoded prices or menu items**: Menu is dynamic from Supabase or seed data.
-6. **Changelog**: Every session must add an entry to `FullStack/CHANGELOG.md`.
+## Fast task routing
 
----
+| Task | Read first | Verify against |
+|---|---|---|
+| Pricing or checkout | [[business-rules]], [[payments]] | `lib/pricing.ts`, payment/order routes |
+| Authentication | [[auth-flows]], [[current-state]] | `lib/*-auth.ts`, `components/EntryPortal/` |
+| Database change | [[database-schema]], [[source-map]] | `supabase/schema.sql`, `lib/data-service.ts` |
+| UI change | [[components]], [[css-system]] | both large workspace files and `app/globals.css` |
+| API change | [[api-contracts]], [[architecture]] | matching `app/api/**/route.ts` and tests |
+| AI feature | relevant feature page | route, prompt, fallback, event logging |
+| Forecast | [[feature-forecasting]] | `lib/forecast-service.ts`, `scripts/` |
+| Delivery/tracking | [[delivery-operations]], [[current-state]] | sprint plan, schema, auth, pricing, confirmation page |
+| AI/forecast service | [[ai-microservices]], relevant feature page | AI routes, prompts, forecast Python/service/panel |
 
-## 🔄 How to Use This Wiki
+## Critical rules
 
-**Starting a new session:**
-```
-1. Read wiki/index.md (this file)
-2. Read wiki/handoff.md (what was done last session)
-3. Read the specific page relevant to your task
-4. Do your work
-5. Update wiki/handoff.md before ending
-```
+1. Code and executable schema are source evidence; the wiki is the maintained synthesis.
+2. Never expose `.env`, `.mcp.json`, or credential-bearing files.
+3. Shared UI may exist in both `components/SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx`; search both before editing.
+4. Pricing must be calculated from `lib/pricing.ts` on the server, never trusted from the browser.
+5. Supabase-optional and AI-fallback behavior is intentional, but must not weaken configured production security.
+6. Every material FullStack change must update affected wiki pages, [[handoff]], and [[log]].
+7. When a wiki claim conflicts with source, record it in [[contradictions]] and prefer verified source behavior.
 
-**If making architectural changes:**
-```
-Update wiki/architecture.md and wiki/decisions.md
-```
+## Knowledge workflow
 
-**If changing API routes:**
-```
-Update wiki/api-contracts.md
+```text
+FullStack code + schema + tests + project MD (source evidence)
+                          ↓ ingest/compile
+                  wiki/*.md (maintained synthesis)
+                          ↓ query
+             answer, decision, or implementation
+                          ↓ write back
+             affected pages + index + log + handoff
 ```
 
-**If changing CSS:**
-```
-Update wiki/css-system.md
-```
-
----
-
-*Last updated: 2026-07-06 | Maintained by: All AI agents + Human*
+The wiki is intentionally plain Markdown and small enough for direct agent search. No vector database is currently warranted.

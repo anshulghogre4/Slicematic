@@ -1,91 +1,50 @@
-# 🔄 SliceMatic — Session Handoff
-
-> **ALWAYS update this file at the end of every AI session.**  
-> **ALWAYS read this file at the start of every new AI session.**
-
+---
+title: SliceMatic Session Handoff
+type: handoff
+status: active
+last_updated: 2026-07-16
 ---
 
-## 📍 Current State (Last Updated: 2026-07-06)
+# SliceMatic Session Handoff
 
-### What Was Just Done
-- Updated 2nd info card in customer account page: "Secure recovery" → "Easy login" with description "Passwordless login using otp only."
-- Applied to both `SliceMaticStage3.tsx` (line ~1885) and `admin-dashboard/page.tsx` (line ~1866)
-- Changed `.account-grid` CSS grid from 4 to 3 equal columns in `app/globals.css` (line 1699) so 3 cards fill the full width
-- Created the LLM Wiki system (`wiki/` directory) with 9 structured markdown files
-- Updated `AGENTS.md` and `CLAUDE.md` and `.cursor/rules/` with cross-tool rules
+Read [[index]] first. Durable delivery design now lives in [[delivery-operations]] and `plans/fullstack-delivery-intelligence-sprints.md`.
 
-### Files Changed This Session
-- `FullStack/app/globals.css` — line 1699: `repeat(4,...)` → `repeat(3,...)`
-- `FullStack/components/SliceMaticStage3.tsx` — line ~1885: card text updated
-- `FullStack/app/admin-dashboard/page.tsx` — line ~1866: card text updated
-- `wiki/` — entire directory created (new)
-- `FullStack/.agents/AGENTS.md` — updated with full rules
-- `CLAUDE.md` (root) — updated with cross-tool rules
-- `FullStack/.cursor/rules/slicematic.mdc` — created
+## Latest work
 
----
+- Audited the unused `customer_activity` and `customer_preference` schema and existing post-order flow.
+- Compared live-delivery patterns, Google Maps, Mapbox, HERE, MapLibre/OSM, and Supabase Realtime through specialist research.
+- Created a five-sprint implementation backlog for preference/activity utilization, dispatch, rider fees, ETA, live tracking, proof, privacy, and rollout.
+- Chose Google Maps + private Supabase Broadcast as the provisional India MVP stack, subject to a Delhi address/route bake-off.
+- Extended the sprint with the existing Random Forest refresh workflow, a grounded dashboard menu voice assistant, UI/server segregation, and separate AI and Forecast services.
+- Added a dedicated map/geocoding/routing API comparison: Google, TomTom, Geoapify, LocationIQ, Mapbox, MapTiler/MapLibre, open/self-hosted, and HERE restrictions.
 
-## 🎯 Immediate Next Steps (Pick up from here)
+## Files changed
 
-- [ ] Verify the 3-card layout looks correct in the browser (run `npm run dev`)
-- [ ] Consider extracting `renderCustomerAccount()` into a shared component (ADR-001 tech debt)
-- [ ] OTP-based login UI — the card says "Easy login / OTP only" but the actual OTP flow needs to be the default method shown
-- [ ] Review the plans in `plans/ui-ux-improvement-plan.md` for remaining UI tasks
+- `plans/fullstack-delivery-intelligence-sprints.md`
+- `wiki/delivery-operations.md`
+- `wiki/index.md`
+- `wiki/source-map.md`
+- `wiki/log.md`
+- `wiki/handoff.md`
+- `wiki/ai-microservices.md`
 
----
+No FullStack application code or SQL schema was changed in this planning sprint.
 
-## 🗂️ Open Questions / Decisions Pending
+## Next action
 
-- Should `guestCashAllowed` default change? Currently `false`.
-- Is Razorpay Card flow production-ready or demo-only?
-- Mobile responsive: account grid stacks to 1 col below 768px — is this intentional?
+Start Sprint 0. Do not implement precise rider tracking before:
 
----
+1. Admin/customer/rider authorization and RLS are hardened.
+2. Delivery and kitchen state transitions are approved.
+3. The versioned fee/payout examples are approved.
+4. An ordered migration strategy exists.
+5. Google, TomTom, Geoapify, and Mapbox are tested on representative Delhi addresses using the sprint scorecard.
 
-## 🔧 Dev Commands
+Then execute modular extraction and contract tests before deploying recommendation/voice or forecasting as remote services. The existing forecast logic must remain behaviorally compatible during extraction.
 
-```bash
-cd FullStack
-npm run dev          # Start dev server (port 3000)
-npm run test         # Run vitest unit tests
-npm run build        # Production build (only if needed)
-```
+## Existing verification baseline
 
----
+- `npm run build`: passed on 2026-07-16.
+- `npm test`: 92 passed, one `resetSession()` address assertion failed.
 
-## 📁 Key File Locations
-
-| What | Where |
-|---|---|
-| Main customer component | `FullStack/components/SliceMaticStage3.tsx` |
-| Admin dashboard | `FullStack/app/admin-dashboard/page.tsx` |
-| All CSS | `FullStack/app/globals.css` |
-| Types | `FullStack/lib/types.ts` |
-| State (Zustand) | `FullStack/lib/store.ts` |
-| Pricing logic | `FullStack/lib/pricing.ts` |
-| DB operations | `FullStack/lib/data-service.ts` |
-| Changelog | `FullStack/CHANGELOG.md` |
-| Plans | `plans/` |
-| Wiki | `wiki/` (this directory) |
-
----
-
-## 📝 Handoff Template (Copy-paste for next session update)
-
-```markdown
-### What Was Just Done
-- 
-
-### Files Changed This Session
-- 
-
-### Immediate Next Steps
-- [ ] 
-
-### Open Questions
-- 
-```
-
----
-
-*Always update this before ending a session. The next AI agent reads this first.*
+At the end of every material task, update affected pages and append to [[log]].
