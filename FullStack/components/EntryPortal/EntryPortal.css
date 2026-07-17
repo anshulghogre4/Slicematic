@@ -3,62 +3,76 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  padding: 24px;
-  background: 
-    linear-gradient(135deg, rgba(22, 109, 69, 0.08), transparent 40%),
-    linear-gradient(225deg, rgba(197, 54, 44, 0.06), transparent 40%),
-    var(--paper);
+  padding: var(--space-lg);
+  background:
+    radial-gradient(ellipse at 30% 20%, rgba(22, 109, 69, 0.06), transparent 50%),
+    radial-gradient(ellipse at 70% 80%, rgba(197, 54, 44, 0.04), transparent 50%),
+    var(--dough);
+  position: relative;
+  overflow: hidden;
+}
+
+/* Subtle pizza watermark behind the card */
+.portal-container::before {
+  content: "";
+  position: absolute;
+  width: 320px;
+  height: 320px;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) rotate(-8deg);
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 200 200' fill='none'%3E%3Ccircle cx='100' cy='100' r='90' stroke='%23c5362c' stroke-width='1' opacity='0.04'/%3E%3Ccircle cx='100' cy='100' r='70' stroke='%23c5362c' stroke-width='1' opacity='0.03'/%3E%3Ccircle cx='70' cy='80' r='6' fill='%23c5362c' opacity='0.03'/%3E%3Ccircle cx='120' cy='75' r='5' fill='%23166d45' opacity='0.03'/%3E%3Ccircle cx='90' cy='115' r='7' fill='%23d99532' opacity='0.03'/%3E%3Ccircle cx='130' cy='110' r='4' fill='%23c5362c' opacity='0.03'/%3E%3C/svg%3E") center / contain no-repeat;
+  pointer-events: none;
+  z-index: 0;
 }
 
 .portal-glass {
+  position: relative;
+  z-index: 1;
   width: 100%;
-  max-width: 520px;
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid var(--line);
-  border-radius: calc(var(--radius) * 2);
-  box-shadow: var(--shadow);
-  padding: 36px;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  animation: portalFadeIn 0.5s ease-out;
+  max-width: 480px;
+  background: var(--glass-strong);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--sui-radius-lg);
+  box-shadow:
+    0 0 0 1px rgba(22, 21, 19, 0.04),
+    0 24px 64px rgba(22, 21, 19, 0.12);
+  padding: var(--space-2xl) var(--space-xl);
+  animation: sui-fade-in-up 500ms var(--sui-ease-out);
 }
 
-@keyframes portalFadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(20px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
+@supports not (backdrop-filter: blur(1px)) {
+  .portal-glass {
+    background: rgba(255, 255, 255, 0.97);
   }
 }
 
 .portal-header {
   text-align: center;
-  margin-bottom: 30px;
+  margin-bottom: var(--space-xl);
 }
 
 .portal-logo {
   width: 56px;
   height: 56px;
-  margin: 0 auto 16px;
-  border-radius: var(--radius);
+  margin: 0 auto var(--space-md);
+  border-radius: var(--sui-radius-md);
   background: linear-gradient(135deg, rgba(255, 255, 255, 0.15), transparent), var(--tomato);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 8px 24px rgba(197, 54, 44, 0.25);
+  box-shadow:
+    0 8px 24px rgba(197, 54, 44, 0.25),
+    0 0 0 4px rgba(197, 54, 44, 0.08);
   animation: logoPulse 4s infinite ease-in-out;
 }
 
 @keyframes logoPulse {
-  0%, 100% {
-    transform: scale(1);
-  }
-  50% {
-    transform: scale(1.05);
-  }
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
 }
 
 .portal-logo svg {
@@ -67,37 +81,40 @@
 }
 
 .portal-header h2 {
-  font-size: 1.8rem;
+  font-size: var(--text-title);
   font-weight: 800;
-  color: var(--ink);
-  margin: 0 0 8px;
+  color: var(--sui-text-primary);
+  margin: 0 0 var(--space-sm);
+  letter-spacing: -0.02em;
 }
 
 .portal-header p {
-  color: var(--muted);
-  font-size: 0.94rem;
+  color: var(--sui-text-secondary);
+  font-size: var(--text-body);
   margin: 0;
+  line-height: 1.5;
 }
 
 .portal-form {
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: var(--space-md);
 }
 
 .input-group {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--space-sm);
 }
 
 .input-group label {
-  color: var(--ink);
+  color: var(--sui-text-primary);
   font-weight: 700;
-  font-size: 0.88rem;
+  font-size: var(--text-small);
   display: flex;
   align-items: center;
   gap: 6px;
+  letter-spacing: 0.01em;
 }
 
 .input-icon-wrapper {
@@ -109,15 +126,25 @@
 .input-icon-wrapper svg {
   position: absolute;
   left: 14px;
-  color: var(--muted);
+  color: var(--sui-text-tertiary);
   width: 18px;
   height: 18px;
   pointer-events: none;
+  transition: color var(--sui-motion-fast) ease;
 }
 
 .input-icon-wrapper input {
-  padding-left: 44px;
-  transition: all 0.2s ease;
+  width: 100%;
+  padding: 12px 14px 12px 44px;
+  border: 1px solid var(--sui-border);
+  border-radius: var(--sui-radius-sm);
+  background: var(--sui-surface-raised);
+  color: var(--sui-text-primary);
+  font-size: var(--text-body);
+  outline: none;
+  transition:
+    border-color var(--sui-motion-fast) ease,
+    box-shadow var(--sui-motion-fast) ease;
 }
 
 .input-icon-wrapper input:focus {
@@ -125,83 +152,115 @@
   box-shadow: 0 0 0 3px rgba(22, 109, 69, 0.12);
 }
 
+.input-icon-wrapper input:focus ~ svg,
+.input-icon-wrapper:focus-within svg {
+  color: var(--basil);
+}
+
+.input-icon-wrapper input::placeholder {
+  color: var(--sui-text-tertiary);
+}
+
 .portal-primary-btn {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent), var(--tomato);
   color: white !important;
   font-weight: 800;
   border: none;
-  font-size: 1rem;
+  font-size: var(--text-body);
   min-height: 48px;
-  border-radius: var(--radius);
+  border-radius: var(--sui-radius-sm);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: all 0.2s ease;
-  box-shadow: 0 4px 12px rgba(197, 54, 44, 0.15);
+  transition:
+    transform var(--sui-motion-fast) var(--sui-ease-out),
+    box-shadow var(--sui-motion-fast) var(--sui-ease-out),
+    background var(--sui-motion-fast) ease;
+  box-shadow:
+    0 4px 16px rgba(197, 54, 44, 0.2),
+    0 1px 3px rgba(197, 54, 44, 0.12);
 }
 
 .portal-primary-btn:hover {
   background: var(--tomato-dark);
   transform: translateY(-1px);
-  box-shadow: 0 6px 18px rgba(197, 54, 44, 0.25);
+  box-shadow:
+    0 8px 24px rgba(197, 54, 44, 0.25),
+    0 2px 4px rgba(197, 54, 44, 0.15);
+}
+
+.portal-primary-btn:active {
+  transform: scale(0.98);
+}
+
+.portal-primary-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .portal-divider {
   display: flex;
   align-items: center;
   text-align: center;
-  color: var(--muted);
-  font-size: 0.78rem;
+  color: var(--sui-text-tertiary);
+  font-size: var(--text-micro);
   font-weight: 700;
-  margin: 10px 0;
+  margin: var(--space-sm) 0;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 .portal-divider::before,
 .portal-divider::after {
   content: '';
   flex: 1;
-  border-bottom: 1px solid var(--line);
+  border-bottom: 1px solid var(--sui-border-soft);
 }
 
 .portal-divider span {
-  padding: 0 10px;
+  padding: 0 12px;
 }
 
 .portal-secondary-btn {
-  background: var(--panel-soft);
-  color: var(--ink);
+  background: var(--sui-surface-soft);
+  color: var(--sui-text-primary);
   font-weight: 700;
-  border: 1px solid var(--line);
-  font-size: 0.94rem;
-  min-height: 46px;
-  border-radius: var(--radius);
+  border: 1px solid var(--sui-border);
+  font-size: var(--text-small);
+  min-height: 44px;
+  border-radius: var(--sui-radius-sm);
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
-  transition: all 0.2s ease;
+  transition:
+    background var(--sui-motion-fast) ease,
+    border-color var(--sui-motion-fast) ease;
 }
 
 .portal-secondary-btn:hover {
-  background: var(--line);
-  color: var(--ink);
+  background: var(--sui-surface-inset);
+  border-color: var(--sui-border-strong);
 }
 
 .portal-error-card {
   display: flex;
   align-items: flex-start;
   gap: 8px;
-  background: rgba(197, 54, 44, 0.08);
+  background: var(--sui-danger-soft);
   border: 1px solid rgba(197, 54, 44, 0.18);
-  border-radius: var(--radius);
+  border-radius: var(--sui-radius-sm);
   padding: 12px 14px;
-  color: var(--tomato);
-  font-size: 0.84rem;
+  color: var(--tomato-dark);
+  font-size: var(--text-small);
   font-weight: 600;
   line-height: 1.4;
+  animation: sui-fade-in-up 200ms var(--sui-ease-out);
 }
 
 .portal-error-card svg {
@@ -211,34 +270,35 @@
   flex-shrink: 0;
 }
 
-/* OTP Screen Specifics */
+/* OTP Screen */
 .otp-heading {
   text-align: center;
-  margin-bottom: 18px;
+  margin-bottom: var(--space-lg);
 }
 
 .otp-heading svg {
-  width: 32px;
-  height: 32px;
+  width: 36px;
+  height: 36px;
   color: var(--basil);
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
 
 .otp-heading h3 {
-  font-size: 1.3rem;
+  font-size: var(--text-heading);
   font-weight: 800;
   margin: 0 0 6px;
-  color: var(--ink);
+  color: var(--sui-text-primary);
+  letter-spacing: -0.01em;
 }
 
 .otp-heading p {
-  font-size: 0.88rem;
-  color: var(--muted);
+  font-size: var(--text-small);
+  color: var(--sui-text-secondary);
   margin: 0;
 }
 
 .otp-heading strong {
-  color: var(--ink);
+  color: var(--sui-text-primary);
 }
 
 .otp-input {
@@ -246,10 +306,15 @@
   letter-spacing: 0.5em;
   font-size: 1.8rem;
   font-weight: 800;
-  padding: 8px;
-  border-radius: var(--radius);
-  border: 1px solid var(--line);
+  padding: 12px;
+  border-radius: var(--sui-radius-sm);
+  border: 2px solid var(--sui-border);
   outline: none;
+  background: var(--sui-surface-raised);
+  color: var(--sui-text-primary);
+  transition:
+    border-color var(--sui-motion-fast) ease,
+    box-shadow var(--sui-motion-fast) ease;
 }
 
 .otp-input:focus {
@@ -261,33 +326,36 @@
   align-self: flex-start;
   background: transparent;
   border: none;
-  font-size: 0.84rem;
+  font-size: var(--text-small);
   font-weight: 700;
-  color: var(--muted);
+  color: var(--sui-text-secondary);
   display: flex;
   align-items: center;
   gap: 4px;
   cursor: pointer;
   padding: 4px 8px;
-  border-radius: var(--radius);
+  border-radius: var(--sui-radius-sm);
   min-height: 28px;
-  margin-bottom: -10px;
-  transition: all 0.2s ease;
+  margin-bottom: -8px;
+  transition:
+    background var(--sui-motion-fast) ease,
+    color var(--sui-motion-fast) ease;
 }
 
 .back-btn:hover {
-  background: var(--panel-soft);
-  color: var(--ink);
+  background: var(--sui-surface-soft);
+  color: var(--sui-text-primary);
 }
 
-/* Registration Form Specifics */
+/* Registration Form */
 .scroll-form {
   max-height: 80vh;
   overflow-y: auto;
   padding-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: var(--sui-border) transparent;
 }
 
-/* Custom scrollbar for scroll-form */
 .scroll-form::-webkit-scrollbar {
   width: 4px;
 }
@@ -295,32 +363,33 @@
   background: transparent;
 }
 .scroll-form::-webkit-scrollbar-thumb {
-  background: var(--line);
+  background: var(--sui-border);
   border-radius: 2px;
 }
 
 .registration-heading {
   text-align: center;
-  margin-bottom: 16px;
+  margin-bottom: var(--space-md);
 }
 
 .registration-heading svg {
   width: 28px;
   height: 28px;
   color: var(--gold);
-  margin-bottom: 8px;
+  margin-bottom: var(--space-sm);
 }
 
 .registration-heading h3 {
-  font-size: 1.3rem;
+  font-size: var(--text-heading);
   font-weight: 800;
   margin: 0 0 4px;
-  color: var(--ink);
+  color: var(--sui-text-primary);
+  letter-spacing: -0.01em;
 }
 
 .registration-heading p {
-  font-size: 0.84rem;
-  color: var(--muted);
+  font-size: var(--text-small);
+  color: var(--sui-text-secondary);
   margin: 0;
 }
 
@@ -336,19 +405,27 @@
 
 .reg-grid input,
 .reg-grid textarea {
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border: 1px solid var(--sui-border);
+  border-radius: var(--sui-radius-sm);
   padding: 10px 12px;
-  background: white;
-  color: var(--ink);
+  background: var(--sui-surface-raised);
+  color: var(--sui-text-primary);
   outline: none;
-  font-size: 0.9rem;
+  font-size: var(--text-body);
+  transition:
+    border-color var(--sui-motion-fast) ease,
+    box-shadow var(--sui-motion-fast) ease;
 }
 
 .reg-grid input:focus,
 .reg-grid textarea:focus {
   border-color: var(--basil);
   box-shadow: 0 0 0 3px rgba(22, 109, 69, 0.12);
+}
+
+.reg-grid input::placeholder,
+.reg-grid textarea::placeholder {
+  color: var(--sui-text-tertiary);
 }
 
 @media (max-width: 560px) {
@@ -359,6 +436,11 @@
     grid-column: auto;
   }
   .portal-glass {
-    padding: 24px;
+    padding: var(--space-lg);
+    border-radius: var(--sui-radius-md);
+  }
+  .portal-container::before {
+    width: 200px;
+    height: 200px;
   }
 }

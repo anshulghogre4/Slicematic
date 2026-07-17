@@ -66,7 +66,7 @@ export function AdminOrdersWorkspace({
       {error && <div className="admin-error">{error}</div>}
       {filters}
       <div className={selectedOrderId ? "admin-orders-workspace has-selection" : "admin-orders-workspace"}>
-        <OrderTable orders={orders} selectedOrderId={selectedOrderId} onSelectOrder={onSelectOrder} variant={variant} />
+        <OrderTable orders={orders} selectedOrderId={selectedOrderId} onSelectOrder={onSelectOrder} variant={variant} isLoading={status === "loading" || isRefreshing} />
         {activeOrder ? <OrderContextPanel order={activeOrder} onClose={onCloseOrder ?? (() => onSelectOrder(""))} /> : null}
       </div>
       {pagination}

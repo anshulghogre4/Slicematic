@@ -4,6 +4,294 @@ This file maintains a timestamp-based record of the modifications, debugging ses
 
 ---
 
+### [2026-07-18 01:30:00 IST] - Dead Code Removal: SliceMaticStage3 + 5 Orphaned Files
+
+#### Context
+User requested removal of `SliceMaticStage3.tsx` and any other dead code from the old monolithic architecture. All functionality was already extracted into the feature-based architecture during previous sessions. This is the final cleanup pass.
+
+#### Audit methodology
+Searched all `*.tsx`/`*.ts` files under `app/`, `components/`, `features/`, `lib/` for import references to each candidate file (excluding the files themselves and the `.next/` build cache). Result: 0 live imports for all 6 files.
+
+#### Files deleted
+
+| File | Size | Reason |
+|---|---|---|
+| `components/SliceMaticStage3.tsx` | 733 lines | Full monolith — replaced by `CustomerShell.tsx` + `app/admin-dashboard/page.tsx` |
+| `features/admin-dashboard/hooks/useMenuAdmin.ts` | ~180 lines | Extracted from Stage3; never imported by admin page (inline logic remains) |
+| `lib/auth-actions.ts` | ~120 lines | Extracted from Stage3; hooks use Supabase directly now |
+| `lib/admin-actions.ts` | ~140 lines | Extracted from Stage3; hooks use Supabase directly now |
+| `features/checkout/hooks/useCheckoutActions.ts` | ~90 lines | Extracted from Stage3; checkout page owns payment flow directly |
+| `features/customer-ordering/hooks/useCustomerFlow.ts` | ~60 lines | Extracted from Stage3; flow logic lives in CustomerShell now |
+
+#### Active files confirmed (not touched)
+- `components/CustomerShell.tsx` — active customer shell ✓
+- `components/AppHeader.tsx` — active premium navbar ✓
+- `components/admin/ForecastPanel.tsx` — imported by `admin-dashboard/page.tsx` ✓
+- `components/admin/RecommendationAIPanel.tsx` — imported by `admin-dashboard/page.tsx` ✓
+- `components/admin/OrderContextPanel.tsx` — imported by `AdminOrdersWorkspace` ✓
+- All `features/admin-dashboard/` components and hooks — active ✓
+- All `features/customer-ordering/` components and hooks — active ✓
+- All `features/menu/` components — active ✓
+- All `lib/` files not listed above — active ✓
+
+#### TypeScript verification
+```
+npx tsc --noEmit → 0 errors ✓
+```
+No dangling imports — all deleted files had exactly 0 live import references.
+
+---
+
+### [2026-07-18 01:23:00 IST] - EntryPortal as Single Login Source + Admin View-as-Customer Edge Case
+
+#### Context
+Two bugs found after session review:
+1. **Embedded auth forms in CustomerAccountPanel** — the Account tab showed an old login/OTP/forgot/reset form instead of routing to the EntryPortal. The user's requirement: EntryPortal (`/`) is the **only** login screen for every user type. No duplicate forms anywhere.
+2. **Customer logout didn't return to EntryPortal** — `customerLogout` was calling `sessionStorage.setItem("slicematic_customer_logged_in", "false")`. `app/page.tsx` checks `loggedInValue !== null`, so the key still existed → `isAuthorized=true` → CustomerShell kept rendering instead of EntryPortal.
+3. **Admin View-as-Customer edge case** — when admin clicked "View as Customer", the Admin console tab was hidden by `isAdminUser={false}`, leaving no way to return to the admin dashboard.
+
+#### Fix — EntryPortal as Single Login Source
+
+**`useCustomerAuth.ts`:**
+```diff
+- sessionStorage.setItem("slicematic_customer_logged_in", "false");
++ sessionStorage.removeItem("slicematic_customer_logged_in");
+```
+Removing the key means `loggedInValue = null` in `app/page.tsx` → `isAuthorized=false` → EntryPortal renders.
+
+**`CustomerShell.tsx` — `openAccount()`:**
+```diff
+- if (!customerAuth.customerLoggedIn && onUnauthorize) { onUnauthorize(); return; }
++ if (!customerAuth.customerLoggedIn) {
++   if (onUnauthorize) { onUnauthorize(); return; }
++   router.replace("/"); return;  // fallback if no callback
++ }
+```
+Any path to the Account tab while not logged in → EntryPortal.
+
+**`CustomerAccountPanel.tsx` — Auth forms removed entirely:**
+- Removed all embedded auth screens: login form, OTP email/SMS flow, forgot password, reset password (all ~180 lines)
+- Component now only renders the dashboard (glassmorphic cards, stats, AI rec, order history) — **only when `customerLoggedIn = true`**
+- When `!customerLoggedIn` (rare fallback): renders a single "Go to login" card that calls `onUnauthorize()` → EntryPortal
+- `Props` type simplified: only `customerLoggedIn`, `customerSessionEmail`, `customerLogout` needed from auth
+
+#### Fix — Admin View-as-Customer edge case
+
+**`CustomerShell.tsx`:**
+- Added `isAdminSession` state (bool), initialized `false`
+- Bootstrap `useEffect` reads both `slicematic_is_admin` and `slicematic_admin_view_customer`
+- If both are `true` (admin in preview mode): `setIsAdminSession(true)` → `AppHeader` gets `isAdminUser={isAdminSession}` → Admin console tab stays visible
+- `openAdminDashboard()` was already removing `slicematic_admin_view_customer` before pushing to `/admin-dashboard` ✓
+
+#### Auth flow after all fixes
+```
+All logins  → app/page.tsx → EntryPortal (/) ← single source
+Admin login → EntryPortal → OTP verified → /admin-dashboard
+Customer    → EntryPortal → OTP/Guest → CustomerShell
+Admin logout → clears all 8 keys → router.replace("/") → EntryPortal
+Customer logout → removeItem("slicematic_customer_logged_in") → onUnauthorize() → EntryPortal
+Account tab (not logged in) → onUnauthorize() → isAuthorized=false → EntryPortal
+```
+
+#### TypeScript verification
+```
+npx tsc --noEmit → 0 errors ✓
+```
+
+#### Files changed
+- `features/customer-ordering/hooks/useCustomerAuth.ts` — removeItem on logout
+- `features/customer-ordering/components/CustomerAccountPanel.tsx` — auth forms removed, dashboard only
+- `components/CustomerShell.tsx` — isAdminSession state, openAccount guard, isAdminUser prop
+
+---
+
+### [2026-07-18 01:12:00 IST] - Security & UX: Holistic Admin Logout + Premium Navbar + Customer Dashboard Revamp
+
+#### Context
+Three production-quality issues identified through browser testing and user feedback:
+1. **Admin logout left customer session alive** — clicking logout on `/admin-dashboard` only cleared 2 of the 8 `sessionStorage` keys, so `app/page.tsx` read `slicematic_customer_logged_in=true` and rendered the customer UI instead of the `EntryPortal`. Admin was not truly signed out holistically.
+2. **"Admin console" visible to all users** — `AppHeader` rendered the Admin console tab unconditionally, even for regular customers who had no business seeing it. The navbar was also visually minimal with no motion or brand identity.
+3. **Customer account screen was a plain button stack** — the logged-in dashboard lacked any stats, AI recommendation card layout, or premium Framer Motion treatment.
+
+---
+
+#### Fix 1 — Holistic Admin Logout Bug (Security)
+
+**Files changed:**
+- `features/admin-dashboard/hooks/useAdminAuth.ts` (+12 lines, sessionStorage block)
+- `app/admin-dashboard/page.tsx` (+1 line, logout button click handler)
+
+**Root cause:** `adminLogout()` removed only `slicematic_is_admin` and `slicematic_admin_email`. The six customer-session keys (`slicematic_customer_logged_in`, `slicematic_customer_email`, `slicematic_customer`, `slicematic_customer_id`, `slicematic_workspace`, `slicematic_admin_view_customer`) were left intact.
+
+**What changed in `useAdminAuth.ts`:**
+```diff
+- window.sessionStorage.removeItem("slicematic_is_admin");
+- window.sessionStorage.removeItem("slicematic_admin_email");
++ // Admin keys
++ window.sessionStorage.removeItem("slicematic_is_admin");
++ window.sessionStorage.removeItem("slicematic_admin_email");
++ window.sessionStorage.removeItem("slicematic_admin_view_customer");
++ // Customer keys — these kept the page showing the customer UI after admin logout
++ window.sessionStorage.removeItem("slicematic_customer_logged_in");
++ window.sessionStorage.removeItem("slicematic_customer_email");
++ window.sessionStorage.removeItem("slicematic_customer");
++ window.sessionStorage.removeItem("slicematic_customer_id");
++ window.sessionStorage.removeItem("slicematic_workspace");
+```
+
+**What changed in `admin-dashboard/page.tsx`:**
+```diff
+- onClick={() => void adminAuth.adminLogout()}
++ onClick={() => void adminAuth.adminLogout(() => router.replace("/"))}
+```
+`onUnauthorize` callback carries `router.replace("/")` so the user lands on the `EntryPortal` after all keys are cleared. Supabase `signOut()` was already being called — no change needed there.
+
+**Behaviour after fix:**
+- Admin logout clears **all** 8 session keys + Supabase session
+- `app/page.tsx` finds no session → renders `EntryPortal` (login screen)
+- Customer state is fully reset — no cross-contamination between admin and customer flows
+
+---
+
+#### Fix 2 — Premium Navbar: Hide Admin Tab + Framer Motion Revamp
+
+**Files changed:**
+- `components/AppHeader.tsx` (complete rewrite — new file from git's perspective `??`)
+- `components/CustomerShell.tsx` (+1 prop: `isAdminUser={false}`)
+- `app/admin-dashboard/page.tsx` (+1 prop: `isAdminUser={adminAuth.adminLoggedIn}`)
+
+**Root cause:** The previous `AppHeader` always rendered all three tabs. There was no mechanism to hide the Admin console tab for regular customers.
+
+**What changed in `AppHeader.tsx`:**
+- Added `isAdminUser?: boolean` prop (default `false`)
+- Tabs filtered at render time: `NAV_TABS.filter(t => !t.adminOnly || isAdminUser)`
+- `adminOnly: true` flag on the Admin console tab — invisible to all regular customers
+- Full Framer Motion redesign:
+  - **Frosted-glass header**: `background: rgba(248,246,243,0.85)`, `backdropFilter: blur(20px)`, `position: sticky top:0 z-index:100`
+  - **SliceMatic logo mark** left-aligned: gradient red circle with Pizza icon, animated entry (`motion.div` fade+slide-left)
+  - **Sliding pill nav**: three tabs in a grouped container; active tab gets a `motion.span` with `layoutId="nav-active-pill"` — spring-animated across tabs (`stiffness:420, damping:34`), white pill with shadow
+  - **`whileTap={{ scale: 0.96 }}`** on each tab button for tactile press feedback
+  - **Session chip** right-aligned: `AnimatePresence mode="wait"` fade between session label changes; color-coded (red for admin, green for logged-in customer, neutral for guest)
+- `aria-current="page"` on active tab for accessibility
+
+**What changed in `CustomerShell.tsx`:**
+```diff
++ isAdminUser={false}
+```
+Regular customers never see the Admin console tab, regardless of auth state.
+
+**What changed in `app/admin-dashboard/page.tsx`:**
+```diff
++ isAdminUser={adminAuth.adminLoggedIn}
+```
+Admin console tab only shows once an admin is authenticated. Before login (the `AdminAuthPanel` login form is visible), the tab is also hidden.
+
+---
+
+#### Fix 3 — Premium Customer Account Dashboard
+
+**Files changed:**
+- `features/customer-ordering/components/CustomerAccountPanel.tsx` (complete rewrite — 384 → 379 lines, preserves all auth screens)
+
+**What was there before:** A flat `account-hero` with 4 stacked buttons + `CustomerOrderHistoryTable` below.
+
+**What was built:**
+- **GlassCard wrapper component**: `motion.div` with `whileHover` spring lift (y: -2px, shadow bloom), `backdropFilter: blur(20px)`, `border: 1px solid rgba(0,0,0,0.07)`
+- **ActionBtn component**: `motion.button` with `whileHover={{ scale: 1.02 }}` / `whileTap={{ scale: 0.97 }}`; supports `primary`, `ghost`, `danger` variants
+- **StatChip component**: icon in colored rounded square + value + label
+- **Welcome hero card** (full width):
+  - Animated avatar circle: `motion.div` with `initial={{ scale: 0, rotate: -20 }} animate={{ scale: 1, rotate: 0 }}` spring bounce; shows first letter of display name
+  - Display name derived from email (e.g. `dogalife4@gmail.com` → `Dogalife4`)
+  - **Stats strip**: Total orders (Package icon, indigo), Total spent (TrendingUp, red), Last order date (Star, amber) — all computed from the `orders` prop
+- **2-column row** below hero:
+  - Left: **Quick actions card** (220px fixed): Continue Ordering (primary), Use Saved Profile, Rebuild Favourite, divider, Sign out (danger)
+  - Right: **AI Recommendation card**: gradient icon badge + `AnimatePresence mode="wait"` between `rec-found` (pizza name + topping + reason paragraph + two action buttons) and `rec-empty` (browse menu CTA) states
+- **Order history card** (full width): header with order count badge, animated Refresh button, spinner skeleton, empty state illustration (`ShoppingBag` icon + prompt), `CustomerOrderHistoryTable` when data is present
+- **Stagger animation**: entire panel wrapped in `motion.section` with `variants={stagger}` — each `GlassCard` enters with `fadeUp` (opacity 0→1, y 20→0, `delay: i * 0.07`)
+
+**Auth screens preserved exactly** (login, OTP email/SMS, forgot password, reset password) — zero functional changes to authentication flows.
+
+---
+
+#### TypeScript verification
+```
+npx tsc --noEmit  →  0 errors  ✓
+```
+
+#### Git evidence
+```
+New (untracked ??):
+  components/AppHeader.tsx
+  features/customer-ordering/components/CustomerAccountPanel.tsx
+
+Modified (M):
+  features/admin-dashboard/hooks/useAdminAuth.ts   (+12 lines)
+  app/admin-dashboard/page.tsx                     (+2 lines)
+  components/CustomerShell.tsx                     (+1 line)
+```
+
+---
+
+### [2026-07-18 00:09:00 IST] - Major Extraction: SliceMaticStage3 2437→733 lines / AdminDashboard 2461→626 lines
+- **NEW** `features/admin-dashboard/hooks/useAdminAuth.ts` — all admin auth state + handlers (login, logout, forgot, reset, demo fallback)
+- **NEW** `features/admin-dashboard/hooks/useAdminSession.ts` — admin summary, ops briefing, CSV download, payment/date filters
+- **NEW** `features/customer-ordering/hooks/useCustomerAuth.ts` — customer auth state + handlers (password login, OTP email/SMS, forgot, reset, demo fallback)
+- **NEW** `features/customer-ordering/hooks/useOrderHistory.ts` — order history fetch with request deduplication refs
+- **NEW** `features/admin-dashboard/components/AdminAuthPanel.tsx` — all 3 admin auth views (login/forgot/reset) as pure component
+- **NEW** `features/customer-ordering/components/CustomerAccountPanel.tsx` — logged-in account dashboard + all 3 customer auth views
+- **NEW** `components/AppHeader.tsx` — top nav bar (workspace selector + status chip) as pure presentational component
+- **NEW** `lib/session-customer.ts` — already existed; confirmed `syncSessionCustomerId` and `applyOrderToSession` exports are present
+- **MODIFIED** `components/SliceMaticStage3.tsx` — 2437 → 733 lines (-70%): now a thin shell importing all hooks/components; dead code removed (`{false && <section>}` block and orphaned `AdminOverview` function)
+- **MODIFIED** `app/admin-dashboard/page.tsx` — 2461 → 626 lines (-75%): same hook pattern, preserves admin-only extras (URL tab sync, order URL tracking, live data refresh on visibilitychange/focus, brand fetch on mount)
+- **MODIFIED** `features/admin-dashboard/components/index.ts` — added `AdminAuthPanel` export
+- **MODIFIED** `features/customer-ordering/components/index.ts` — added `CustomerAccountPanel` export
+- TypeScript: 0 errors (`npx tsc --noEmit` clean after all fixes)
+- Files: useAdminAuth.ts, useAdminSession.ts, useCustomerAuth.ts, useOrderHistory.ts, AdminAuthPanel.tsx, CustomerAccountPanel.tsx, AppHeader.tsx, SliceMaticStage3.tsx, admin-dashboard/page.tsx
+
+
+### [2026-07-17 23:45:00 IST] - UI Revamp Execution — Premium Design System + Screen Transforms
+- Implemented full premium design system foundation in globals.css: 100+ semantic tokens, glassmorphism, warm food palette, typography scale, motion timing, skeleton keyframes.
+- Created 9 named skeleton components (MenuCard, Recommendation, CheckoutSummary, OrderRow, ForecastChart, AiServiceCard, AdminMetric, CartInsight, TrackingTimeline).
+- Created premium UI primitives: EmptyState, SuccessCheckmark, QuantityStepper, TagChip, ReasonTag, FilterChip, ExceptionChip, PaymentTile, AiServiceCard.
+- Built framer-motion animation wrappers: FadeInUp, ScaleIn, SlideUp, SlideInRight, CartBounce, StaggerContainer, ModalOverlay, NumberCrossfade.
+- Rewrote EntryPortal.css with glassmorphism backdrop-filter card, warm dough gradients, pizza watermark SVG.
+- Transformed MenuCatalog: search input + FilterChip categories, premium card design, staggered entrance animation, add-to-cart bounce, skeleton loading, EmptyState.
+- Transformed PizzaBuilderDialog: mobile bottom-sheet with drag handle, hero image, selection tiles with check marks, QuantityStepper, sticky footer with live price.
+- Enhanced CartRail: EmptyState illustration for empty cart, item count badge, discount highlight in green, design system CTA button.
+- Enhanced RecommendationLane: ReasonTag chips (history/preference/popular), numbered rank badges, RecommendationSkeleton loading.
+- Upgraded CheckoutSummary: 2-column layout with sticky order summary, PaymentTile selection, spinner in place-order button.
+- Rewrote confirmation page: animated SuccessCheckmark SVG, centered hero, kitchen illustration, collapsible receipt accordion.
+- Added CSS: confirmation hero, bottom sheet (mobile→centered desktop dialog), SUI button system (primary/secondary/ghost/danger + sm/lg), filter bar search, stagger animation, section headings, cart badge, checkout sticky, cart-bounce keyframe.
+- Extracted lib/auth-actions.ts: admin login, customer login, OTP send/verify, password reset, sign out.
+- Extracted lib/admin-actions.ts: summary fetch, menu CRUD, order status, AI copy, ops briefing, CSV download, image upload.
+- Extracted features/checkout/hooks/useCheckoutActions.ts: all 3 payment flows (Cash, UPI/Cashfree, Card/Razorpay).
+- Extracted features/customer-ordering/hooks/useCustomerFlow.ts: cart insight, recommendation refresh.
+- Extracted features/admin-dashboard/hooks/useMenuAdmin.ts: inline edit, draft, baseline tracking, image upload.
+- TypeScript compiles clean (0 errors).
+- Files: globals.css, components/ui/Skeleton.tsx, components/ui/Skeletons.tsx, components/ui/Primitives.tsx, components/ui/AnimationWrappers.tsx, components/ui/index.ts, components/EntryPortal/EntryPortal.css, features/menu/components/MenuCatalog.tsx, features/menu/components/PizzaBuilderDialog.tsx, features/customer-ordering/components/CartRail.tsx, features/customer-ordering/components/RecommendationLane.tsx, features/checkout/components/CheckoutSummary.tsx, app/confirmation/page.tsx, lib/auth-actions.ts, lib/admin-actions.ts, features/checkout/hooks/useCheckoutActions.ts, features/customer-ordering/hooks/useCustomerFlow.ts, features/admin-dashboard/hooks/useMenuAdmin.ts
+
+---
+
+### [2026-07-16 18:51:13 IST] - Shared admin menu and settings workspaces
+- Continued the frontend-only revamp by extracting the duplicated admin `menu` and `settings` tabs into shared feature components.
+- Added `AdminMenuWorkspace` for menu creation, image upload, AI copy generation, and row-level menu editing while preserving all parent-owned save/upload/update logic.
+- Added `AdminSettingsWorkspace` for brand, financial, and delivery policy controls while preserving the route-specific apply behavior for the dedicated admin route versus the embedded Stage3 preview.
+- Wired both `app/admin-dashboard/page.tsx` and `components/SliceMaticStage3.tsx` to the shared admin workspaces under the Dual-File Rule.
+- Validation: full `npm run test` passed 114/114; `npx tsc --noEmit` passed.
+- Files: features/admin-dashboard/components/AdminMenuWorkspace.tsx, features/admin-dashboard/components/AdminSettingsWorkspace.tsx, features/admin-dashboard/components/index.ts, app/admin-dashboard/page.tsx, components/SliceMaticStage3.tsx, plans/fullstack-delivery-intelligence-sprints.md, wiki/*
+
+---
+
+### [2026-07-16 17:24:31 IST] - Revamp R9-R11 cleanup and state polish closure
+- Cleaned the R9/R10 extraction by removing the stale local admin order table tail from `app/admin-dashboard/page.tsx`; only the shared `features/admin-dashboard/components/OrderTable.tsx` remains.
+- Completed the R11 polish pass for extracted admin/customer surfaces with admin order loading skeleton rows, a neutral empty-order state, and AI cart strategist skeleton loading.
+- Added `aria-busy`/status semantics for loading surfaces without changing API behavior or data ownership.
+- Preserved parent ownership for filters, pagination, refresh state, AI fetches, cart mutation, validation, and routing.
+- Validation: full `npm run test` passed 114/114; `npx tsc --noEmit` and `git diff --check` passed.
+- Files: app/admin-dashboard/page.tsx, app/globals.css, features/admin-dashboard/components/AdminOrdersWorkspace.tsx, features/admin-dashboard/components/OrderTable.tsx, features/customer-ordering/components/AiCartStrategistCard.tsx, plans/fullstack-delivery-intelligence-sprints.md, wiki/*
+
+---
+
 ### [2026-07-16 17:03:48 IST] - Revamp R9-R10 intake and orders workspace extraction
 - Continued the frontend-only revamp sprint without SQL, RLS, maps, rider tracking, realtime, or delivery API changes.
 - Added shared `CustomerIntakeForm` and replaced duplicated customer intake form JSX in both giant workspaces.

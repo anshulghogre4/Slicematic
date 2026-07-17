@@ -9,7 +9,16 @@ scope: wiki/
 
 Entries use `## [YYYY-MM-DD] operation | title` so agents and shell tools can parse the timeline.
 
-## [2026-07-06] ingest | Initial FullStack wiki
+## [2026-07-18 01:12 IST] fix+revamp | Security & UX — Holistic Logout + Navbar + Customer Dashboard
+
+- **Holistic admin logout:** `useAdminAuth.adminLogout()` now clears all 8 sessionStorage keys (2 admin + 6 customer). Logout button in `admin-dashboard/page.tsx` passes `() => router.replace("/")` as callback → lands on EntryPortal.
+- **Admin console tab visibility:** `AppHeader` gains `isAdminUser` prop. `CustomerShell` passes `false`; admin page passes `adminAuth.adminLoggedIn`. Tab is hidden until admin is authenticated.
+- **AppHeader Framer Motion revamp:** frosted-glass sticky header, logo mark, sliding `layoutId` pill nav, `whileTap` press feedback, animated session chip with `AnimatePresence`.
+- **CustomerAccountPanel revamp:** glassmorphic cards, animated avatar (spring), stats strip (orders/spent/last date), 2-col action+AI rec layout, stagger entry. Auth screens preserved.
+- TS: 0 errors. Files: `useAdminAuth.ts`, `AppHeader.tsx`, `CustomerAccountPanel.tsx`, `admin-dashboard/page.tsx`, `CustomerShell.tsx`.
+
+## [2026-07-18] ingest | Major hook/component extraction + admin overview revamp
+
 
 - Created the first architecture, component, API, CSS, state, business-rule, auth, payment, database, environment, testing, tooling, decision, graph, and handoff pages.
 - Source scope: `FullStack/` and project documentation available at that time.
@@ -174,3 +183,43 @@ Entries use `## [YYYY-MM-DD] operation | title` so agents and shell tools can pa
 - Preserved parent ownership for validation, step navigation, filters, pagination, URL state, admin refresh state, and data fetching.
 - Preserved the delivery security gate: no SQL, RLS, maps, rider tracking, realtime, or delivery API changes.
 - Validation: full `npm run test` passed 114/114; `npx tsc --noEmit` passed.
+
+## [2026-07-16] ingest | Revamp R9-R11 cleanup and state polish closure
+
+- Removed the stale route-local admin order table tail from `app/admin-dashboard/page.tsx`; the shared `OrderTable` is now the only active admin order table implementation.
+- Completed the R11 state pass for extracted surfaces: admin order skeleton rows, neutral empty-order state, and AI cart strategist skeleton loading.
+- Added `aria-busy`/status semantics while preserving parent-owned filters, pagination, refresh state, AI fetches, validation, and routing.
+- Preserved the delivery security gate: no SQL, RLS, maps, rider tracking, realtime, or delivery API changes.
+- Validation: full `npm run test` passed 114/114; `npx tsc --noEmit` and `git diff --check` passed.
+
+## [2026-07-16] ingest | Shared admin menu and settings workspaces
+
+- Added `AdminMenuWorkspace` and `AdminSettingsWorkspace` under `features/admin-dashboard/components`.
+- Replaced duplicated admin `menu` and `settings` JSX in both `app/admin-dashboard/page.tsx` and `components/SliceMaticStage3.tsx`.
+- Preserved route-specific behavior boundaries: the dedicated admin route still owns Supabase apply/save actions, while the embedded Stage3 admin keeps its preview toast behavior.
+- Preserved the delivery security gate: no SQL, RLS, maps, rider tracking, realtime, or delivery API changes.
+- Validation: full `npm run test` passed 114/114; `npx tsc --noEmit` passed.
+
+## [2026-07-17] build | UI Revamp Execution — Premium Design System + Screen Transforms
+
+- Extended `globals.css` with 100+ semantic tokens (glassmorphism, typography, motion, warm food palette).
+- Created 9 skeleton components, 9 premium UI primitives, and 8 framer-motion animation wrappers.
+- Rewrote EntryPortal.css, MenuCatalog, PizzaBuilderDialog, CartRail, RecommendationLane, CheckoutSummary, confirmation page.
+- Added CSS for bottom sheet, SUI button system, stagger animation, confirmation hero, receipt accordion, cart badge.
+- Extended `globals.css` with 100+ semantic tokens (glassmorphism, typography, motion, warm food palette).
+- Created 9 skeleton components, 9 premium UI primitives, and 8 framer-motion animation wrappers.
+- Rewrote EntryPortal.css, MenuCatalog, PizzaBuilderDialog, CartRail, RecommendationLane, CheckoutSummary, confirmation page.
+- Added CSS for bottom sheet, SUI button system, stagger animation, confirmation hero, receipt accordion, cart badge.
+- Extracted 5 lib/hook modules: auth-actions, admin-actions, useCheckoutActions, useCustomerFlow, useMenuAdmin.
+- TypeScript compiles clean. Updated CHANGELOG and handoff.
+
+## [2026-07-18] refactor | SliceMaticStage3 + AdminDashboard massive extraction
+
+- **Goal**: Reduce monolith from ~2400 lines to ~300. Achieved −70% / −75%.
+- Created 4 new hooks: `useAdminAuth`, `useAdminSession`, `useCustomerAuth`, `useOrderHistory`.
+- Created 3 new components: `AdminAuthPanel`, `CustomerAccountPanel`, `AppHeader`.
+- `SliceMaticStage3.tsx`: 2437 → 733 lines. Now a thin shell; no duplicated auth logic; dead code removed.
+- `app/admin-dashboard/page.tsx`: 2461 → 626 lines. Uses same 4 hooks; preserves URL tab sync, live refresh, brand fetch, order URL tracking.
+- Both files updated (Dual-File Rule satisfied).
+- TypeScript: `npx tsc --noEmit` clean — 0 errors.
+- Updated CHANGELOG.md with full file list.

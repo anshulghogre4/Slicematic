@@ -1,3 +1,4 @@
+import { Skeleton } from "../../../components/ui";
 import { money } from "../../../lib/pricing";
 import type { SavedOrder } from "../../../lib/types";
 
@@ -6,11 +7,34 @@ export type OrderTableProps = {
   selectedOrderId?: string;
   onSelectOrder?: (orderId: string) => void;
   variant?: "compact" | "detailed";
+  isLoading?: boolean;
 };
 
-export function OrderTable({ orders, selectedOrderId, onSelectOrder, variant = "compact" }: OrderTableProps) {
+export function OrderTable({ orders, selectedOrderId, onSelectOrder, variant = "compact", isLoading = false }: OrderTableProps) {
+  if (isLoading && !orders.length) {
+    const columnCount = variant === "detailed" ? 6 : 5;
+
+    return (
+      <div className="order-table order-table--loading" aria-busy="true" aria-label="Loading orders">
+        <div className="order-row head">
+          {Array.from({ length: columnCount }).map((_, index) => <span key={index}>Loading</span>)}
+        </div>
+        {Array.from({ length: 4 }).map((_, rowIndex) => (
+          <div className="order-row order-row--skeleton" key={rowIndex}>
+            {Array.from({ length: columnCount }).map((_, cellIndex) => <Skeleton key={cellIndex} variant="line" />)}
+          </div>
+        ))}
+      </div>
+    );
+  }
+
   if (!orders.length) {
-    return <div className="empty-orders">No orders match the current filters.</div>;
+    return (
+      <div className="empty-orders" role="status">
+        <strong>No orders found</strong>
+        <span>Try clearing filters or refresh once Supabase data is available.</span>
+      </div>
+    );
   }
 
   if (variant === "detailed") {

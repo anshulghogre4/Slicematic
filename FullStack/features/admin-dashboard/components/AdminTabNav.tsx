@@ -7,7 +7,7 @@ export type AdminTabNavProps = {
 
 export function AdminTabNav({ activeTab, onSelectTab }: AdminTabNavProps) {
   return (
-    <nav className="admin-tabs" aria-label="Admin dashboard sections">
+    <nav className="admin-tab-nav" aria-label="Admin dashboard sections">
       {ADMIN_TABS.map((tab) => (
         <button
           key={tab}

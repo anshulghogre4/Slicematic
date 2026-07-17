@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import SliceMaticStage3 from "../components/SliceMaticStage3";
+import CustomerShell from "../components/CustomerShell";
 import EntryPortal from "../components/EntryPortal/EntryPortal";
 import { useStore } from "../lib/store";
 
@@ -64,5 +64,5 @@ export default function Page() {
     return null;
   }
 
-  return <SliceMaticStage3 onUnauthorize={() => setIsAuthorized(false)} />;
+  return <CustomerShell onUnauthorize={() => setIsAuthorized(false)} />;
 }

@@ -2,7 +2,7 @@
 title: SliceMatic Session Handoff
 type: handoff
 status: active
-last_updated: 2026-07-16
+last_updated: 2026-07-18
 ---
 
 # SliceMatic Session Handoff
@@ -11,7 +11,31 @@ Read [[index]] first. Durable delivery design now lives in [[delivery-operations
 
 ## Latest work
 
-- Audited the unused `customer_activity` and `customer_preference` schema and existing post-order flow.
+- **Security & UX Fixes (2026-07-18 01:12 IST):** Three production bugs fixed + two UI revamps shipped.
+  - **FIX — Holistic admin logout:** `adminLogout()` in `useAdminAuth.ts` now clears all 8 `sessionStorage` keys (was only clearing 2 admin keys). The 6 customer keys (`slicematic_customer_logged_in`, `slicematic_customer_email`, `slicematic_customer`, `slicematic_customer_id`, `slicematic_workspace`, `slicematic_admin_view_customer`) were being left behind, causing the page to render the customer UI instead of `EntryPortal` after admin logout. Logout button now passes `() => router.replace("/")` as the `onUnauthorize` callback so the redirect happens after all keys clear.
+  - **FIX — Admin console tab hidden from customers:** Added `isAdminUser?: boolean` prop to `AppHeader`. `CustomerShell` passes `false`; admin dashboard passes `adminAuth.adminLoggedIn`. Regular customers never see the Admin console tab.
+  - **REVAMP — Premium navbar (AppHeader):** Full Framer Motion redesign — frosted-glass sticky header, SliceMatic logo mark (animated entry), sliding pill nav with `layoutId="nav-active-pill"` spring animation, `whileTap` press feedback on all tabs, `AnimatePresence` session chip (color-coded: red=admin, green=customer, neutral=guest), `aria-current` for a11y.
+  - **REVAMP — Customer account dashboard (CustomerAccountPanel):** Premium glassmorphic layout — animated avatar circle (spring bounce on mount), stats strip (total orders, total spent, last order date), 2-column row with quick-action card + AI recommendation card (`AnimatePresence` between found/empty states), full-width order history card with count badge and spinner. Stagger entry via Framer Motion `variants`. All auth screens (login/OTP/forgot/reset) preserved exactly.
+  - TypeScript: 0 errors after all changes.
+
+- **UI Revamp Execution (2026-07-17):** Implemented the full premium design system and transformed customer-facing screens.
+  - Extended `globals.css` with 100+ semantic tokens (glassmorphism, warm food palette, motion timing, typography scale).
+  - Created 9 named skeleton components, EmptyState/SuccessCheckmark/QuantityStepper/TagChip/ReasonTag/FilterChip/ExceptionChip/PaymentTile/AiServiceCard primitives.
+  - Built framer-motion animation wrappers (FadeInUp, ScaleIn, SlideUp, StaggerContainer, ModalOverlay, NumberCrossfade).
+  - Rewrote EntryPortal CSS with glassmorphism backdrop-filter, warm dough gradients, pizza watermark SVG.
+  - Transformed MenuCatalog: search bar, FilterChip categories, staggered card entrance, add-to-cart bounce animation, skeleton loading, empty state.
+  - Transformed PizzaBuilderDialog: mobile bottom-sheet with drag handle, hero image, selection tiles, QuantityStepper, sticky footer with live price.
+  - Enhanced CartRail: EmptyState illustration, item count badge, discount highlight, design system buttons.
+  - Enhanced RecommendationLane: ReasonTag chips, numbered rank badges, RecommendationSkeleton loading.
+  - Upgraded CheckoutSummary: 2-column layout, PaymentTile selection, sticky order summary, spinner in place-order button.
+  - Rewrote confirmation page: animated SuccessCheckmark SVG, centered hero, kitchen illustration, collapsible receipt accordion.
+  - Added CSS: confirmation hero, bottom sheet (mobile→centered desktop dialog), SUI button system, filter bar search, stagger animation, section headings, cart badge, checkout sticky, cart-bounce keyframe.
+  - Extracted `lib/auth-actions.ts` (admin/customer login, OTP, password reset, sign out).
+  - Extracted `lib/admin-actions.ts` (summary, menu CRUD, order status, AI copy, ops briefing, CSV, image upload).
+  - Extracted `features/checkout/hooks/useCheckoutActions.ts` (all 3 payment flows).
+  - Extracted `features/customer-ordering/hooks/useCustomerFlow.ts` (cart insight, recommendation refresh).
+  - Extracted `features/admin-dashboard/hooks/useMenuAdmin.ts` (inline edit, draft, baseline, image upload).
+  - TypeScript compiles clean (0 errors).- Audited the unused `customer_activity` and `customer_preference` schema and existing post-order flow.
 - Compared live-delivery patterns, Google Maps, Mapbox, HERE, MapLibre/OSM, and Supabase Realtime through specialist research.
 - Created a five-sprint implementation backlog for preference/activity utilization, dispatch, rider fees, ETA, live tracking, proof, privacy, and rollout.
 - Chose Google Maps + private Supabase Broadcast as the provisional India MVP stack, subject to a Delhi address/route bake-off.
@@ -78,6 +102,26 @@ Read [[index]] first. Durable delivery design now lives in [[delivery-operations
   - Kept filters, pagination, admin refresh state, URL state, validation, and data fetching in parent workspaces.
   - Verified `npx tsc --noEmit` and full `npm run test` 114/114.
   - No SQL, RLS, map, rider, realtime, or delivery API changes were made.
+- Closed the R9/R10 cleanup and R11 state-polish pass:
+  - Removed the stale route-local admin order table tail from `app/admin-dashboard/page.tsx`; admin order rows now have a single shared implementation.
+  - Added admin order loading skeleton rows and a neutral empty-order state.
+  - Added AI cart strategist skeleton loading and `aria-busy` while insight generation is pending.
+  - Verified `npx tsc --noEmit`, full `npm run test` 114/114, and `git diff --check`.
+  - No SQL, RLS, map, rider, realtime, or delivery API changes were made.
+- Continued the frontend architecture extraction:
+  - Added shared `AdminMenuWorkspace` and `AdminSettingsWorkspace`.
+  - Replaced duplicated admin `menu` and `settings` JSX in both giant workspaces.
+  - Preserved route-specific apply behavior: live Supabase apply on `/admin-dashboard`, preview toast in the embedded Stage3 admin view.
+  - Verified `npx tsc --noEmit` and full `npm run test` 114/114.
+  - No SQL, RLS, map, rider, realtime, or delivery API changes were made.
+- **Monolith Extraction (2026-07-18):** Reduced both giant files by 70-75% using dedicated hooks and components.
+  - Created `useAdminAuth`, `useAdminSession`, `useCustomerAuth`, `useOrderHistory` hooks — all auth/session/data logic now fully outside render components.
+  - Created `AdminAuthPanel`, `CustomerAccountPanel`, `AppHeader` as pure presentational components.
+  - `SliceMaticStage3.tsx`: 2437 → 733 lines (−70%). Now a thin shell: imports hooks + components + wires JSX.
+  - `app/admin-dashboard/page.tsx`: 2461 → 626 lines (−75%). Same hook pattern; preserves URL tab sync, live data refresh (visibilitychange/focus), brand fetch on mount, order URL tracking.
+  - Dead code removed: `{false && <section>}` block and orphaned `AdminOverview` function.
+  - Dual-File Rule: both files updated in the same session.
+  - TypeScript: `npx tsc --noEmit` clean — 0 errors.
 
 ## Files changed
 
@@ -127,6 +171,8 @@ Read [[index]] first. Durable delivery design now lives in [[delivery-operations
 - `FullStack/features/customer-ordering/components/CustomerIntakeForm.tsx`
 - `FullStack/features/admin-dashboard/components/AdminOrdersWorkspace.tsx`
 - `FullStack/features/admin-dashboard/components/OrderTable.tsx`
+- `FullStack/features/admin-dashboard/components/AdminMenuWorkspace.tsx`
+- `FullStack/features/admin-dashboard/components/AdminSettingsWorkspace.tsx`
 - `FullStack/features/admin-dashboard/components/index.ts`
 - `FullStack/features/customer-ordering/components/AiCartStrategistCard.tsx`
 - `FullStack/features/customer-ordering/components/CartLineItem.tsx`
@@ -145,17 +191,26 @@ Read [[index]] first. Durable delivery design now lives in [[delivery-operations
 - `FullStack/wiki/scripts-tooling.md`
 - `AGENTS.md`
 - `CLAUDE.md`
+- `FullStack/features/admin-dashboard/hooks/useAdminAuth.ts` (NEW)
+- `FullStack/features/admin-dashboard/hooks/useAdminSession.ts` (NEW)
+- `FullStack/features/customer-ordering/hooks/useCustomerAuth.ts` (NEW)
+- `FullStack/features/customer-ordering/hooks/useOrderHistory.ts` (NEW)
+- `FullStack/features/admin-dashboard/components/AdminAuthPanel.tsx` (NEW)
+- `FullStack/features/customer-ordering/components/CustomerAccountPanel.tsx` (NEW)
+- `FullStack/components/AppHeader.tsx` (NEW)
 
 FullStack application code was changed in Revamp Sprints R1-R8, with small R9/R10/R11 starter slices. No SQL schema was changed.
 
 ## Next action
 
-Current next frontend build sprint after R8: **continue R9/R10/R11 frontend decomposition**, while the separate DB/RLS delivery foundation remains gated.
+Current state after the monolith extraction: **both giant files are lean shells (733 / 626 lines)**. The next priority is:
 
-- Continue extracting customer ordering shell/intake/mobile cart placement, admin command/order workspace, and shared loading/empty/error states.
-- Continue using the UI primitive bridge for intentionally migrated surfaces.
-- Preserve the completed menu/builder, cart/recommendation, admin selection, and confirmation lifecycle contracts.
-- Do not implement live rider tracking or maps until DB/RLS and provider bake-off gates are complete.
+1. Run `npm run test` to verify no regressions from the rewrite (hooks are new modules; existing component tests should all pass).
+2. Review the UX end-to-end in browser — customer login → order → payment → confirmation, and admin login → orders → menu → settings.
+3. Consider extracting remaining inline admin state (brand, menuBaseline, cartInsight) into a `useAdminBrand` hook if they grow.
+4. Keep DB/RLS, maps, rider tracking, dispatch, and delivery APIs gated.
+
+Do not implement precise rider tracking before:
 
 Use `FullStack/plans/fullstack-delivery-intelligence-sprints.md` as the sprint control file. Consult [[ui-map]], `FullStack/plans/ui-inspiration-research.md`, `FullStack/plans/ui-revamp-implementation-plan.md`, `FullStack/plans/frontend-architecture-restructure.md`, and `FullStack/plans/database-schema-evolution-plan.md` only as supporting references unless a durable fact changes.
 
@@ -185,13 +240,14 @@ Then execute modular extraction and contract tests before deploying recommendati
 - `npm run test`: passed 104/104 on 2026-07-16 after R3-R6 batch.
 - `npm run test`: passed 107/107 on 2026-07-16 after R5 confirmation and R6 order context.
 - `npm run test`: passed 111/111 on 2026-07-16 after R7A menu and builder extraction.
-- `npm run test`: passed 114/114 on 2026-07-16 after R9-R10 intake and admin orders workspace extraction.
+- `npm run test`: passed 114/114 on 2026-07-16 after shared admin menu/settings extraction.
 - `npx tsc --noEmit`: passed on 2026-07-16 after R1.
 - `npx tsc --noEmit`: passed on 2026-07-16 after R2.
 - `npx tsc --noEmit`: passed on 2026-07-16 after R3-R6 batch.
 - `npx tsc --noEmit`: passed on 2026-07-16 after R5 confirmation and R6 order context.
 - `npx tsc --noEmit`: passed on 2026-07-16 after R7A menu and builder extraction.
-- `npx tsc --noEmit`: passed on 2026-07-16 after R9-R10 intake and admin orders workspace extraction.
+- `npx tsc --noEmit`: passed on 2026-07-16 after shared admin menu/settings extraction.
+- `npx tsc --noEmit`: passed on 2026-07-18 after monolith extraction (useAdminAuth/useAdminSession/useCustomerAuth/useOrderHistory + AdminAuthPanel/CustomerAccountPanel/AppHeader).
 - Earlier full `npm test`: 92 passed, one `resetSession()` address assertion failed; R1 corrected that focused store assertion.
 
 At the end of every material task, update affected pages and append to [[log]].
