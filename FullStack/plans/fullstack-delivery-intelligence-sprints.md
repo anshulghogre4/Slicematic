@@ -35,7 +35,7 @@ Use the other plan files as supporting references:
 
 Do not split the active sprint queue across those files. When priorities change, update this section first and then only update reference docs if a durable fact changes.
 
-### Revamp R8-R11 frontend-first execution plan
+### Revamp R8-R12 frontend-first execution plan
 
 These sprints continue the current harmless frontend decomposition before any SQL, RLS, rider tracking, map provider, or live dispatch implementation.
 
@@ -44,7 +44,8 @@ These sprints continue the current harmless frontend decomposition before any SQ
 | R8 - Cart rail and recommendation lane extraction | Done | Customer ordering frontend | Extract cart presentation, cart line item rendering, recommendation cards/lane, and AI cart strategist presentation from both giant workspaces | Completed 2026-07-16. Both giant workspaces now compose shared cart/recommendation components; pricing, cart mutation, API calls, router navigation, toasts, and Zustand ownership remain in the parents; cart-line missing-item helpers are tested |
 | R9 - Customer ordering shell cleanup | Closed for extracted scope | Customer ordering frontend | Extract the customer ordering step layout, intake/recommend/menu shell, step navigation, and mobile cart placement into feature components | `CustomerFlowTabs` and `CustomerIntakeForm` are extracted and shared. Larger shell/mobile-cart composition remains a future optional slice, but duplicated intake/tab JSX is cleaned |
 | R10 - Admin command shell and table workspace | Closed for extracted scope | Admin dashboard frontend | Extract admin top command bar, side/tab navigation, order table workspace, and selected-order drawer wrapper | `AdminTabNav`, `AdminOrdersWorkspace`, shared `OrderTable`, `AdminMenuWorkspace`, and `AdminSettingsWorkspace` now drive both admin workspaces. Future optional slice is command-bar extraction |
-| R11 - Loading, empty, error, and mobile polish pass | Done | Shared UI quality | Add consistent skeletons and empty/error states for menu, recommendations, cart insight, order table, forecast, AI panel, and confirmation; tighten responsive behavior | Recommendation lane, AI cart strategist, admin order loading rows, and neutral empty-order state now use the shared skeleton/state pattern. Broader visual smoke remains a browser QA task, not a blocking code extraction |
+| R11 - Loading, empty, error, and mobile polish pass | Done | Shared UI quality | Add consistent skeletons and empty/error states for menu, recommendations, cart insight, order table, forecast, AI panel, and confirmation; tighten responsive behavior | Recommendation lane, AI cart strategist, admin order rows, and empty states now use the skeleton/state pattern. Route boundaries (loading.tsx/error.tsx) still pending. |
+| R12 - Frontend Visual Polish & Micro-interactions | Planned | Shared UI quality | Apply final Apple-like glassmorphic polish and micro-interactions across key components | Fix Margherita badge alignment, improve checkout layout spacing around "Online verification required", enhance customizer stepper styling (minus button), add order status icons/subtle progress bars to confirmation tracking, and confirm Admin interactive charts. |
 
 ### R8 implementation notes
 
@@ -80,7 +81,7 @@ R8 edge cases to include:
 
 The database/RLS work in `plans/database-schema-evolution-plan.md` is still required before production delivery tracking, but it should not start as live feature work until these frontend gates are done:
 
-1. Customer ordering presentation is extracted enough that `SliceMaticStage3.tsx` no longer owns cart/recommendation/menu JSX directly.
+1. Customer ordering presentation is extracted into `CustomerShell.tsx` and feature components. (Completed)
 2. Admin orders presentation is extracted enough that delivery placeholders can be replaced by real state without rewriting the whole dashboard.
 3. Checkout/confirmation display contracts are explicit: client totals are display-only, server order/quote data will become authoritative.
 4. UI fallbacks exist for no map, no rider, no ETA, stale location, provider failure, and unassigned-ready orders.
@@ -586,7 +587,7 @@ Sprint 0 exit gate: authorization and migration design approved. No live trackin
 
 ### S0-05 Modular-monolith extraction map
 
-- Inventory responsibilities in `components/SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx`.
+- Inventory responsibilities and migrate the remaining backend modules. (Frontend monolith extraction is already completed).
 - Freeze behavior with characterization tests before moving code.
 - Define feature modules, shared components, server domain modules, service clients, and API contracts.
 - Acceptance: dependency map approved; no circular feature imports; extraction sequence keeps routes and user flows unchanged.

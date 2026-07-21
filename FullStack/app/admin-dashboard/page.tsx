@@ -14,7 +14,6 @@ import { parseAdminTab, type AdminTab } from "../../lib/admin-tabs";
 // ── Feature components ────────────────────────────────────────────────────────
 import { AppHeader } from "../../components/AppHeader";
 import {
-  AdminAuthPanel,
   AdminOverviewPanel,
   AdminMenuWorkspace,
   AdminOrdersWorkspace,
@@ -92,6 +91,9 @@ export default function AdminDashboardPage() {
   const [cartInsight, setCartInsight] = useState<null | { headline: string; message: string; nextAction: string; suggestedPizzaId?: number; suggestedPizzaName?: string; suggestedToppingId?: number; suggestedToppingName?: string; expectedImpact: string; confidence: number; }>(null);
   const [cartInsightLoading, setCartInsightLoading] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState(() => searchParams.get("order") ?? "");
+  const [ordersPage, setOrdersPage] = useState(1);
+  const [ordersSearch, setOrdersSearch] = useState("");
+  const ORDERS_PAGE_SIZE = 15;
   const [brand, setBrand] = useState({
     name: "SliceMatic", outlet: "New Ashok Nagar",
     openStatus: "Open now", deliveryPromise: "30-40 min delivery",
@@ -554,10 +556,8 @@ export default function AdminDashboardPage() {
             )}
           </div>
 
-          {!adminAuth.adminLoggedIn ? (
-            <AdminAuthPanel {...adminAuth} />
-          ) : (
-            <>
+          {/* Always render dashboard — non-admin users are redirected to / by the bootstrap useEffect */}
+          <>
               <AdminTabNav activeTab={adminTab} onSelectTab={selectAdminTab} />
               <AnimatePresence mode="wait">
                 <motion.div
@@ -576,22 +576,116 @@ export default function AdminDashboardPage() {
                       onRefresh={() => void session.loadOpsBriefing()}
                     />
                   )}
-                  {adminTab === "orders" && (
+                  {adminTab === "orders" && (() => {
+                    // Apply ID search first, then date/payment filters from session
+                    const searchTerm = ordersSearch.trim().toLowerCase();
+                    const searchFiltered = searchTerm
+                      ? session.filteredOrders.filter(
+                          (o) =>
+                            o.id.toLowerCase().includes(searchTerm) ||
+                            o.customerName?.toLowerCase().includes(searchTerm) ||
+                            o.phone?.toLowerCase().includes(searchTerm)
+                        )
+                      : session.filteredOrders;
+
+                    const totalOrders = searchFiltered.length;
+                    const totalPages = Math.max(1, Math.ceil(totalOrders / ORDERS_PAGE_SIZE));
+                    const safePage = Math.min(ordersPage, totalPages);
+                    const pagedOrders = searchFiltered.slice((safePage - 1) * ORDERS_PAGE_SIZE, safePage * ORDERS_PAGE_SIZE);
+
+                    return (
                     <AdminOrdersWorkspace
-                      orders={session.filteredOrders}
+                      orders={pagedOrders}
                       allOrders={session.adminSummary.recentOrders}
                       selectedOrderId={selectedOrderId}
                       onSelectOrder={selectAdminOrder}
+                      totalMatched={totalOrders}
+                      totalFetched={session.adminSummary.recentOrders.length}
                       filters={(
-                        <div className="filters">
-                          <input type="date" value={session.adminDateFilter} onChange={(e) => session.setAdminDateFilter(e.target.value)} />
-                          <select value={session.adminPaymentFilter} onChange={(e) => session.setAdminPaymentFilter(e.target.value)}>
+                        <div className="filters orders-filters">
+                          {/* Order ID / customer search */}
+                          <div className="orders-search-wrap">
+                            <input
+                              id="orders-search"
+                              type="search"
+                              className="orders-search-input"
+                              placeholder="Search by order ID, name, or phone…"
+                              value={ordersSearch}
+                              onChange={(e) => { setOrdersSearch(e.target.value); setOrdersPage(1); }}
+                              aria-label="Search orders"
+                            />
+                            {ordersSearch && (
+                              <button
+                                type="button"
+                                className="orders-search-clear"
+                                onClick={() => { setOrdersSearch(""); setOrdersPage(1); }}
+                                aria-label="Clear search"
+                              >
+                                ✕
+                              </button>
+                            )}
+                          </div>
+                          {/* Date + payment filters */}
+                          <input type="date" value={session.adminDateFilter} onChange={(e) => { session.setAdminDateFilter(e.target.value); setOrdersPage(1); }} />
+                          <select value={session.adminPaymentFilter} onChange={(e) => { session.setAdminPaymentFilter(e.target.value); setOrdersPage(1); }}>
                             <option>All</option><option>UPI</option><option>Card</option><option>Cash</option>
                           </select>
                         </div>
                       )}
+                      pagination={totalPages > 1 ? (
+                        <div className="orders-pagination" role="navigation" aria-label="Orders pagination">
+                          <button
+                            type="button"
+                            className="orders-pagination__btn"
+                            onClick={() => setOrdersPage((p) => Math.max(1, p - 1))}
+                            disabled={safePage <= 1}
+                            aria-label="Previous page"
+                          >
+                            ← Prev
+                          </button>
+
+                          <span className="orders-pagination__info">
+                            Page {safePage} of {totalPages} &middot; {totalOrders} orders
+                          </span>
+
+                          {/* Direct page jump */}
+                          <form
+                            className="orders-pagination__jump"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const val = parseInt((e.currentTarget.elements.namedItem("page") as HTMLInputElement).value, 10);
+                              if (!isNaN(val)) setOrdersPage(Math.min(totalPages, Math.max(1, val)));
+                              (e.currentTarget.elements.namedItem("page") as HTMLInputElement).value = "";
+                            }}
+                          >
+                            <input
+                              name="page"
+                              type="number"
+                              min={1}
+                              max={totalPages}
+                              placeholder="Go to…"
+                              className="orders-pagination__jump-input"
+                              aria-label={`Jump to page (1–${totalPages})`}
+                            />
+                            <button type="submit" className="orders-pagination__btn" aria-label="Go to page">
+                              Go
+                            </button>
+                          </form>
+
+                          <button
+                            type="button"
+                            className="orders-pagination__btn"
+                            onClick={() => setOrdersPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={safePage >= totalPages}
+                            aria-label="Next page"
+                          >
+                            Next →
+                          </button>
+                        </div>
+                      ) : null}
                     />
-                  )}
+                    );
+                  })()}
                   {adminTab === "forecast" && <ForecastPanel summary={session.adminSummary} authHeaders={adminAuth.adminAuthHeader()} />}
                   {adminTab === "menu" && (
                     <AdminMenuWorkspace
@@ -620,8 +714,7 @@ export default function AdminDashboardPage() {
                   )}
                 </motion.div>
               </AnimatePresence>
-            </>
-          )}
+          </>
         </section>
       )}
 

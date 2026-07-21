@@ -74,3 +74,8 @@ Periodically check for:
 ## Definition of done
 
 A FullStack task is not fully documented until affected topic pages, [[handoff]], and [[log]] agree with the resulting source state.
+
+## Memory MCP Integration (Global Loop)
+
+1. **Start of Session**: Automatically query the Memory MCP (`@modelcontextprotocol/server-memory`) to load facts and context you remember about this project.
+2. **End of Session / Task**: At the end of every coding session or prompt/response cycle, you MUST run a wrap-up loop. Append a concise summary of what was done, key decisions, and next steps to the Memory MCP. Do this automatically.

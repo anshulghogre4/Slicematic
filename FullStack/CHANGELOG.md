@@ -4,6 +4,18 @@ This file maintains a timestamp-based record of the modifications, debugging ses
 
 ---
 
+### [2026-07-18 02:56:00 IST] - Admin Orders UI: Auth Gate Removal + Panel Redesign + Pagination + Search
+
+- **Removed AdminAuthPanel secondary login gate** — `/admin-dashboard` now renders immediately for valid admin sessions (already gated by `slicematic_is_admin` sessionStorage redirect). No more separate email/password "Operations Console" login panel.
+- **Rewrote OrderContextPanel** (`components/admin/OrderContextPanel.tsx`) with new `.ocp` BEM CSS namespace: Framer Motion slide-in, icon-row fact grid, staggered line items, polished dispatch notice.
+- **Added order search** — filters by order ID, customer name, or phone in real-time; clears independently of date/payment filters.
+- **Added pagination** — 15 orders per page, Prev/Next buttons + direct "Go to page" form input. Page resets on any filter change.
+- **Added page-jump input** — numbered input with Enter-to-submit, hidden spinner arrows, clamped to valid range.
+- **Added all missing CSS** — `.ocp` panel system, `.orders-filters`, `.orders-search-wrap/input/clear`, `.orders-pagination`, `.orders-pagination__jump` and associated states.
+- Files: `app/admin-dashboard/page.tsx`, `components/admin/OrderContextPanel.tsx`, `app/globals.css`
+
+---
+
 ### [2026-07-18 01:30:00 IST] - Dead Code Removal: SliceMaticStage3 + 5 Orphaned Files
 
 #### Context
@@ -551,3 +563,9 @@ Modified (M):
 *   **Store Middleware Warning:** The test suite was throwing [zustand persist middleware] errors in Node because localStorage isn't native to Vitest. Resolved this by placing i.mock("zustand/middleware") at the top of lib/store.test.ts to cleanly bypass persistence in tests.
 *   **Red Phase Verification:** To strictly verify the remaining legacy tests, intentional breaks were introduced to lib/razorpay.ts, lib/store.ts, and pp/api/payments/create-order/route.ts. The suite successfully failed as expected.
 *   **Green Phase Restoration:** The logic was restored, and all 44 tests across 6 files now confidently pass with zero warnings, guaranteeing the integrity of our Payment Gateways (Razorpay/Cashfree) and Pricing/Data logic.
+
+### [2026-07-18 02:16:53 IST] - UI Screenshot Pass & Sprint R12 Planning
+- Conducted a full screenshot pass across all customer and admin surfaces using an automated browser subagent.
+- Evaluated the frontend and drafted 'R12 - Frontend Visual Polish' sprint notes for improvements.
+- Updated ui-map.md with 13 fresh baseline screenshots.
+- Files: wiki/ui-map.md, plans/fullstack-delivery-intelligence-sprints.md

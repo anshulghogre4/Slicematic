@@ -4,6 +4,12 @@
 
 ---
 
+# 🧩 SliceMatic — Component Map
+
+> Every component, its file, purpose, and key patterns.
+
+---
+
 ## Component Inventory
 
 ### 0. Shared UI primitives
@@ -12,51 +18,33 @@
 - **CSS bridge:** `sui-*` classes in `app/globals.css`
 - **Rules:** Use these for new/migrated surfaces before adding one-off styling; keep accessibility and reduced-motion behavior in the primitive layer where possible.
 
-### 1. `SliceMaticStage3` ⭐ MAIN COMPONENT
-- **File:** `components/SliceMaticStage3.tsx` (~2700 lines)
-- **Route:** Rendered at `/` (customer workspace)
-- **Dual-file pair:** `app/admin-dashboard/page.tsx`
-- **Role:** Monolithic component containing the entire customer-facing application
-
-**Internal render functions (not separate files):**
-| Function | What it renders |
-|---|---|
-| `renderCustomerAccount()` | Customer account page (logged in) + auth (logged out) |
-| `renderMenu()` | Pizza grid, filters, search |
-| `renderBuilder()` | Pizza builder modal (base, size, toppings) |
-| `renderIntake()` | Customer intake form (name, phone, address, zone) |
-| `renderRecommendation()` | AI recommendation card |
-| `renderCheckout()` | Checkout summary (redirects to /payment) |
-| `renderAdminLogin()` | Admin login panel (inside customer workspace) |
+### 1. `CustomerShell` ⭐ CUSTOMER COMPONENT
+- **File:** `components/CustomerShell.tsx` (~524 lines)
+- **Route:** Rendered at `/` (customer workspace) via `app/page.tsx`
+- **Role:** The primary application shell for all customer ordering flows.
 
 **Key state variables:**
 ```typescript
-workspace: "customer" | "account" | "admin"
+workspace: "customer" | "account"
 step: "intake" | "recommendation" | "menu" | "checkout" | "tracking"
-customerAuthView: "login" | "forgot" | "reset"
-customerAuthMethod: "password" | "otp"
-customerOtpChannel: "email" | "sms"
-customerLoggedIn: boolean
-adminLoggedIn: boolean
 ```
 
 **Zustand state consumed:**
 - `cart`, `setCart`
 - `customer`, `setCustomer`
-- `pricingConfig`, `setPricingConfig`
+- `pricingConfig`
 - `paymentMode`, `setPaymentMode`
-- `lastOrder`, `setLastOrder`
+- `lastOrder`
 - `recommendation`, `setRecommendation`
 
 ---
 
 ### 2. `admin-dashboard/page.tsx` ⭐ ADMIN COMPONENT
-- **File:** `app/admin-dashboard/page.tsx` (~2700 lines)
+- **File:** `app/admin-dashboard/page.tsx` (~626 lines)
 - **Route:** `/admin-dashboard`
-- **Dual-file pair:** `components/SliceMaticStage3.tsx`
-- **Role:** Admin dashboard + mirrors customer account view
+- **Role:** Admin dashboard and operations.
 
-**Admin-only tabs** (not in SliceMaticStage3):
+**Admin-only tabs:**
 ```typescript
 type AdminTab = "overview" | "orders" | "menu" | "settings" | "forecast" | "ai"
 ```
@@ -79,7 +67,7 @@ type AdminTab = "overview" | "orders" | "menu" | "settings" | "forecast" | "ai"
 - **File:** `components/CustomerOrderHistoryTable.tsx`
 - **Role:** Renders the order history table in the customer account page
 - **Data type:** `CustomerOrderHistoryItem[]` from `lib/data-service.ts`
-- **Used in:** Both `SliceMaticStage3.tsx` and `admin-dashboard/page.tsx` (dual-file)
+- **Used in:** `components/CustomerShell.tsx` and `app/admin-dashboard/page.tsx`
 
 ---
 
@@ -176,30 +164,6 @@ type AdminTab = "overview" | "orders" | "menu" | "settings" | "forecast" | "ai"
 ---
 
 ## Key UI Sections (Account Page)
-
-The customer account page (`renderCustomerAccount()`) when logged in contains:
-
-```
-┌──────────────────────────────────────────────────────┐
-│ .account-hero                                        │
-│   Left: Welcome text, description                    │
-│   Right: .account-actions (email pill, buttons)      │
-└──────────────────────────────────────────────────────┘
-┌──────────────────────────────────────────────────────┐
-│ .account-grid (3-column flex-like CSS grid)          │
-│ ┌─────────────────── gridColumn: 1 / -1 ──────────┐ │
-│ │ .order-history-widget  (Your Order History)      │ │
-│ └──────────────────────────────────────────────────┘ │
-│ ┌───────────┐ ┌───────────┐ ┌───────────────────┐   │
-│ │Personalized│ │Easy login │ │Full payment choice│   │
-│ │picks (AI) │ │OTP only   │ │Cash/Card/UPI      │   │
-│ └───────────┘ └───────────┘ └───────────────────┘   │
-└──────────────────────────────────────────────────────┘
-```
-
-**CSS class for 3-card row:** `.account-grid` — `grid-template-columns: repeat(3, minmax(0, 1fr))`
-
----
 
 ## Import Dependency Map
 

@@ -1,6 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { Minus, Plus } from "lucide-react";
 
 type IllustrationName = "empty-cart" | "kitchen" | "clipboard" | "robot";
 
@@ -55,7 +56,7 @@ export function QuantityStepper({ value, min = 1, max = 20, onChange }: Quantity
         onClick={() => onChange(Math.max(min, value - 1))}
         aria-label="Decrease quantity"
       >
-        −
+        <Minus size={16} />
       </button>
       <span className="qty-stepper__value" aria-live="polite">{value}</span>
       <button
@@ -65,7 +66,7 @@ export function QuantityStepper({ value, min = 1, max = 20, onChange }: Quantity
         onClick={() => onChange(Math.min(max, value + 1))}
         aria-label="Increase quantity"
       >
-        +
+        <Plus size={16} />
       </button>
     </div>
   );

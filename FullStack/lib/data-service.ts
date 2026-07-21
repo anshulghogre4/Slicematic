@@ -623,6 +623,53 @@ export async function loadAdminSummary(): Promise<AdminSummary> {
     }
     const data = ordersResult.data || [];
 
+    // Fetch lines for these orders
+    const orderIds = data.map((r: any) => String(r.order_id));
+    const itemsByOrder = new Map<string, any[]>();
+
+    if (orderIds.length > 0) {
+      try {
+        type ItemRow = { order_id: string; pizza_type_id: number; base_id: number; size_id: string; quantity: number; line_total: number };
+        type PizzaRow = { pizza_type_id: number; pizza_name: string };
+        type BaseRow  = { base_id: number; base_name: string };
+        type SizeRow  = { size_id: string; size_name: string };
+
+        const items = await queryDb<ItemRow>(
+          `SELECT order_id, pizza_type_id, base_id, size_id, quantity, line_total FROM slicematic.order_item WHERE order_id = ANY($1)`,
+          [orderIds]
+        );
+
+        const pizzaIds = [...new Set(items.map(i => i.pizza_type_id))];
+        const baseIds  = [...new Set(items.map(i => i.base_id))];
+        const sizeIds  = [...new Set(items.map(i => i.size_id))];
+
+        const [pizzas, bases, sizes] = await Promise.all([
+          pizzaIds.length ? queryDb<PizzaRow>(`SELECT pizza_type_id, pizza_name FROM slicematic.pizza_types WHERE pizza_type_id = ANY($1)`, [pizzaIds]) : Promise.resolve([]),
+          baseIds.length ? queryDb<BaseRow>(`SELECT base_id, base_name FROM slicematic.pizza_bases WHERE base_id = ANY($1)`, [baseIds]) : Promise.resolve([]),
+          sizeIds.length ? queryDb<SizeRow>(`SELECT size_id, size_name FROM slicematic.pizza_sizes WHERE size_id = ANY($1)`, [sizeIds]) : Promise.resolve([])
+        ]);
+
+        const pizzaMap = new Map(pizzas.map(p => [p.pizza_type_id, p.pizza_name]));
+        const baseMap  = new Map(bases.map(b => [b.base_id, b.base_name]));
+        const sizeMap  = new Map(sizes.map(s => [s.size_id, s.size_name]));
+
+        for (const item of items) {
+          const lines = itemsByOrder.get(item.order_id) ?? [];
+          lines.push({
+            pizzaName: pizzaMap.get(item.pizza_type_id) ?? "Unknown Pizza",
+            baseName: baseMap.get(item.base_id) ?? "Unknown Base",
+            sizeName: sizeMap.get(item.size_id) ?? "Regular",
+            toppings: [], // no toppings in DB currently
+            quantity: Number(item.quantity),
+            lineTotal: Number(item.line_total)
+          });
+          itemsByOrder.set(item.order_id, lines);
+        }
+      } catch (err) {
+        console.error("Error fetching order items for admin summary:", err);
+      }
+    }
+
     const recentOrders: SavedOrder[] = data.map((row) => {
       const customer = Array.isArray(row.customer) ? row.customer[0] : row.customer;
       return {
@@ -638,7 +685,7 @@ export async function loadAdminSummary(): Promise<AdminSummary> {
         discount: Number(row.discount_amount ?? 0),
         gst: Number(row.tax_amount ?? 0),
         finalTotal: Number(row.final_amount ?? 0),
-        lines: []
+        lines: itemsByOrder.get(String(row.order_id)) ?? []
       };
     });
 

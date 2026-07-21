@@ -18,27 +18,19 @@ Screenshots are stored in `FullStack/wiki/assets/ui-map/` and were captured from
 
 | Surface | Screenshot |
 |---|---|
-| Confirmation tracking after cash test | ![Confirmation tracking after cash test](assets/ui-map/01-confirmation-tracking.png) |
-| Customer start state | ![Customer start state](assets/ui-map/02-customer-start.png) |
-| Customer menu | ![Customer menu](assets/ui-map/03-customer-menu.png) |
-| Customer recommendations | ![Customer recommendations](assets/ui-map/04-customer-recommendations.png) |
-| Customer cart with item | ![Customer cart with item](assets/ui-map/05-customer-cart-with-item.png) |
-| AI cart strategist result | ![AI cart strategist result](assets/ui-map/06-ai-cart-strategist.png) |
-| Customer customize modal | ![Customer customize modal](assets/ui-map/09-customer-customize-modal.png) |
-| Admin overview | ![Admin overview](assets/ui-map/admin-overview.png) |
-| Admin orders | ![Admin orders](assets/ui-map/admin-orders.png) |
-| Admin forecast | ![Admin forecast](assets/ui-map/admin-forecast.png) |
-| Admin menu create | ![Admin menu](assets/ui-map/admin-menu.png) |
-| Admin AI | ![Admin AI](assets/ui-map/admin-ai.png) |
-| Admin settings | ![Admin settings](assets/ui-map/admin-settings.png) |
-| Admin menu pizzas | ![Admin menu pizzas](assets/ui-map/admin-menu-pizzas.png) |
-| Admin menu bases | ![Admin menu bases](assets/ui-map/admin-menu-bases.png) |
-| Admin menu toppings | ![Admin menu toppings](assets/ui-map/admin-menu-toppings.png) |
-| Admin settings brand | ![Admin settings brand](assets/ui-map/admin-settings-brand.png) |
-| Admin settings financials | ![Admin settings financials](assets/ui-map/admin-settings-financials.png) |
-| Admin settings delivery and risk | ![Admin settings delivery risk](assets/ui-map/admin-settings-delivery-risk.png) |
-| Customer details | ![Customer details](assets/ui-map/customer-customer-details.png) |
-| Payment checkout | ![Payment checkout](assets/ui-map/payment-checkout.png) |
+| Confirmation tracking after cash test | ![Confirmation tracking after cash test](assets/ui-map/07_confirmation_tracking_1784320972813.png) |
+| Customer entry portal | ![Customer entry portal](assets/ui-map/01_entry_portal_1784320812395.png) |
+| Customer menu | ![Customer menu](assets/ui-map/02_customer_menu_1784320855737.png) |
+| Customer account | ![Customer account](assets/ui-map/03_customer_account_1784320903679.png) |
+| Customer cart with item | ![Customer cart with item](assets/ui-map/04_customer_cart_with_item_1784320922924.png) |
+| Customer customize modal | ![Customer customize modal](assets/ui-map/05_pizza_builder_modal_1784320933804.png) |
+| Payment checkout | ![Payment checkout](assets/ui-map/06_payment_checkout_1784320947399.png) |
+| Admin overview | ![Admin overview](assets/ui-map/08_admin_overview_1784320985267.png) |
+| Admin orders | ![Admin orders](assets/ui-map/09_admin_orders_1784321001313.png) |
+| Admin menu | ![Admin menu](assets/ui-map/10_admin_menu_1784321014140.png) |
+| Admin forecast | ![Admin forecast](assets/ui-map/11_admin_forecast_1784321026314.png) |
+| Admin settings | ![Admin settings](assets/ui-map/12_admin_settings_1784321037644.png) |
+| Admin AI | ![Admin AI](assets/ui-map/13_admin_ai_1784321048823.png) |
 
 ## Route and Workspace Map
 

@@ -141,30 +141,6 @@ export function MenuCatalog({
                 {/* Body */}
                 <div className="menu-card-premium__body">
                   <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                    {/* Veg/Non-veg indicator */}
-                    <span
-                      aria-label={isVegetarian ? "Vegetarian" : "Non-vegetarian"}
-                      role="img"
-                      style={{
-                        display: "inline-flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        width: 14,
-                        height: 14,
-                        border: `1.5px solid ${isVegetarian ? "var(--basil)" : "var(--tomato)"}`,
-                        borderRadius: 2,
-                        flexShrink: 0,
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 7,
-                          height: 7,
-                          borderRadius: "50%",
-                          backgroundColor: isVegetarian ? "var(--basil)" : "var(--tomato)",
-                        }}
-                      />
-                    </span>
                     <span className="menu-card-premium__name">{pizza.name}</span>
                   </div>
                   <span className="menu-card-premium__price">{formatMoney(pizza.price + defaultCrustPrice)}</span>

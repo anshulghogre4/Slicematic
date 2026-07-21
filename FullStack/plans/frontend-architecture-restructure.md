@@ -20,10 +20,12 @@ Read with:
 
 ## Current Problem
 
-The current frontend has two massive files:
+The previous frontend had two massive files:
 
 - `FullStack/components/SliceMaticStage3.tsx` — customer workspace, also carries some admin/account behavior.
 - `FullStack/app/admin-dashboard/page.tsx` — admin dashboard, duplicated shared customer/account behavior.
+
+These have now been successfully extracted. `CustomerShell.tsx` handles the customer side and `admin-dashboard/page.tsx` is a lean shell.
 
 Both files mix:
 

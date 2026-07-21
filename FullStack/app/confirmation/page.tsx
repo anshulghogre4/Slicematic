@@ -12,6 +12,7 @@ import { Card } from "../../components/ui/Card";
 import { StatusPill } from "../../components/ui/StatusPill";
 import { SuccessCheckmark } from "../../components/ui/Primitives";
 import { OrderJourneyRail } from "../../features/order-tracking/components/OrderJourneyRail";
+import { DeliveryMapFallback, FallbackState } from "../../features/order-tracking/components/DeliveryMapFallback";
 
 function paymentConfirmation(mode: PaymentMode) {
   if (mode === "UPI") return "UPI payment requested. Order processing will begin upon confirmation.";
@@ -61,16 +62,22 @@ export default function ConfirmationScreen() {
         <OrderJourneyRail orderId={lastOrder.id} status={lastOrder.status} />
       </section>
 
-      {/* Kitchen illustration */}
-      <Card style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "var(--space-xl)", textAlign: "center", marginBottom: "var(--space-lg)" }}>
-        <div className="illustration-kitchen" style={{ marginBottom: "var(--space-md)" }} />
-        <h3 style={{ fontSize: "var(--text-heading)", fontWeight: 700, margin: "0 0 4px" }}>
-          Your order is being prepared
-        </h3>
-        <p style={{ fontSize: "var(--text-small)", color: "var(--sui-text-secondary)", margin: 0, maxWidth: 300, lineHeight: 1.5 }}>
-          Keep this page open or return later from your order history. Updates reflect recorded order data.
-        </p>
-      </Card>
+      {/* Map or Kitchen placeholder */}
+      <section style={{ marginBottom: "var(--space-lg)" }}>
+        {lastOrder.status === "delivery" ? (
+          <DeliveryMapFallback state="no_rider" />
+        ) : (
+          <Card style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "var(--space-xl)", textAlign: "center" }}>
+            <div className="illustration-kitchen" style={{ marginBottom: "var(--space-md)" }} />
+            <h3 style={{ fontSize: "var(--text-heading)", fontWeight: 700, margin: "0 0 4px" }}>
+              Your order is being prepared
+            </h3>
+            <p style={{ fontSize: "var(--text-small)", color: "var(--sui-text-secondary)", margin: 0, maxWidth: 300, lineHeight: 1.5 }}>
+              Keep this page open or return later from your order history. Updates reflect recorded order data.
+            </p>
+          </Card>
+        )}
+      </section>
 
       {/* Receipt accordion */}
       <div className="receipt-accordion" style={{ marginBottom: "var(--space-lg)" }}>

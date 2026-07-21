@@ -67,8 +67,8 @@ Start every FullStack task here, then read [[handoff]] and the pages relevant to
 | Pricing or checkout | [[business-rules]], [[payments]] | `lib/pricing.ts`, payment/order routes |
 | Authentication | [[auth-flows]], [[current-state]] | `lib/*-auth.ts`, `components/EntryPortal/` |
 | Database change | [[database-schema]], [[source-map]] | `supabase/schema.sql`, `lib/data-service.ts` |
-| UI change | [[ui-map]], [[ui-revamp-roadmap]], [[components]], [[css-system]] | live screenshots, both large workspace files, `app/globals.css`, and the approved Tailwind/design-system migration rules |
-| Frontend architecture/refactor | [[architecture]], [[components]], [[state-management]], [[source-map]] | `FullStack/plans/frontend-architecture-restructure.md`, current giant files, store/session tests |
+| UI change | [[ui-map]], [[ui-revamp-roadmap]], [[components]], [[css-system]] | live screenshots, `CustomerShell.tsx`, `app/globals.css`, and the approved Tailwind/design-system migration rules |
+| Frontend architecture/refactor | [[architecture]], [[components]], [[state-management]], [[source-map]] | `FullStack/plans/frontend-architecture-restructure.md`, extracted feature modules, store/session tests |
 | Database/RLS evolution | [[database-schema]], [[auth-flows]], [[api-contracts]], [[delivery-operations]] | `FullStack/supabase/schema.sql`, `FullStack/plans/database-schema-evolution-plan.md`, Supabase RLS docs |
 | API change | [[api-contracts]], [[architecture]] | matching `app/api/**/route.ts` and tests |
 | AI feature | relevant feature page | route, prompt, fallback, event logging |
@@ -80,7 +80,7 @@ Start every FullStack task here, then read [[handoff]] and the pages relevant to
 
 1. Code and executable schema are source evidence; the wiki is the maintained synthesis.
 2. Never expose `.env`, `.mcp.json`, or credential-bearing files.
-3. Shared UI may exist in both `components/SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx`; search both before editing.
+3. The frontend is feature-oriented. Customer entry routes through `EntryPortal` to `CustomerShell.tsx`, while admin routes through `admin-dashboard/page.tsx`.
 4. Pricing must be calculated from `lib/pricing.ts` on the server, never trusted from the browser.
 5. Supabase-optional and AI-fallback behavior is intentional, but must not weaken configured production security.
 6. Every material FullStack change must update affected wiki pages, [[handoff]], and [[log]].

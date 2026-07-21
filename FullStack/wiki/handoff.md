@@ -203,23 +203,15 @@ FullStack application code was changed in Revamp Sprints R1-R8, with small R9/R1
 
 ## Next action
 
-Current state after the monolith extraction: **both giant files are lean shells (733 / 626 lines)**. The next priority is:
+Current state after the monolith extraction: **the monolith has been replaced by `CustomerShell.tsx` and a lean `admin-dashboard/page.tsx` (733 / 626 lines)**. R1-R11 and Revamp UI polish are fully complete.
+
+The next priority is:
 
 1. Run `npm run test` to verify no regressions from the rewrite (hooks are new modules; existing component tests should all pass).
-2. Review the UX end-to-end in browser — customer login → order → payment → confirmation, and admin login → orders → menu → settings.
-3. Consider extracting remaining inline admin state (brand, menuBaseline, cartInsight) into a `useAdminBrand` hook if they grow.
-4. Keep DB/RLS, maps, rider tracking, dispatch, and delivery APIs gated.
-
-Do not implement precise rider tracking before:
-
-Use `FullStack/plans/fullstack-delivery-intelligence-sprints.md` as the sprint control file. Consult [[ui-map]], `FullStack/plans/ui-inspiration-research.md`, `FullStack/plans/ui-revamp-implementation-plan.md`, `FullStack/plans/frontend-architecture-restructure.md`, and `FullStack/plans/database-schema-evolution-plan.md` only as supporting references unless a durable fact changes.
-
-Next frontend acceptance focus:
-
-1. Finish R9 by extracting customer intake/shell layout and mobile cart behavior without moving validation/API/store ownership.
-2. Finish R10 by extracting admin command bar, orders table workspace, and selected-order drawer wrapper.
-3. Finish R11 by adding skeleton/empty/error states to order table, AI panel, cart insight, confirmation, and mobile visual smoke.
-4. Keep DB/RLS, maps, rider tracking, dispatch, and delivery APIs gated.
+2. Run `npm run build` to verify production compilation.
+3. Review the UX end-to-end in browser.
+4. Upgrade `AdminOverviewPanel` to use Framer Motion as requested by the user.
+5. Add route-level `loading.tsx` and `error.tsx` boundaries.
 
 Do not implement precise rider tracking before:
 

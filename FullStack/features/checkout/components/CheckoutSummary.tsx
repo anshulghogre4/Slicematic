@@ -182,7 +182,7 @@ export function CheckoutSummary({
             })}
           </div>
 
-          <div style={{ marginTop: "var(--space-md)" }}>
+          <div style={{ marginTop: "var(--space-lg)", display: "flex", justifyContent: "center" }}>
             <StatusPill tone={paymentMode === "Cash" ? "success" : "info"}>
               {paymentMode === "Cash" ? "Cash test path ready" : "Online verification required"}
             </StatusPill>
@@ -220,7 +220,6 @@ export function CheckoutSummary({
             </div>
           </div>
 
-          {/* Total */}
           <div style={{
             display: "flex",
             justifyContent: "space-between",
@@ -229,7 +228,10 @@ export function CheckoutSummary({
             paddingTop: "var(--space-md)",
             borderTop: "2px solid var(--sui-border)",
           }}>
-            <span style={{ fontSize: "var(--text-body)", fontWeight: 700 }}>Total payable</span>
+            <div>
+              <span style={{ fontSize: "var(--text-body)", fontWeight: 700, display: "block" }}>Estimated Total</span>
+              <span style={{ fontSize: "var(--text-micro)", color: "var(--sui-text-tertiary)", fontWeight: 500 }}>Subject to server validation</span>
+            </div>
             <b style={{
               fontSize: "var(--text-title)",
               fontWeight: 800,

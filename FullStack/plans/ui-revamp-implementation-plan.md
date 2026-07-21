@@ -61,7 +61,7 @@ Scope:
 - Add or reuse skeleton/loading/empty/error states for cart insight and recommendation fetches.
 - Keep `add`, `remove`, `checkout`, `AI insight`, `recommendation refresh`, and `router.push()` behavior in the current parent components.
 - Add pure tests for cart/recommendation view helpers where logic is extracted.
-- Update both `components/SliceMaticStage3.tsx` and `app/admin-dashboard/page.tsx` until the duplicated shared customer UI is fully removed.
+- Extract features into distinct modules to replace the monolithic structure.
 
 Out of scope:
 
@@ -77,7 +77,7 @@ Acceptance:
 - `npx tsc --noEmit` passes.
 - Customer cart, direct add, customized add, remove, checkout CTA, AI cart strategist, and recommendation acceptance remain behaviorally unchanged.
 - Empty cart, recommendation unavailable, AI failure, and reduced-motion states are visible and honest.
-- No duplicated cart/recommendation JSX remains in the two giant files beyond orchestration and callbacks.
+- The monolithic architecture is completely removed and `CustomerShell.tsx` orchestrates the frontend.
 
 ### Backend And Delivery Gates
 
