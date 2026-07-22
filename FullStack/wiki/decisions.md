@@ -7,19 +7,11 @@
 ## ADR-001: Dual-File Architecture (SliceMaticStage3 + admin-dashboard/page.tsx)
 
 **Date:** Early Stage 3  
-**Status:** Active
+**Status:** Superseded (2026-07-21)
 
-**Decision:** Keep customer workspace and admin workspace as two near-identical monolithic files rather than extracting shared components.
+**Decision (historical):** Keep customer workspace and admin workspace as two near-identical monolithic files rather than extracting shared components.
 
-**Rationale:**
-- Admin needs custom tab-based navigation that doesn't exist in customer view
-- The visual divergence was deemed too complex to cleanly prop-drill
-- Faster iteration speed during initial build
-- Both files are large (~2700 lines each) — extracting shared logic is a future refactor goal
-
-**Consequence:** Any shared UI section (customer account page, auth views) must be manually kept in sync between both files. This is a known tech debt.
-
-**Future:** Consider extracting `renderCustomerAccount()` into a shared component when time permits.
+**Superseded by:** Feature extraction + deletion of `SliceMaticStage3.tsx`. Customer shell is now `components/CustomerShell.tsx`; shared UI lives under `features/*`. Admin remains `app/admin-dashboard/page.tsx`. Do not revive dual-file copy-paste.
 
 ---
 
@@ -62,19 +54,11 @@
 ## ADR-004: Monolithic Component Approach
 
 **Date:** Stage 3  
-**Status:** Active (tech debt acknowledged)
+**Status:** Superseded (2026-07-21)
 
-**Decision:** `SliceMaticStage3.tsx` is a single massive component with internal render functions rather than a tree of separate components.
+**Decision (historical):** `SliceMaticStage3.tsx` as a single massive component with internal render functions.
 
-**Rationale:**
-- Rapid prototyping speed
-- All state is co-located, avoiding prop drilling
-- The entire customer workspace fits in one scroll
-
-**Known trade-offs:**
-- File is ~2700 lines — hard to navigate
-- Testing individual sections requires full component mount
-- Refactoring to proper component tree is a future goal
+**Superseded by:** Feature modules under `features/*`, hooks, and `CustomerShell.tsx`. Stage3 file deleted 2026-07-18.
 
 ---
 

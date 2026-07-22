@@ -1,9 +1,10 @@
 "use client";
 
-import { BadgePercent, Check, Download, LogOut, ReceiptText, Settings2, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
+import { BadgePercent, Check, Download, LogOut, ReceiptText, Settings2, ShieldCheck } from "lucide-react";
 import { calculateBill, money, validateCustomer } from "../../lib/pricing";
 import { fetchOutletPricingConfig } from "../../lib/customer-flow";
 import { seedMenu, buildSeedSummary } from "../../lib/seed-data";
@@ -114,6 +115,7 @@ export default function AdminDashboardPage() {
     (email) => { setWorkspace("customer"); setStep("menu"); void refreshCustomerOrders(true); },
     () => { clearOrders(); setStep("intake"); }
   );
+  const reduceMotion = useReducedMotion();
 
   // ── Bootstrap: redirect non-admin users, then let useAdminAuth restore session ─
   useEffect(() => {
@@ -556,16 +558,30 @@ export default function AdminDashboardPage() {
             )}
           </div>
 
-          {/* Always render dashboard — non-admin users are redirected to / by the bootstrap useEffect */}
+          {/* Gate ops UI until admin session is proven. EntryPortal remains the only login form. */}
+          {!adminAuth.adminLoggedIn ? (
+            <section className="auth-console" aria-busy="true" aria-live="polite">
+              <div className="auth-panel" style={{ maxWidth: 420, margin: "2rem auto", textAlign: "center" }}>
+                <p className="eyebrow">Operations console</p>
+                <h2>Verifying admin session</h2>
+                <p style={{ color: "var(--sui-text-secondary)" }}>
+                  Sign in from the Entry Portal. This page does not show ops data until an admin session is restored.
+                </p>
+                <Link className="primary" href="/" style={{ display: "inline-flex", marginTop: "1rem" }}>
+                  Return to sign in
+                </Link>
+              </div>
+            </section>
+          ) : (
           <>
               <AdminTabNav activeTab={adminTab} onSelectTab={selectAdminTab} />
               <AnimatePresence mode="wait">
                 <motion.div
                   key={adminTab}
-                  initial={{ opacity: 0, y: 12 }}
+                  initial={reduceMotion ? false : { opacity: 0, y: 12 }}
                   animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0, y: -8 }}
-                  transition={{ duration: 0.25, ease: "easeOut" }}
+                  exit={reduceMotion ? undefined : { opacity: 0, y: -8 }}
+                  transition={reduceMotion ? { duration: 0 } : { duration: 0.25, ease: "easeOut" }}
                   className="admin-tab-content"
                 >
                   {adminTab === "overview" && (
@@ -715,6 +731,7 @@ export default function AdminDashboardPage() {
                 </motion.div>
               </AnimatePresence>
           </>
+          )}
         </section>
       )}
 

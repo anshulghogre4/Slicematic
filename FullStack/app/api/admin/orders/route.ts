@@ -5,6 +5,8 @@ import { requireAdminSession } from "../../../../lib/admin-auth";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
+  const authError = await requireAdminSession(request);
+  if (authError) return authError;
 
   const url = new URL(request.url);
   const format = url.searchParams.get("format");

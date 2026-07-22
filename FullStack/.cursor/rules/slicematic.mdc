@@ -1,56 +1,60 @@
 ---
-description: SliceMatic project rules — applies to ALL files
+description: SliceMatic FullStack rules — applies to ALL files under FullStack
 globs: ["**/*.tsx", "**/*.ts", "**/*.css"]
 alwaysApply: true
 ---
 
 # SliceMatic — Cursor Rules
 
-## 🧠 Start Every Session by Reading the Wiki
+## Start Every Session by Reading The Wiki
 
-The wiki at `wiki/` (relative to repo root `Slicematic/`) is the shared brain.
-**Always read `wiki/index.md` and `wiki/handoff.md` before starting any task.**
+Canonical wiki path: `FullStack/wiki/` (not repo-root `wiki/`).
+Always read `FullStack/wiki/index.md` and `FullStack/wiki/handoff.md` before material work.
+Active next queue: `FullStack/plans/2026-07-21-next-horizon-sprint-plan.md`.
 
-## ⚡ Non-Negotiable Rules
+## Critical Rules
 
-### Dual-File Rule (CRITICAL)
-Two files must ALWAYS stay in sync for shared UI sections:
-- `FullStack/components/SliceMaticStage3.tsx`
-- `FullStack/app/admin-dashboard/page.tsx`
+### Customer / Admin Shells (updated 2026-07-21)
 
-Shared sections: `renderCustomerAccount()`, 3-info-cards, auth views, order history widget.
-**If you edit one, you MUST edit the other.**
+- Customer workspace: `FullStack/components/CustomerShell.tsx` via `app/page.tsx`
+- Admin workspace: `FullStack/app/admin-dashboard/page.tsx`
+- Shared UI lives under `FullStack/features/*` and `FullStack/components/*`
+- `SliceMaticStage3.tsx` is **deleted**. Do not recreate dual-file sync against it.
+- EntryPortal (`/`) is the sole login form for all user types.
 
-### CSS Rules
-- **NO Tailwind** — not a single class
-- All CSS goes in `FullStack/app/globals.css`
-- Design tokens: use existing `:root` variables (--tomato, --bg, --line, --radius, etc.)
-- Check `wiki/css-system.md` for existing layout classes before writing new CSS
-- The `.account-grid` uses `repeat(3, minmax(0, 1fr))` — 3 equal columns
+### Styling
+
+- Legacy styles live in `FullStack/app/globals.css`
+- Prefer semantic tokens and `sui-*` primitives
+- Tailwind CSS v4 is allowed only through a deliberate design-system bridge (see `wiki/css-system.md`). Do not sprinkle random utility soup on legacy screens.
 
 ### TypeScript & State
+
 - Types are in `lib/types.ts` — never redeclare inline
 - Global state via Zustand (`lib/store.ts`) — sessionStorage persisted
-- Auth state via manual sessionStorage keys — see `wiki/auth-flows.md`
-- Never use `localStorage` for session data
+- Auth state via sessionStorage keys — see `wiki/auth-flows.md` / `lib/session/storageKeys.ts`
+- Never use `localStorage` for auth identity (Cashfree pending payment handoff may use localStorage)
 
 ### Supabase
-- Guard all DB calls: `if (!hasSupabaseEnv()) return fallback`
-- Fall back to `lib/seed-data.ts` for menu data
 
-### Business Rules (lib/pricing.ts)
+- Guard DB calls with `hasSupabaseEnv()` / `hasSupabaseAdminEnv()` or null client checks
+- Fall back to `lib/seed-data.ts` for menu data
+- Do not edit `supabase/schema.sql` casually — R13/R12 forbid schema changes; S0 requires ADR + migrations
+
+### Business Rules (`lib/pricing.ts`)
+
 - GST = 18%, Bulk discount = 10% at qty ≥ 5, Max qty = 10
 - Bill order: subtotal → discount → taxable → GST → delivery → total
-- Never change these constants without reading the PRD
 
-## 📋 After Every Session
+## After Every Session
 
-1. Add entry to `FullStack/CHANGELOG.md`
-2. Update `wiki/handoff.md`
+1. Update affected `FullStack/wiki/*.md` pages
+2. Update `wiki/handoff.md` and append `wiki/log.md`
+3. Update `FullStack/CHANGELOG.md` for code changes
 
-## 🚫 Never Do
+## Never Do
 
-- Never use Tailwind
+- Never invent Delivery/Rider/ETA UI without real delivery schema
 - Never hardcode menu prices or item names
 - Never use localStorage for auth
 - Never let exceptions bubble to the UI uncaught
@@ -60,7 +64,7 @@ Shared sections: `renderCustomerAccount()`, 3-info-cards, auth views, order hist
 
 ```bash
 # Working dir: FullStack/
-npm run dev       # port 3000
-npm run test      # vitest
-npm run build     # production
+npm run dev
+npm run test
+npm run build
 ```

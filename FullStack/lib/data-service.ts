@@ -623,11 +623,13 @@ export async function loadAdminSummary(): Promise<AdminSummary> {
     }
     const data = ordersResult.data || [];
 
-    // Fetch lines for these orders
+    // Fetch lines for recent orders only (schema: slicematic.order_item). Cap IDs to keep summary fast.
+    const ADMIN_LINE_FETCH_LIMIT = 50;
     const orderIds = data.map((r: any) => String(r.order_id));
+    const lineFetchIds = orderIds.slice(0, ADMIN_LINE_FETCH_LIMIT);
     const itemsByOrder = new Map<string, any[]>();
 
-    if (orderIds.length > 0) {
+    if (lineFetchIds.length > 0) {
       try {
         type ItemRow = { order_id: string; pizza_type_id: number; base_id: number; size_id: string; quantity: number; line_total: number };
         type PizzaRow = { pizza_type_id: number; pizza_name: string };
@@ -636,7 +638,7 @@ export async function loadAdminSummary(): Promise<AdminSummary> {
 
         const items = await queryDb<ItemRow>(
           `SELECT order_id, pizza_type_id, base_id, size_id, quantity, line_total FROM slicematic.order_item WHERE order_id = ANY($1)`,
-          [orderIds]
+          [lineFetchIds]
         );
 
         const pizzaIds = [...new Set(items.map(i => i.pizza_type_id))];

@@ -11,23 +11,23 @@ export function DeliveryMapFallback({ state }: { state: FallbackState }) {
   const configs: Record<FallbackState, { icon: React.ReactNode; title: string; desc: string }> = {
     no_rider: {
       icon: <UserSearch size={32} className="text-sui-secondary" />,
-      title: "Searching for rider",
-      desc: "We are assigning a nearby delivery partner. Live tracking will begin shortly.",
+      title: "Rider not assigned",
+      desc: "ETA and live map stay hidden until verified delivery data is available.",
     },
     map_offline: {
       icon: <MapPinOff size={32} className="text-sui-secondary" />,
-      title: "Map temporarily unavailable",
-      desc: "We are tracking your order, but the live map cannot be displayed right now.",
+      title: "Map unavailable",
+      desc: "Live map cannot be shown. Order progress still follows recorded kitchen status only.",
     },
     stale_location: {
       icon: <Clock size={32} className="text-sui-warning" />,
-      title: "Location paused",
-      desc: "Rider's GPS signal is weak. ETA may be slightly delayed.",
+      title: "Location unavailable",
+      desc: "No verified GPS update is available for this order yet. ETA is not shown.",
     },
     provider_failure: {
       icon: <AlertTriangle size={32} className="text-sui-danger" />,
-      title: "Tracking service down",
-      desc: "Your order is still on the way. We are working to restore the tracking service.",
+      title: "Tracking unavailable",
+      desc: "Delivery tracking is not available right now. Your recorded order status is unchanged.",
     }
   };
 

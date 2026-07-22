@@ -18,6 +18,7 @@ const STATUS_PROGRESS: Record<string, number> = {
   "ready for pickup": 2,
   picked_up: 3,
   "picked up": 3,
+  delivery: 3,
   "out for delivery": 3,
   arriving: 3,
   delivered: 4,

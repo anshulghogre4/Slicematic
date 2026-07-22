@@ -12,7 +12,7 @@ import { Card } from "../../components/ui/Card";
 import { StatusPill } from "../../components/ui/StatusPill";
 import { SuccessCheckmark } from "../../components/ui/Primitives";
 import { OrderJourneyRail } from "../../features/order-tracking/components/OrderJourneyRail";
-import { DeliveryMapFallback, FallbackState } from "../../features/order-tracking/components/DeliveryMapFallback";
+import { DeliveryMapFallback } from "../../features/order-tracking/components/DeliveryMapFallback";
 
 function paymentConfirmation(mode: PaymentMode) {
   if (mode === "UPI") return "UPI payment requested. Order processing will begin upon confirmation.";
@@ -49,26 +49,36 @@ export default function ConfirmationScreen() {
           Order #{lastOrder.id?.slice(0, 8) ?? "—"}
         </p>
         <h1 className="confirmation-hero__title">Order confirmed</h1>
-        <StatusPill tone={lastOrder.paymentMode === "Cash" ? "warning" : "success"}>
-          {lastOrder.paymentMode === "Cash" ? "Pay on delivery" : "Payment recorded"}
-        </StatusPill>
+        <div aria-live="polite">
+          <StatusPill tone={lastOrder.paymentMode === "Cash" ? "warning" : "success"}>
+            {lastOrder.paymentMode === "Cash" ? "Pay on delivery" : "Payment recorded"}
+          </StatusPill>
+        </div>
         <p style={{ fontSize: "var(--text-body)", color: "var(--sui-text-secondary)", maxWidth: 400, lineHeight: 1.5, margin: 0 }}>
           {paymentConfirmation(lastOrder.paymentMode)}
+        </p>
+        <p className="confirmation-hero__honesty" role="note">
+          Live rider, ETA, and map appear only when verified delivery data exists. This screen shows recorded order status.
         </p>
       </div>
 
       {/* Journey rail */}
-      <section style={{ marginBottom: "var(--space-xl)" }}>
+      <section style={{ marginBottom: "var(--space-xl)" }} aria-label="Order progress">
         <OrderJourneyRail orderId={lastOrder.id} status={lastOrder.status} />
       </section>
 
       {/* Map or Kitchen placeholder */}
-      <section style={{ marginBottom: "var(--space-lg)" }}>
-        {lastOrder.status === "delivery" ? (
+      <section style={{ marginBottom: "var(--space-lg)" }} aria-label="Delivery status">
+        {lastOrder.status?.toLowerCase() === "delivery" || lastOrder.status?.toLowerCase() === "out for delivery" ? (
           <DeliveryMapFallback state="no_rider" />
         ) : (
           <Card style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "var(--space-xl)", textAlign: "center" }}>
-            <div className="illustration-kitchen" style={{ marginBottom: "var(--space-md)" }} />
+            <div
+              className="illustration-kitchen"
+              style={{ marginBottom: "var(--space-md)" }}
+              role="img"
+              aria-label="Kitchen preparing your order"
+            />
             <h3 style={{ fontSize: "var(--text-heading)", fontWeight: 700, margin: "0 0 4px" }}>
               Your order is being prepared
             </h3>
@@ -86,12 +96,19 @@ export default function ConfirmationScreen() {
           onClick={() => setReceiptOpen(!receiptOpen)}
           type="button"
           aria-expanded={receiptOpen}
+          aria-controls="confirmation-receipt-panel"
+          id="confirmation-receipt-trigger"
         >
           <span>Final bill · {money(lastOrder.finalTotal)}</span>
-          {receiptOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+          {receiptOpen ? <ChevronUp size={18} aria-hidden="true" /> : <ChevronDown size={18} aria-hidden="true" />}
         </button>
         {receiptOpen && (
-          <div className="receipt-accordion__content animate-fade-in">
+          <div
+            className="receipt-accordion__content animate-fade-in"
+            id="confirmation-receipt-panel"
+            role="region"
+            aria-labelledby="confirmation-receipt-trigger"
+          >
             {/* Line items */}
             {lastOrder.lines.map((line, index) => (
               <div

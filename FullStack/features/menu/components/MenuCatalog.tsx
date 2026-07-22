@@ -136,7 +136,11 @@ export function MenuCatalog({
                   style={pizza.image ? { backgroundImage: `url(${pizza.image})`, backgroundSize: "cover", backgroundPosition: "center" } : undefined}
                   role="img"
                   aria-label={pizza.name}
-                />
+                >
+                  {pizza.badge ? (
+                    <span className="menu-card-premium__badge">{pizza.badge}</span>
+                  ) : null}
+                </div>
 
                 {/* Body */}
                 <div className="menu-card-premium__body">

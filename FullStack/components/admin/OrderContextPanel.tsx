@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import {
   Bike,
   Clock,
@@ -42,6 +42,7 @@ function StatusIcon({ status }: { status: string }) {
 
 export function OrderContextPanel({ order, onClose }: OrderContextPanelProps) {
   const hasLines = Array.isArray(order.lines) && order.lines.length > 0;
+  const reduceMotion = useReducedMotion();
 
   return (
     <AnimatePresence mode="wait">
@@ -49,12 +50,11 @@ export function OrderContextPanel({ order, onClose }: OrderContextPanelProps) {
         key={order.id}
         className="ocp"
         aria-labelledby="ocp-title"
-        initial={{ opacity: 0, x: 24 }}
+        initial={reduceMotion ? false : { opacity: 0, x: 24 }}
         animate={{ opacity: 1, x: 0 }}
-        exit={{ opacity: 0, x: 24 }}
-        transition={{ duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
+        exit={reduceMotion ? undefined : { opacity: 0, x: 24 }}
+        transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }}
       >
-        {/* ── Header ──────────────────────────────────────────────────── */}
         <div className="ocp__header">
           <div>
             <p className="ocp__eyebrow">Selected order</p>
@@ -79,7 +79,6 @@ export function OrderContextPanel({ order, onClose }: OrderContextPanelProps) {
           </Button>
         </div>
 
-        {/* ── Status pills ─────────────────────────────────────────────── */}
         <div className="ocp__pills">
           <StatusPill tone={orderStatusTone(order.status)}>
             <StatusIcon status={order.status} />
@@ -90,8 +89,7 @@ export function OrderContextPanel({ order, onClose }: OrderContextPanelProps) {
           </StatusPill>
         </div>
 
-        {/* ── Key facts ────────────────────────────────────────────────── */}
-        <div className="ocp__facts">
+        <dl className="ocp__facts">
           <div className="ocp__fact">
             <User size={14} className="ocp__fact-icon" aria-hidden="true" />
             <div>
@@ -120,19 +118,17 @@ export function OrderContextPanel({ order, onClose }: OrderContextPanelProps) {
           <div className="ocp__fact">
             <MapPin size={14} className="ocp__fact-icon" aria-hidden="true" />
             <div>
-              <dt>Delivery</dt>
+              <dt>Delivery zone</dt>
               <dd>
                 {order.deliveryZone ? `${order.deliveryZone} km zone` : "Zone unavailable"}
                 {order.address && <small>{order.address}</small>}
               </dd>
             </div>
           </div>
-        </div>
+        </dl>
 
-        {/* ── Divider ──────────────────────────────────────────────────── */}
         <div className="ocp__divider" />
 
-        {/* ── Line items ───────────────────────────────────────────────── */}
         <section aria-labelledby="ocp-items-title">
           <h4 id="ocp-items-title" className="ocp__section-title">
             <ReceiptText size={14} aria-hidden="true" />
@@ -159,7 +155,6 @@ export function OrderContextPanel({ order, onClose }: OrderContextPanelProps) {
           )}
         </section>
 
-        {/* ── Dispatch notice ──────────────────────────────────────────── */}
         <div className="ocp__dispatch">
           <Package size={15} aria-hidden="true" />
           <div>

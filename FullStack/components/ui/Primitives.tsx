@@ -32,7 +32,7 @@ export function EmptyState({ illustration = "empty-cart", title, description, ac
 
 export function SuccessCheckmark() {
   return (
-    <svg className="success-checkmark" viewBox="0 0 56 56" aria-label="Success">
+    <svg className="success-checkmark" viewBox="0 0 56 56" role="img" aria-label="Order confirmed">
       <circle cx="28" cy="28" r="28" />
       <path d="M17 28 L24 35 L39 20" fill="none" />
     </svg>

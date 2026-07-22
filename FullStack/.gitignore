@@ -16,3 +16,4 @@ pnpm-debug.log*
 
 # Graphify knowledge graph outputs
 graphify-out/
+backups/

@@ -9,6 +9,13 @@ scope: wiki/
 
 Entries use `## [YYYY-MM-DD] operation | title` so agents and shell tools can parse the timeline.
 
+## [2026-07-23] query+fix | ui-ux-pro-max confirmation UX audit
+
+- Invoked ui-ux-pro-max (`--design-system` food delivery + `--domain ux` + `--stack nextjs`) against `/confirmation`.
+- P0 honesty/a11y fixes in `DeliveryMapFallback.tsx`, `orderJourney.ts`, `confirmation/page.tsx`, `loading.tsx`, `globals.css`, `Primitives.tsx`.
+- Wrote ranked findings + S0-04 map scorecard UX criteria into `plans/2026-07-21-next-horizon-sprint-plan.md`; updated [[handoff]], [[ui-map]], `CHANGELOG.md`.
+- No schema changes; no live GPS/rider UI invented.
+
 ## [2026-07-18 01:12 IST] fix+revamp | Security & UX — Holistic Logout + Navbar + Customer Dashboard
 
 - **Holistic admin logout:** `useAdminAuth.adminLogout()` now clears all 8 sessionStorage keys (2 admin + 6 customer). Logout button in `admin-dashboard/page.tsx` passes `() => router.replace("/")` as callback → lands on EntryPortal.
@@ -223,6 +230,21 @@ Entries use `## [YYYY-MM-DD] operation | title` so agents and shell tools can pa
 - Both files updated (Dual-File Rule satisfied).
 - TypeScript: `npx tsc --noEmit` clean — 0 errors.
 - Updated CHANGELOG.md with full file list.
+
+## [2026-07-21] ingest | R13 Stabilize + next-horizon sprint plan
+
+- Gated `GET /api/admin/orders` with `requireAdminSession`; added route tests.
+- Restored admin UI session gate without reintroducing EntryPortal-duplicate login forms.
+- Removed fabricated OrderTable delivery/rider/ETA fields; capped `order_item` line fetch (schema unchanged).
+- Added `plans/2026-07-21-next-horizon-sprint-plan.md`; pointed parent sprint file + handoff at R13→R12→S0 queue.
+- Active next work: finish R13 wiki/Cursor Stage3 purge, then R12 polish, then S0 foundation.
+
+## [2026-07-21] ingest | R13 docs + R12 polish close-out
+
+- Completed Stage3/dual-file doc and Cursor rule purge; ui-map admin assets fixed.
+- Landed safe R12 polish (badge, stepper, journey highlight, reduced-motion, Skeleton loaders, OCP dl).
+- Verified 118/118 three times; no schema.sql changes.
+- Next queue: S0-01 ADR → S0-02 RLS design draft → S0-04 map scorecard.
 
 ### [2026-07-18 02:16:59 IST] - Baseline Screenshot Refresh & Sprint Planning
 Captured 13 new baseline screenshots of the current web app UI across both customer and admin flows. Updated ui-map.md to reference the new assets. Analyzed the UI and added sprint item **R12 - Frontend Visual Polish & Micro-interactions** to ullstack-delivery-intelligence-sprints.md to track final visual refinement tasks.

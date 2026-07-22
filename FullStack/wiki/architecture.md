@@ -12,8 +12,9 @@
 │                                                         │
 │  EntryPortal → SessionStorage check → Route decision   │
 │       ↓                                                 │
-│  SliceMaticStage3.tsx  (customer workspace)             │
+│  CustomerShell.tsx  (customer workspace)                │
 │  admin-dashboard/page.tsx  (admin workspace)            │
+│  features/* shared presentation                         │
 │       ↓                                                 │
 │  Zustand Store (sessionStorage persisted)               │
 └─────────────────────────────────────────────────────────┘
@@ -45,27 +46,17 @@
 
 ---
 
-## 🔴 Critical: The Dual-File Pattern
+## Critical: Customer And Admin Shells
 
-**This is the most important architectural fact in this codebase.**
-
-Two files contain almost identical code:
+**Updated 2026-07-21:** The dual-file Stage3 monolith is gone.
 
 | File | Path | Role |
 |---|---|---|
-| `SliceMaticStage3.tsx` | `components/SliceMaticStage3.tsx` | Customer-facing app (rendered at `/`) |
-| `page.tsx` (admin) | `app/admin-dashboard/page.tsx` | Admin dashboard (rendered at `/admin-dashboard`) |
+| `CustomerShell.tsx` | `components/CustomerShell.tsx` | Customer-facing app (rendered at `/` after EntryPortal) |
+| `page.tsx` (admin) | `app/admin-dashboard/page.tsx` | Admin dashboard |
+| Feature modules | `features/*` | Shared presentation extracted from the old monolith |
 
-**Why two files exist:** The admin dashboard needed admin-only features (order management, menu CRUD, analytics, settings) while sharing the same customer account UI. The components were not extracted into shared sub-components; instead both files are kept in sync manually.
-
-**The rule:** Any change to shared UI sections (customer account page, auth flows, shared modals) **MUST be applied to both files**. Failure to do this causes UI inconsistency between customer and admin views.
-
-**Shared sections (must sync both files):**
-- `renderCustomerAccount()` function
-- `account-grid` with 3 info cards (Personalized picks, Easy login, Full payment choice)
-- Customer auth views (login, forgot, reset)
-- Order history widget
-- CSS class names for account layout
+**The rule:** Prefer shared `features/` components. Do not recreate `SliceMaticStage3.tsx`. EntryPortal is the only login form.
 
 ---
 
@@ -74,17 +65,17 @@ Two files contain almost identical code:
 ```
 /                        → app/page.tsx
                            → EntryPortal (if not logged in)
-                           → SliceMaticStage3.tsx (customer logged in)
+                           → CustomerShell.tsx (customer logged in / guest)
                            → redirect /admin-dashboard (admin logged in)
 
 /admin-dashboard         → app/admin-dashboard/page.tsx
-                           → Full admin dashboard with tabs
+                           → Full admin dashboard with tabs (gated on admin session)
 
 /payment                 → app/payment/page.tsx
                            → Checkout / payment selection
 
 /confirmation            → app/confirmation/page.tsx
-                           → Order tracking / confirmation
+                           → Order confirmation / honest journey rail
 ```
 
 ---

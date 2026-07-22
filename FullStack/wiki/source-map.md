@@ -13,7 +13,7 @@ Use this page to verify compiled claims without rediscovering the entire reposit
 | Concept | Primary evidence | Supporting evidence | Wiki synthesis |
 |---|---|---|---|
 | Runtime and dependencies | `FullStack/package.json`, `next.config.mjs` | `FullStack/README.md` | [[architecture]], [[scripts-tooling]] |
-| Customer workspace | `app/page.tsx`, `components/EntryPortal/EntryPortal.tsx`, `components/SliceMaticStage3.tsx` | `lib/customer-flow.ts`, `lib/session-customer.ts` | [[components]], [[auth-flows]] |
+| Customer workspace | `app/page.tsx`, `components/EntryPortal/EntryPortal.tsx`, `components/CustomerShell.tsx` | `lib/customer-flow.ts`, `lib/session-customer.ts`, `features/customer-ordering/*` | [[components]], [[auth-flows]] |
 | Admin workspace | `app/admin-dashboard/page.tsx` | `components/admin/*`, `lib/admin-tabs.ts` | [[components]], [[architecture]] |
 | Live UI baseline | `FullStack/wiki/assets/ui-map/*.png` | `app/page.tsx`, `app/admin-dashboard/page.tsx`, `app/payment/page.tsx`, `app/confirmation/page.tsx` | [[ui-map]] |
 | Domain types | `lib/types.ts` | API and component imports | [[architecture]], [[api-contracts]] |
@@ -32,7 +32,7 @@ Use this page to verify compiled claims without rediscovering the entire reposit
 | Order journey and admin context | `features/order-tracking/orderJourney.ts`, `features/order-tracking/components/OrderJourneyRail.tsx`, `components/admin/OrderContextPanel.tsx` | `app/confirmation/page.tsx`, both admin workspace files, `lib/order-journey.test.ts` | [[delivery-operations]], [[components]] |
 | Customer menu and builder | `features/menu/components/MenuCatalog.tsx`, `features/menu/components/PizzaBuilderDialog.tsx`, `lib/menu-catalog.ts` | Both giant workspace files, `lib/menu-catalog.test.ts`, pricing helpers | [[components]], [[architecture]] |
 | Customer cart, recommendations, and ordering shell | `features/customer-ordering/components/CartRail.tsx`, `CartLineItem.tsx`, `AiCartStrategistCard.tsx`, `RecommendationLane.tsx`, `CustomerFlowTabs.tsx`, `CustomerIntakeForm.tsx`, `lib/cart-rail.ts` | Both giant workspace files, `lib/cart-rail.test.ts`, `lib/pricing.ts`, `lib/types.ts` | [[components]], [[state-management]], [[architecture]] |
-| Admin dashboard shared workspaces | `features/admin-dashboard/components/AdminOrdersWorkspace.tsx`, `OrderTable.tsx`, `AdminTabNav.tsx`, `AdminMenuWorkspace.tsx`, `AdminSettingsWorkspace.tsx` | `app/admin-dashboard/page.tsx`, `components/SliceMaticStage3.tsx`, `components/admin/OrderContextPanel.tsx` | [[components]], [[architecture]], [[delivery-operations]] |
+| Admin dashboard shared workspaces | `features/admin-dashboard/components/AdminOrdersWorkspace.tsx`, `OrderTable.tsx`, `AdminTabNav.tsx`, `AdminMenuWorkspace.tsx`, `AdminSettingsWorkspace.tsx` | `app/admin-dashboard/page.tsx`, `components/admin/OrderContextPanel.tsx` | [[components]], [[architecture]], [[delivery-operations]] |
 | Environment behavior | environment reads found through `process.env` | `.env` names only; never values | [[env-vars]] |
 | Verification status | fresh `npm test` and `npm run build` output | test files, build report | [[testing]], [[current-state]] |
 | Delivery tracking proposal | current order/schema/auth/pricing source plus official provider research | `FullStack/plans/fullstack-delivery-intelligence-sprints.md` | [[delivery-operations]] |
@@ -40,7 +40,7 @@ Use this page to verify compiled claims without rediscovering the entire reposit
 | UI revamp proposal | `FullStack/wiki/ui-map.md`, current screenshots, delivery sprint plan, UI research sources | `FullStack/plans/ui-revamp-implementation-plan.md`, `FullStack/plans/ui-inspiration-research.md`, `FullStack/wiki/ui-revamp-roadmap.md` | [[ui-revamp-roadmap]], [[ui-map]], [[components]], [[css-system]] |
 | Checkout feature extraction | `app/payment/page.tsx`, `features/checkout/components/CheckoutSummary.tsx` | `lib/session/checkoutSession.ts`, `lib/pricing.ts`, `lib/store.ts` | [[state-management]], [[business-rules]], [[payments]] |
 | UI primitive bridge | `components/ui/*`, `app/globals.css` `sui-*` classes | `FullStack/plans/ui-revamp-implementation-plan.md`, `FullStack/wiki/css-system.md` | [[components]], [[css-system]], [[ui-revamp-roadmap]] |
-| Frontend architecture restructure | `FullStack/components/SliceMaticStage3.tsx`, `FullStack/app/admin-dashboard/page.tsx`, `FullStack/app/payment/page.tsx`, `FullStack/app/confirmation/page.tsx`, `FullStack/lib/store.ts` | `FullStack/plans/frontend-architecture-restructure.md`, Next.js/Zustand official docs | [[architecture]], [[components]], [[state-management]] |
+| Frontend architecture restructure | `FullStack/components/CustomerShell.tsx`, `FullStack/app/admin-dashboard/page.tsx`, `FullStack/app/payment/page.tsx`, `FullStack/app/confirmation/page.tsx`, `FullStack/lib/store.ts` | `FullStack/plans/frontend-architecture-restructure.md`, `FullStack/plans/2026-07-21-next-horizon-sprint-plan.md` | [[architecture]], [[components]], [[state-management]] |
 | Database schema evolution | `FullStack/supabase/schema.sql`, `FullStack/lib/data-service.ts`, `FullStack/lib/customer-auth.ts`, `FullStack/lib/admin-auth.ts` | `FullStack/plans/database-schema-evolution-plan.md`, Supabase RLS/table docs | [[database-schema]], [[auth-flows]], [[api-contracts]], [[delivery-operations]] |
 
 ## Authored source documents

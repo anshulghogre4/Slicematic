@@ -2,14 +2,29 @@
 title: SliceMatic Session Handoff
 type: handoff
 status: active
-last_updated: 2026-07-18
+last_updated: 2026-07-23
 ---
 
 # SliceMatic Session Handoff
 
-Read [[index]] first. Durable delivery design now lives in [[delivery-operations]] and `FullStack/plans/fullstack-delivery-intelligence-sprints.md`. The UI revamp plan lives in `FullStack/plans/ui-revamp-implementation-plan.md`.
+Read [[index]] first. Durable delivery design now lives in [[delivery-operations]] and `FullStack/plans/fullstack-delivery-intelligence-sprints.md`. **Active next queue:** `FullStack/plans/2026-07-21-next-horizon-sprint-plan.md` (R13 done → R12 mostly done → **S0 next**; confirmation UX honesty pass done).
 
 ## Latest work
+
+- **Confirmation UX audit via ui-ux-pro-max (2026-07-23):** Ran Food Delivery / Next.js design-intelligence review on `/confirmation`. Fixed P0 honesty gaps: `DeliveryMapFallback` no longer invents “searching for rider / live tracking shortly”; journey maps status `delivery`; hero discloses recorded-status-only; receipt a11y/focus/touch; loading skeleton aligned to live layout. Ranked findings + map bake-off UX criteria written under S0-04 addendum in next-horizon sprint plan. No schema / no live GPS.
+- **R13+R12 close-out (2026-07-21 evening):** Continued stabilize + polish without schema changes.
+  - Docs/rules: Stage3 dual-file retired in architecture, knowledge-graph, source-map, decisions ADR-001/004, contradictions, `.agents/AGENTS.md`, `.cursor/rules/slicematic.mdc`; ui-map admin shots retargeted to `admin-*.png`.
+  - R12: menu badge overlay, stepper hit area, journey current-step highlight, `useReducedMotion` on OCP + admin tabs, Skeleton-based route loaders, OCP `<dl>` facts.
+  - Verification: three test passes at **118/118**; review agent no findings.
+  - **Next:** S0-01 Delivery ADR, S0-02 RLS design (draft only), S0-04 map scorecard. No live GPS. No `schema.sql` apply without ADR.
+
+- **R13 Stabilize (2026-07-21):** Security/honesty gate without schema changes.
+  - `GET /api/admin/orders` now calls `requireAdminSession` before `loadAdminSummary` / CSV; tests added.
+  - `/admin-dashboard` gates ops UI on `adminLoggedIn` (EntryPortal remains sole login form).
+  - `OrderTable` no longer fabricates Delivery/Rider/ETA (`Pending`/`Unassigned`).
+  - Admin line hydration capped to 50 recent IDs against existing `slicematic.order_item` columns only.
+  - Next-horizon sprint plan written; parent sprint file points to it for “what’s next.”
+  - **Did not** modify `supabase/schema.sql`. Delivery S0+ still gated.
 
 - **Security & UX Fixes (2026-07-18 01:12 IST):** Three production bugs fixed + two UI revamps shipped.
   - **FIX — Holistic admin logout:** `adminLogout()` in `useAdminAuth.ts` now clears all 8 `sessionStorage` keys (was only clearing 2 admin keys). The 6 customer keys (`slicematic_customer_logged_in`, `slicematic_customer_email`, `slicematic_customer`, `slicematic_customer_id`, `slicematic_workspace`, `slicematic_admin_view_customer`) were being left behind, causing the page to render the customer UI instead of `EntryPortal` after admin logout. Logout button now passes `() => router.replace("/")` as the `onUnauthorize` callback so the redirect happens after all keys clear.
@@ -203,15 +218,13 @@ FullStack application code was changed in Revamp Sprints R1-R8, with small R9/R1
 
 ## Next action
 
-Current state after the monolith extraction: **the monolith has been replaced by `CustomerShell.tsx` and a lean `admin-dashboard/page.tsx` (733 / 626 lines)**. R1-R11 and Revamp UI polish are fully complete.
+**Active plan:** `FullStack/plans/2026-07-21-next-horizon-sprint-plan.md`
 
-The next priority is:
-
-1. Run `npm run test` to verify no regressions from the rewrite (hooks are new modules; existing component tests should all pass).
-2. Run `npm run build` to verify production compilation.
-3. Review the UX end-to-end in browser.
-4. Upgrade `AdminOverviewPanel` to use Framer Motion as requested by the user.
-5. Add route-level `loading.tsx` and `error.tsx` boundaries.
+1. Start **S0-01** Delivery ADR (kitchen vs courier, fee v1, disclosure) — docs only.
+2. Draft **S0-02** RLS/identity design (do not apply SQL until approved).
+3. Prepare **S0-04** Delhi map bake-off scorecard.
+4. Optionally close R12 leftovers (fresh screenshots, AdminOverview motion).
+5. Keep `npm run test` green; never invent Delivery/Rider/ETA UI.
 
 Do not implement precise rider tracking before:
 

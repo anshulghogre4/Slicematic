@@ -4,6 +4,38 @@ This file maintains a timestamp-based record of the modifications, debugging ses
 
 ---
 
+### [2026-07-23 03:30:00 IST] - Confirmation UX honesty + a11y (ui-ux-pro-max audit)
+
+- Honest delivery empty states: `DeliveryMapFallback` no longer claims active rider search or imminent live tracking.
+- Journey status `"delivery"` maps to delivery step; confirmation hero discloses recorded-status-only.
+- Receipt accordion: `aria-controls`, focus-visible ring, 44px min touch height; kitchen illustration labeled; loading skeleton matches page layout.
+- Docs: S0-04 addendum with ranked findings in next-horizon sprint plan; handoff/log/ui-map updated.
+- Files: `app/confirmation/page.tsx`, `app/confirmation/loading.tsx`, `features/order-tracking/components/DeliveryMapFallback.tsx`, `features/order-tracking/orderJourney.ts`, `lib/orderJourney.test.ts`, `components/ui/Primitives.tsx`, `app/globals.css`, `plans/2026-07-21-next-horizon-sprint-plan.md`, `wiki/handoff.md`, `wiki/log.md`, `wiki/ui-map.md`
+
+---
+
+### [2026-07-21 23:05:00 IST] - R13 docs purge + R12 polish pass (no schema)
+
+- Retired Stage3/dual-file guidance in wiki architecture/knowledge-graph/source-map/decisions/contradictions and Cursor/`.agents` rules; fixed ui-map admin screenshot links.
+- R12: menu badge overlay, stepper sizing, journey current-step highlight, reduced-motion on OCP/admin tabs, Skeleton loaders, OCP `<dl>`.
+- Three verification passes: **118/118** tests; review agent no findings.
+- Sprint plans updated: R13 Done, R12 mostly done, **S0 next**.
+- Files: OrderContextPanel.tsx, admin-dashboard/page.tsx, loading.tsx routes, MenuCatalog.tsx, globals.css, wiki/*, .agents/AGENTS.md, .cursor/rules/slicematic.mdc, plans/*
+
+---
+
+### [2026-07-21 22:40:00 IST] - R13 Stabilize: Admin orders auth + honest OrderTable + next-horizon sprint plan
+
+- **Security:** `GET /api/admin/orders` now invokes `requireAdminSession` before loading summary/CSV (demo-bypass + no-admin-env behavior unchanged).
+- **Honesty:** Removed fabricated Delivery/Rider/ETA columns from `OrderTable`; kitchen status only until delivery schema exists.
+- **UX gate:** `/admin-dashboard` shows a session-verify panel instead of ops tabs until `adminLoggedIn` (EntryPortal remains sole login).
+- **Perf:** Cap `order_item` line hydration to 50 recent order IDs; columns match `supabase/schema.sql` (`order_item` only — no schema change).
+- **Tests:** Added `app/api/admin/orders/route.test.ts`.
+- **Planning:** Added `plans/2026-07-21-next-horizon-sprint-plan.md` (R13→R12→S0); parent sprint file “Active next queue” points here; updated `wiki/handoff.md`.
+- Files: `app/api/admin/orders/route.ts`, `route.test.ts`, `app/admin-dashboard/page.tsx`, `features/admin-dashboard/components/OrderTable.tsx`, `lib/data-service.ts`, `app/globals.css`, `plans/2026-07-21-next-horizon-sprint-plan.md`, `plans/fullstack-delivery-intelligence-sprints.md`, `wiki/handoff.md`, `CHANGELOG.md`
+
+---
+
 ### [2026-07-18 02:56:00 IST] - Admin Orders UI: Auth Gate Removal + Panel Redesign + Pagination + Search
 
 - **Removed AdminAuthPanel secondary login gate** — `/admin-dashboard` now renders immediately for valid admin sessions (already gated by `slicematic_is_admin` sessionStorage redirect). No more separate email/password "Operations Console" login panel.

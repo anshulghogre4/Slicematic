@@ -1,16 +1,23 @@
+import { Skeleton } from "../../components/ui";
+
 export default function ConfirmationLoading() {
   return (
-    <main className="app-frame" style={{ maxWidth: 800, margin: "0 auto", padding: "1rem" }}>
-      <div style={{ padding: "var(--space-md)", textAlign: "center", animation: "pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite" }}>
-        <div style={{ width: 120, height: 16, backgroundColor: "var(--sui-surface-soft)", borderRadius: 4, margin: "0 auto var(--space-md)" }} />
-        <div style={{ width: 200, height: 24, backgroundColor: "var(--sui-surface-soft)", borderRadius: 4, margin: "0 auto var(--space-xl)" }} />
-        
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "var(--space-md)", marginBottom: "var(--space-xl)" }}>
-          <div style={{ height: 160, backgroundColor: "var(--sui-surface-soft)", borderRadius: "var(--sui-radius-md)" }} />
-          <div style={{ height: 160, backgroundColor: "var(--sui-surface-soft)", borderRadius: "var(--sui-radius-md)" }} />
+    <main
+      className="app-frame"
+      style={{ maxWidth: 720, margin: "0 auto", padding: "var(--space-lg)" }}
+      aria-busy="true"
+      aria-label="Loading confirmation"
+    >
+      <div style={{ display: "grid", gap: "var(--space-xl)", textAlign: "center" }}>
+        <div style={{ display: "grid", gap: "var(--space-md)", justifyItems: "center" }}>
+          <Skeleton variant="circle" style={{ width: 56, height: 56 }} />
+          <Skeleton variant="line" style={{ width: 120, height: 14 }} />
+          <Skeleton variant="line" style={{ width: 220, height: 28 }} />
+          <Skeleton variant="line" style={{ width: 140, height: 22 }} />
         </div>
-
-        <div style={{ height: 300, backgroundColor: "var(--sui-surface-soft)", borderRadius: "var(--sui-radius-md)" }} />
+        <Skeleton variant="block" style={{ height: 220 }} />
+        <Skeleton variant="block" style={{ height: 250 }} />
+        <Skeleton variant="block" style={{ height: 52 }} />
       </div>
     </main>
   );

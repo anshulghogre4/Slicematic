@@ -1669,6 +1669,17 @@ a.primary:hover {
   box-shadow: 0 0 0 5px var(--sui-surface-card), 0 0 0 9px rgba(22, 109, 69, 0.12);
 }
 
+.order-journey__step--current {
+  background: linear-gradient(90deg, var(--sui-success-soft), transparent 72%);
+  border-radius: var(--sui-radius-sm);
+  margin-inline: -8px;
+  padding-inline: 8px;
+}
+
+.order-journey__step--upcoming {
+  opacity: 0.72;
+}
+
 .order-journey__step strong,
 .order-journey__step p {
   display: block;
@@ -2414,10 +2425,10 @@ a.primary:hover {
 
 .order-row {
   display: grid;
-  grid-template-columns: minmax(130px, 0.9fr) minmax(170px, 1fr) minmax(260px, 1.6fr) minmax(110px, 0.7fr) minmax(180px, 1fr) minmax(110px, 0.7fr);
+  grid-template-columns: minmax(110px, 0.8fr) minmax(160px, 1.2fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr) minmax(110px, 0.7fr);
   gap: 12px;
   align-items: center;
-  min-width: 1080px;
+  min-width: 720px;
   padding: 12px 14px;
   border-top: 1px solid var(--line);
 }
@@ -2604,8 +2615,8 @@ button.order-row.is-selected { background: var(--sui-surface-accent); box-shadow
 }
 
 .order-table--detailed .order-row {
-  grid-template-columns: minmax(90px, 0.8fr) minmax(130px, 1fr) minmax(180px, 1.4fr) minmax(100px, 0.7fr) minmax(100px, 0.7fr) minmax(100px, 0.7fr) minmax(100px, 0.7fr) minmax(120px, 1fr) minmax(80px, 0.6fr);
-  min-width: 1200px;
+  grid-template-columns: minmax(110px, 0.9fr) minmax(150px, 1fr) minmax(220px, 1.5fr) minmax(110px, 0.7fr) minmax(160px, 1fr) minmax(110px, 0.7fr);
+  min-width: 980px;
 }
 
 .order-row:first-child {
@@ -3701,10 +3712,30 @@ button.order-row.is-selected { background: var(--sui-surface-accent); box-shadow
 }
 
 .menu-card-premium__image {
+  position: relative;
   width: 100%;
   aspect-ratio: 16 / 10;
   object-fit: cover;
   background: linear-gradient(135deg, var(--dough), var(--mozzarella));
+}
+
+.menu-card-premium__badge {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  z-index: 1;
+  max-width: calc(100% - 20px);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(26, 26, 26, 0.82);
+  color: #fff;
+  font-size: var(--text-micro);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .menu-card-premium__body {
@@ -4425,9 +4456,10 @@ button.order-row.is-selected { background: var(--sui-surface-accent); box-shadow
 }
 
 .qty-stepper__btn {
-  width: 36px;
-  height: 36px;
-  display: flex;
+  width: 40px;
+  height: 40px;
+  min-width: 40px;
+  display: inline-flex;
   align-items: center;
   justify-content: center;
   border: none;
@@ -4437,6 +4469,13 @@ button.order-row.is-selected { background: var(--sui-surface-accent); box-shadow
   font-weight: 700;
   cursor: pointer;
   transition: background var(--sui-motion-fast) ease;
+}
+
+.qty-stepper__btn svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
 }
 
 .qty-stepper__btn:hover {
@@ -4470,6 +4509,7 @@ button.order-row.is-selected { background: var(--sui-surface-accent); box-shadow
   align-items: center;
   justify-content: space-between;
   width: 100%;
+  min-height: 44px;
   padding: var(--space-md);
   border: none;
   background: var(--sui-surface-soft);
@@ -4477,6 +4517,11 @@ button.order-row.is-selected { background: var(--sui-surface-accent); box-shadow
   font-size: var(--text-body);
   cursor: pointer;
   color: var(--sui-text-primary);
+}
+
+.receipt-accordion__trigger:focus-visible {
+  outline: 3px solid var(--sui-focus-ring);
+  outline-offset: 2px;
 }
 
 .receipt-accordion__content {
@@ -4533,6 +4578,18 @@ button.order-row.is-selected { background: var(--sui-surface-accent); box-shadow
   color: var(--sui-text-primary);
   letter-spacing: -0.02em;
   margin: 0;
+}
+
+.confirmation-hero__honesty {
+  font-size: var(--text-small);
+  color: var(--sui-text-secondary);
+  max-width: 420px;
+  line-height: 1.5;
+  margin: var(--space-xs) 0 0;
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--sui-radius-sm);
+  background: var(--sui-info-soft);
+  border: 1px solid rgba(47, 111, 152, 0.18);
 }
 
 /* === Bottom Sheet === */

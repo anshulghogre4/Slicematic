@@ -9,6 +9,20 @@ scope: preferences, activity, dispatch, rider fees, ETA, live tracking, forecast
 
 # FullStack Delivery Intelligence Sprint Plan
 
+## Active next queue (2026-07-21)
+
+**Operational next-horizon plan:** `plans/2026-07-21-next-horizon-sprint-plan.md`
+
+| Phase | Status | What to do next |
+|---|---|---|
+| **R13 Stabilize** | **Done** | Optional: clean README / AI engine Stage3 path nits |
+| **R12 Polish** | **Mostly done** | Optional screenshots / AdminOverview motion; otherwise close |
+| **S0 Foundation** | **Next** | Write Delivery ADR (S0-01), RLS design draft (S0-02), map bake-off scorecard (S0-04). **No live GPS. No schema apply without ADR.** |
+
+This file remains the long-term Delivery S0–S5 + R1–R12 history SOT. For “what do I build this week,” prefer the next-horizon plan above.
+
+---
+
 ## Revamp Branch Execution Overlay
 
 The `new-revamp-1` branch starts with a harmless frontend foundation overlay before delivery schema or tracking implementation:
@@ -45,7 +59,8 @@ These sprints continue the current harmless frontend decomposition before any SQ
 | R9 - Customer ordering shell cleanup | Closed for extracted scope | Customer ordering frontend | Extract the customer ordering step layout, intake/recommend/menu shell, step navigation, and mobile cart placement into feature components | `CustomerFlowTabs` and `CustomerIntakeForm` are extracted and shared. Larger shell/mobile-cart composition remains a future optional slice, but duplicated intake/tab JSX is cleaned |
 | R10 - Admin command shell and table workspace | Closed for extracted scope | Admin dashboard frontend | Extract admin top command bar, side/tab navigation, order table workspace, and selected-order drawer wrapper | `AdminTabNav`, `AdminOrdersWorkspace`, shared `OrderTable`, `AdminMenuWorkspace`, and `AdminSettingsWorkspace` now drive both admin workspaces. Future optional slice is command-bar extraction |
 | R11 - Loading, empty, error, and mobile polish pass | Done | Shared UI quality | Add consistent skeletons and empty/error states for menu, recommendations, cart insight, order table, forecast, AI panel, and confirmation; tighten responsive behavior | Recommendation lane, AI cart strategist, admin order rows, and empty states now use the skeleton/state pattern. Route boundaries (loading.tsx/error.tsx) still pending. |
-| R12 - Frontend Visual Polish & Micro-interactions | Planned | Shared UI quality | Apply final Apple-like glassmorphic polish and micro-interactions across key components | Fix Margherita badge alignment, improve checkout layout spacing around "Online verification required", enhance customizer stepper styling (minus button), add order status icons/subtle progress bars to confirmation tracking, and confirm Admin interactive charts. |
+| R12 - Frontend Visual Polish & Micro-interactions | Mostly done | Shared UI quality | Badge overlay, stepper hit area, journey highlight, reduced-motion, Skeleton loaders, OCP `<dl>` | Optional: screenshots + AdminOverview motion. See next-horizon plan. |
+| R13 - Stabilize security, honesty, docs | Done 2026-07-21 | Platform | Gate `/api/admin/orders`, admin render gate, honest OrderTable, capped order_item line fetch, Stage3 doc/rules purge | Exit met: 118/118 tests; schema untouched |
 
 ### R8 implementation notes
 

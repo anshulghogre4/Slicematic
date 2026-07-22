@@ -3,7 +3,7 @@ title: SliceMatic UI Map
 type: ui-baseline
 status: maintained
 scope: FullStack/
-last_verified: 2026-07-16
+last_verified: 2026-07-23
 ---
 
 # SliceMatic UI Map
@@ -26,11 +26,11 @@ Screenshots are stored in `FullStack/wiki/assets/ui-map/` and were captured from
 | Customer customize modal | ![Customer customize modal](assets/ui-map/05_pizza_builder_modal_1784320933804.png) |
 | Payment checkout | ![Payment checkout](assets/ui-map/06_payment_checkout_1784320947399.png) |
 | Admin overview | ![Admin overview](assets/ui-map/08_admin_overview_1784320985267.png) |
-| Admin orders | ![Admin orders](assets/ui-map/09_admin_orders_1784321001313.png) |
-| Admin menu | ![Admin menu](assets/ui-map/10_admin_menu_1784321014140.png) |
-| Admin forecast | ![Admin forecast](assets/ui-map/11_admin_forecast_1784321026314.png) |
-| Admin settings | ![Admin settings](assets/ui-map/12_admin_settings_1784321037644.png) |
-| Admin AI | ![Admin AI](assets/ui-map/13_admin_ai_1784321048823.png) |
+| Admin orders | ![Admin orders](assets/ui-map/admin-orders.png) |
+| Admin menu | ![Admin menu](assets/ui-map/admin-menu.png) |
+| Admin forecast | ![Admin forecast](assets/ui-map/admin-forecast.png) |
+| Admin settings | ![Admin settings](assets/ui-map/admin-settings.png) |
+| Admin AI | ![Admin AI](assets/ui-map/admin-ai.png) |
 
 ## Route and Workspace Map
 
@@ -64,7 +64,7 @@ Screenshots are stored in `FullStack/wiki/assets/ui-map/` and were captured from
 - Customer Recommendation is interactive and already has a refresh action for three grounded picks.
 - AI Cart Strategist is interactive from the cart rail and needs to remain visible when the cart has line items.
 - Customize opens a modal/overlay for crust, size, toppings, quantity, and add-to-cart.
-- Confirmation tracking is visually present but simulated: rider name, ETA, map, and timeline are static client UI.
+- Confirmation tracking is honesty-gated (2026-07-23 ui-ux-pro-max audit): no fabricated “searching rider / live ETA”; hero discloses recorded-status-only; journey rail + `DeliveryMapFallback` show unassigned/unavailable until verified delivery data exists. Live map/rider still not implemented (S0+).
 - Customer checkout moved to `/payment`; the in-shell Checkout tab is mainly a guard/bridge when cart is empty.
 
 ## Product Placement Rules

@@ -30,7 +30,7 @@ npm run test:watch    # Watch mode
 | `lib/menu-catalog.test.ts` | Available filtering, category/query matching, starting crust price |
 | `lib/cart-rail.test.ts` | Cart line summaries, missing menu references, delivery charge labels |
 
-Latest verified full run: **114/114 tests passed across 20 files** on 2026-07-16 after shared admin menu/settings extraction.
+Latest verified full run: **118/118 tests passed across 21 files** on 2026-07-21 after R13 admin-orders auth gate.
 
 ---
 

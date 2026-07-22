@@ -15,7 +15,7 @@
 
 [COMPONENTS]
   EntryPortal
-  SliceMaticStage3
+  CustomerShell
   CustomerOrderHistoryTable
   ForecastPanel
   RecommendationAIPanel
@@ -68,34 +68,34 @@
 ### Page → Component
 ```
 / ──renders──► EntryPortal (when no session)
-/ ──renders──► SliceMaticStage3 (when customer session)
+/ ──renders──► CustomerShell (when customer session)
 /admin-dashboard ──renders──► [admin UI] (from admin-dashboard/page.tsx)
 ```
 
 ### Component → Lib
 ```
-SliceMaticStage3 ──imports──► lib/pricing.ts (calculateBill, validateCustomer, money)
-SliceMaticStage3 ──imports──► lib/store.ts (useStore hook)
-SliceMaticStage3 ──imports──► lib/types.ts (all types)
-SliceMaticStage3 ──imports──► lib/seed-data.ts (fallback menu)
-SliceMaticStage3 ──imports──► lib/session-customer.ts (applyOrderToSession)
-SliceMaticStage3 ──imports──► lib/customer-flow.ts (CUSTOMER_FLOW_TABS, fetchOutletPricingConfig)
-SliceMaticStage3 ──imports──► lib/admin-tabs.ts (ADMIN_TABS, adminTabLabel)
-SliceMaticStage3 ──imports──► components/CustomerOrderHistoryTable.tsx
-SliceMaticStage3 ──imports──► components/admin/ForecastPanel.tsx
-SliceMaticStage3 ──imports──► components/admin/RecommendationAIPanel.tsx
+CustomerShell ──imports──► lib/pricing.ts (calculateBill, validateCustomer, money)
+CustomerShell ──imports──► lib/store.ts (useStore hook)
+CustomerShell ──imports──► lib/types.ts (all types)
+CustomerShell ──imports──► lib/seed-data.ts (fallback menu)
+CustomerShell ──imports──► lib/session-customer.ts (applyOrderToSession)
+CustomerShell ──imports──► lib/customer-flow.ts (CUSTOMER_FLOW_TABS, fetchOutletPricingConfig)
+CustomerShell ──imports──► lib/admin-tabs.ts (ADMIN_TABS, adminTabLabel)
+CustomerShell ──imports──► components/CustomerOrderHistoryTable.tsx
+CustomerShell ──imports──► components/admin/ForecastPanel.tsx
+CustomerShell ──imports──► components/admin/RecommendationAIPanel.tsx
 ```
 
 ### Component → API (fetch calls)
 ```
-SliceMaticStage3 ──fetch GET──► /api/menu (on mount)
-SliceMaticStage3 ──fetch POST──► /api/recommend (on customer login)
-SliceMaticStage3 ──fetch POST──► /api/orders (cash order)
-SliceMaticStage3 ──fetch POST──► /api/payments/cashfree/create-order (UPI)
-SliceMaticStage3 ──fetch POST──► /api/payments/cashfree/verify (UPI return)
-SliceMaticStage3 ──fetch GET──► /api/customer/orders (account page)
-SliceMaticStage3 ──fetch GET──► /api/admin/orders (admin tab)
-SliceMaticStage3 ──fetch POST──► /api/admin/outlet/pricing (admin settings)
+CustomerShell ──fetch GET──► /api/menu (on mount)
+CustomerShell ──fetch POST──► /api/recommend (on customer login)
+CustomerShell ──fetch POST──► /api/orders (cash order)
+CustomerShell ──fetch POST──► /api/payments/cashfree/create-order (UPI)
+CustomerShell ──fetch POST──► /api/payments/cashfree/verify (UPI return)
+CustomerShell ──fetch GET──► /api/customer/orders (account page)
+CustomerShell ──fetch GET──► /api/admin/orders (admin tab)
+CustomerShell ──fetch POST──► /api/admin/outlet/pricing (admin settings)
 ```
 
 ### API Route → Lib
@@ -128,8 +128,8 @@ lib/ai.ts ──calls──► OpenRouter API
 ### State Flow
 ```
 lib/store.ts (Zustand) ──persisted to──► sessionStorage["slicematic-storage"]
-SliceMaticStage3 ──reads/writes──► lib/store.ts
-SliceMaticStage3 ──reads/writes──► sessionStorage (auth keys)
+CustomerShell ──reads/writes──► lib/store.ts
+CustomerShell ──reads/writes──► sessionStorage (auth keys)
 lib/session-customer.ts ──reads/writes──► sessionStorage (customer keys)
 ```
 
@@ -140,7 +140,7 @@ lib/session-customer.ts ──reads/writes──► sessionStorage (customer key
 **If you change `lib/pricing.ts`:**
 - All cart totals change
 - Order placement validation changes
-- Both `SliceMaticStage3.tsx` and `admin-dashboard/page.tsx` affected
+- Both `CustomerShell.tsx` and `admin-dashboard/page.tsx` affected
 - API routes `/api/orders`, `/api/payments/*/create-order` affected
 - Tests in `lib/pricing.test.ts` must pass
 
@@ -149,7 +149,7 @@ lib/session-customer.ts ──reads/writes──► sessionStorage (customer key
 - Must rebuild TypeScript
 
 **If you change `.account-grid` CSS:**
-- Customer account page layout in both `SliceMaticStage3.tsx` and `admin-dashboard/page.tsx`
+- Customer account page layout in both `CustomerShell.tsx` and `admin-dashboard/page.tsx`
 - Mobile responsive breakpoint at line ~2736 of globals.css
 
 **If you change `/api/orders`:**
