@@ -1,4 +1,7 @@
+"use client";
+
 import { Check } from "lucide-react";
+import { FadeInUp } from "../../../components/ui";
 import { money } from "../../../lib/pricing";
 import type { BrandConfig, PricingConfig } from "../../../lib/types";
 
@@ -36,16 +39,20 @@ export function AdminSettingsWorkspace({
   const actionLabel = applyLabel ?? (settingsSaving ? "Saving..." : "Apply live");
 
   return (
-    <section className="admin-card settings-console">
-      <div className="settings-head">
+    <FadeInUp>
+    <section className="admin-card settings-console admin-workspace-shell">
+      <div className="settings-head admin-page-head">
         <div>
           <p className="eyebrow">Owner configuration</p>
           <h3>Control the customer app, financial rules, delivery policy, and risk settings.</h3>
+          <p style={{ margin: "6px 0 0", color: "var(--sui-text-secondary)", fontSize: "var(--text-small)" }}>
+            Brand, Financials, and Delivery & risk use the same console chrome as Menu and Forecast.
+          </p>
         </div>
         <button type="button" onClick={onApply} disabled={settingsSaving}><Check /> {actionLabel}</button>
       </div>
 
-      <div className="sub-tabs">
+      <div className="sub-tabs" role="tablist" aria-label="Settings sections">
         {[
           ["brand", "Brand"],
           ["financials", "Financials"],
@@ -72,8 +79,8 @@ export function AdminSettingsWorkspace({
       )}
 
       {settingsPage === "financials" && (
-        <div className="settings-group">
-          <div><p className="eyebrow">Financial rules</p><span>These values drive live cart totals and the order API.</span></div>
+        <div className="settings-group admin-glass-card">
+          <div><p className="eyebrow">Financial rules</p><span>These values drive live cart totals and the order API. Bill order stays subtotal → discount → taxable → GST → delivery → finalTotal.</span></div>
           <div className="settings-grid">
             <label>GST %<input type="number" min={0} max={100} value={Math.round(pricingConfig.gstRate * 100)} onChange={(event) => onUpdatePercent("gstRate", event.target.value)} /></label>
             <label>Discount %<input type="number" min={0} max={100} value={Math.round(pricingConfig.bulkDiscountRate * 100)} onChange={(event) => onUpdatePercent("bulkDiscountRate", event.target.value)} /></label>
@@ -99,5 +106,6 @@ export function AdminSettingsWorkspace({
         </div>
       )}
     </section>
+    </FadeInUp>
   );
 }

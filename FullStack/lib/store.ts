@@ -4,7 +4,7 @@ import { CartLine, CustomerDetails, PaymentMode, PricingConfig, Recommendation, 
 import { defaultPricingConfig } from "./pricing";
 import { SESSION_STORAGE_KEYS } from "./session/storageKeys";
 
-const initialCustomer: CustomerDetails = { name: "", phone: "", address: "New Ashok Nagar, Delhi NCR", deliveryZone: "2-4", note: "" };
+const initialCustomer: CustomerDetails = { name: "", phone: "", address: "", note: "" };
 
 interface AppState {
   cart: CartLine[];
@@ -67,6 +67,17 @@ export const useStore = create<AppState>()(
     {
       name: SESSION_STORAGE_KEYS.zustandStore,
       storage: createJSONStorage(() => sessionStorage),
+      version: 1,
+      partialize: (state) => ({
+        cart: state.cart,
+        customer: state.customer,
+        pricingConfig: state.pricingConfig,
+        paymentMode: state.paymentMode,
+        lastOrder: state.lastOrder,
+        recommendation: state.recommendation,
+        recommendations: state.recommendations,
+        // Exclude loading flags and actions from session persistence.
+      }),
     }
   )
 );

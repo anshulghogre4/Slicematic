@@ -26,7 +26,7 @@ describe("Global Store", () => {
     // Reset store state before each test
     useStore.setState({
       cart: [],
-      customer: { name: "", phone: "", address: "", deliveryZone: "2-4", note: "" },
+      customer: { name: "", phone: "", address: "", note: "" },
       pricingConfig: defaultPricingConfig,
       paymentMode: "UPI",
       lastOrder: null,
@@ -38,7 +38,8 @@ describe("Global Store", () => {
     const state = useStore.getState();
     expect(state.cart).toEqual([]);
     expect(state.paymentMode).toBe("UPI");
-    expect(state.customer.name).toBe("");
+    expect(state.customer).toEqual({ name: "", phone: "", address: "", note: "" });
+    expect(state.customer.deliveryZone).toBeUndefined();
   });
 
   it("should update cart correctly", () => {
@@ -83,7 +84,7 @@ describe("Global Store", () => {
 
     const state = useStore.getState();
     expect(state.cart).toEqual([]);
-    expect(state.customer).toEqual({ name: "", phone: "", address: "New Ashok Nagar, Delhi NCR", deliveryZone: "2-4", note: "" });
+    expect(state.customer).toEqual({ name: "", phone: "", address: "", note: "" });
     expect(state.lastOrder).toBeNull();
     expect(state.recommendation).toBeNull();
     expect(state.pricingConfig.gstRate).toBe(0.15); // Pricing config preserved!
@@ -107,6 +108,23 @@ describe("Global Store persistence engine", () => {
 
     expect(persistOptionsRef.current?.name).toBe(SESSION_STORAGE_KEYS.zustandStore);
     expect(persistOptionsRef.current?.storage).toBeTruthy();
+    expect(persistOptionsRef.current?.version).toBe(1);
+    expect(typeof persistOptionsRef.current?.partialize).toBe("function");
+
+    const partial = persistOptionsRef.current.partialize({
+      cart: [],
+      customer: { name: "", phone: "", address: "", note: "" },
+      pricingConfig: defaultPricingConfig,
+      paymentMode: "UPI",
+      lastOrder: null,
+      recommendation: null,
+      recommendations: [],
+      isFetchingRecommendation: true,
+      setCart: () => undefined,
+    });
+    expect(partial.isFetchingRecommendation).toBeUndefined();
+    expect(partial.setCart).toBeUndefined();
+    expect(partial.paymentMode).toBe("UPI");
 
     persistOptionsRef.current.storage.setItem("probe", "value");
 

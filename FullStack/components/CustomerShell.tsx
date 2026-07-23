@@ -27,6 +27,7 @@ import {
   RecommendationLane,
 } from "../features/customer-ordering/components";
 import { CustomerAccountPanel } from "../features/customer-ordering/components/CustomerAccountPanel";
+import { CheckoutEmptyPanel } from "../features/checkout/components/CheckoutEmptyPanel";
 
 // ── Feature hooks ─────────────────────────────────────────────────────────────
 import { useCustomerAuth } from "../features/customer-ordering/hooks/useCustomerAuth";
@@ -68,6 +69,7 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
 
   // ── Menu state ────────────────────────────────────────────────────────────
   const [menu, setMenu] = useState<MenuPayload>(seedMenu);
+  const [menuLoading, setMenuLoading] = useState(true);
   const [selectedPizza, setSelectedPizza] = useState<MenuItem | null>(null);
   const [builder, setBuilder] = useState({
     baseId: seedMenu.bases[0].id,
@@ -85,8 +87,8 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
   const [brand] = useState({
     name: "SliceMatic", outlet: "New Ashok Nagar",
     openStatus: "Open now", deliveryPromise: "30-40 min delivery",
-    hero: "Pizza delivery with a sharper kitchen, smarter recommendations, and a calmer checkout.",
-    subhero: "Order from a live menu, build the exact pizza you want, and let the outlet control demand, revenue, and fulfilment from one polished screen.",
+    hero: "Hot pizza from New Ashok Nagar, built the way you want it.",
+    subhero: "Browse the live menu, customize toppings, and check out with clear GST and bulk discounts.",
   });
 
   // ── Feature hooks ─────────────────────────────────────────────────────────
@@ -104,13 +106,25 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
   // ── Effects ───────────────────────────────────────────────────────────────
   useEffect(() => {
     const s = useStore.getState();
-    if (!s.customer.address || s.customer.address === "Delhi NCR") {
-      s.setCustomer({ ...s.customer, address: "New Ashok Nagar, Delhi NCR" });
+    // Migrate legacy seed defaults so empty fields stay empty until the guest types.
+    const seedAddresses = new Set(["Delhi NCR", "New Ashok Nagar, Delhi NCR"]);
+    const address = s.customer.address.trim();
+    const isSeedAddress = seedAddresses.has(address);
+    const incompleteGuest = !s.customer.name.trim() && !s.customer.phone.trim();
+    if (isSeedAddress) {
+      s.setCustomer({
+        ...s.customer,
+        address: "",
+        ...(incompleteGuest ? { deliveryZone: undefined } : {}),
+      });
+    } else if (incompleteGuest && !address && s.customer.deliveryZone === "2-4") {
+      s.setCustomer({ ...s.customer, deliveryZone: undefined });
     }
     fetch("/api/menu")
       .then((r) => r.json())
       .then((payload: MenuPayload) => { setMenu(payload); })
-      .catch(() => setMenu(seedMenu));
+      .catch(() => setMenu(seedMenu))
+      .finally(() => setMenuLoading(false));
   }, []);
 
   useEffect(() => {
@@ -147,14 +161,20 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
           const parsed = JSON.parse(customerJson) as Partial<CustomerDetails>;
           phoneFromSession = parsed.phone ?? "";
           nameFromSession = parsed.name ?? "";
-          setCustomer((c) => ({
-            ...c,
-            name: parsed.name ?? c.name,
-            phone: parsed.phone ?? c.phone,
-            address: (!parsed.address || parsed.address === "Delhi NCR") ? "New Ashok Nagar, Delhi NCR" : parsed.address,
-            deliveryZone: parsed.deliveryZone ?? c.deliveryZone,
-            note: parsed.note ?? c.note,
-          }));
+          setCustomer((c) => {
+            const cleanAddress = (value?: string) => {
+              if (!value || value === "Delhi NCR" || value === "New Ashok Nagar, Delhi NCR") return "";
+              return value;
+            };
+            return {
+              ...c,
+              name: parsed.name ?? c.name,
+              phone: parsed.phone ?? c.phone,
+              address: cleanAddress(parsed.address ?? c.address),
+              deliveryZone: parsed.deliveryZone ?? c.deliveryZone,
+              note: parsed.note ?? c.note,
+            };
+          });
         } catch { /* ignore */ }
       }
       customerAuth.setCustomerLoggedIn(true);
@@ -223,9 +243,10 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
   function openCustomer() { setWorkspace("customer"); }
   function openAccount() {
     if (!customerAuth.customerLoggedIn) {
-      // Not logged in → always route to EntryPortal (single source of truth for login)
-      if (onUnauthorize) { onUnauthorize(); return; }
-      router.replace("/"); return;
+      // Soft-gate guests to /signin — do NOT call onUnauthorize (that flips
+      // MarketingLanding while guest sessionStorage keys remain → sticky half-auth).
+      router.push("/signin");
+      return;
     }
     setSelectedPizza(null);
     setWorkspace("account");
@@ -252,7 +273,7 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
     setWorkspace("customer");
     if (nextStep !== "intake" && !ensureCustomerReady()) return;
     if (nextStep === "checkout") {
-      if (!cart.length) { showToast("Add at least one pizza before checkout."); return; }
+      if (!cart.length) { setStep("checkout"); return; }
       router.push("/payment"); return;
     }
     if (nextStep === "tracking") {
@@ -268,14 +289,17 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
     const email = autoEmail ?? customerAuth.customerSessionEmail;
     const customerId = typeof window !== "undefined"
       ? window.sessionStorage.getItem("slicematic_customer_id") ?? undefined : undefined;
-    if (!autoPhone && !autoEmail) {
+    const manualIntakeSubmit = !autoPhone && !autoEmail;
+    if (manualIntakeSubmit) {
       const errors = customerValidation();
       setCustomerErrors(errors);
       if (Object.keys(errors).length) { showToast("Fix the highlighted customer details."); return; }
     }
     const cachedRecs = useStore.getState().recommendations;
-    if (!forceRefresh && cachedRecs.length > 0) { setStep("recommendation"); return; }
-    setStep("recommendation");
+    // Soft-default guests who just saved details toward Menu; keep auto login/rec refresh on recommendation.
+    const nextStep: Step = manualIntakeSubmit ? "menu" : "recommendation";
+    if (!forceRefresh && cachedRecs.length > 0) { setStep(nextStep); return; }
+    setStep(nextStep);
     setRecommendation(null);
     setRecommendations([]);
     try {
@@ -337,14 +361,46 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
   }
 
   function addMemberFavoriteOrder() {
-    const pizza = menu.pizzas.find((i) => i.name.toLowerCase().includes("paneer")) ?? activePizzas[0];
-    const base = activeBases.find((i) => i.name.toLowerCase().includes("cheese")) ?? activeBases[0];
-    const size = activeSizes.find((i) => i.id === "large") ?? activeSizes[0];
-    const topping = activeToppings.find((i) => i.name.toLowerCase().includes("cheese")) ?? activeToppings[0];
-    if (!pizza || !base || !size) { showToast("Menu needs at least one pizza, crust, and size."); return; }
-    setCart((c) => [...c, { id: crypto.randomUUID(), pizzaId: pizza.id, baseId: base.id, sizeId: size.id, toppingIds: topping ? [topping.id] : [], quantity: 1 }]);
-    setWorkspace("customer"); setStep("menu");
-    showToast(`${pizza.name} favourite added to cart.`);
+    // Prefer cloning the last cart line — no invented "favourites" API.
+    if (cart.length) {
+      const last = cart[cart.length - 1];
+      setCart((c) => [...c, { ...last, id: crypto.randomUUID() }]);
+      setWorkspace("customer"); setStep("menu");
+      showToast("Last cart item added again.");
+      return;
+    }
+    // Fall back to first line of the most recent order, matched by menu names.
+    const line = customerOrders[0]?.lines?.[0];
+    if (line) {
+      const pizza =
+        menu.pizzas.find((i) => i.available && i.name.toLowerCase() === line.pizzaName.toLowerCase()) ??
+        menu.pizzas.find((i) => i.available && i.name.toLowerCase().includes(line.pizzaName.toLowerCase()));
+      const base =
+        menu.bases.find((i) => i.available && i.name.toLowerCase() === line.baseName.toLowerCase()) ??
+        activeBases[0];
+      const size =
+        menu.sizes.find((i) => i.available && i.name.toLowerCase() === line.sizeName.toLowerCase()) ??
+        activeSizes[0];
+      if (!pizza || !base || !size) {
+        showToast("Could not match your last order to the current menu.");
+        return;
+      }
+      setCart((c) => [
+        ...c,
+        {
+          id: crypto.randomUUID(),
+          pizzaId: pizza.id,
+          baseId: base.id,
+          sizeId: size.id,
+          toppingIds: [],
+          quantity: Math.max(1, line.quantity || 1),
+        },
+      ]);
+      setWorkspace("customer"); setStep("menu");
+      showToast(`${pizza.name} from your last order added to cart.`);
+      return;
+    }
+    showToast("Nothing to rebuild yet. Add a pizza to your cart or place an order first.");
   }
 
   function useSavedCustomerProfile() {
@@ -353,15 +409,27 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
       if (json) {
         try {
           const parsed = JSON.parse(json) as Partial<CustomerDetails>;
-          setCustomer((c) => ({ ...c, name: parsed.name ?? c.name, phone: parsed.phone ?? c.phone, address: parsed.address ?? c.address, deliveryZone: parsed.deliveryZone ?? c.deliveryZone, note: parsed.note ?? c.note }));
-          setWorkspace("customer"); setStep("intake");
-          showToast("Saved delivery profile applied."); return;
+          const hasUsable =
+            Boolean(String(parsed.name ?? "").trim()) ||
+            Boolean(String(parsed.phone ?? "").trim()) ||
+            Boolean(String(parsed.address ?? "").trim());
+          if (hasUsable) {
+            setCustomer((c) => ({
+              ...c,
+              name: parsed.name ?? c.name,
+              phone: parsed.phone ?? c.phone,
+              address: parsed.address ?? c.address,
+              deliveryZone: parsed.deliveryZone ?? c.deliveryZone,
+              note: parsed.note ?? c.note,
+            }));
+            setWorkspace("customer"); setStep("intake");
+            showToast("Saved delivery profile applied.");
+            return;
+          }
         } catch { /* fall through */ }
       }
     }
-    setCustomer({ name: "Aarav Sharma", phone: "9876543210", address: "Flat 1204, Lotus Heights, near Metro Gate 2, New Ashok Nagar", deliveryZone: "2-4", note: "Call once before dispatch." });
-    setWorkspace("customer"); setStep("intake");
-    showToast("Saved delivery profile applied.");
+    showToast("No saved delivery profile yet. Fill your details on the order form first.");
   }
 
   async function getCartInsight() {
@@ -419,13 +487,15 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
           onOpenBuilder={(id) => { const pizza = menu.pizzas.find((p) => p.id === id); if (pizza) openBuilder(pizza, true); }}
           onBrowseMenu={() => goToStep("menu")}
           onUnauthorize={onUnauthorize}
+          hasCartLines={cart.length > 0}
+          onNotify={showToast}
         />
       )}
 
       {/* Customer workspace */}
       {workspace === "customer" && (
         <>
-          {step !== "checkout" && step !== "tracking" && (
+          {step !== "tracking" && (step !== "checkout" || cart.length === 0) && (
             <section className="hero-shell" id="customer-app">
               <aside className="status-rail">
                 <div className="rail-card open">
@@ -433,12 +503,12 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
                   <div><strong>{brand.openStatus}</strong><small>{brand.deliveryPromise}</small></div>
                 </div>
                 <div className="rail-card">
-                  <p className="eyebrow">Operating signals</p>
+                  <p className="rail-card-label">Good to know</p>
                   <ul>
-                    <li><Check /> Live menu control</li>
-                    <li><Check /> Verified billing rules</li>
-                    <li><Check /> AI pairings</li>
-                    <li><Check /> Demand forecast</li>
+                    <li><Check /> Live menu for this outlet</li>
+                    <li><Check /> GST and bulk discounts shown upfront</li>
+                    <li><Check /> Combos suggested from your orders</li>
+                    <li><Check /> Typical 30–40 min delivery</li>
                   </ul>
                 </div>
                 <div className="rail-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -462,14 +532,18 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
               <section className="order-stage">
                 <div className="hero-card">
                   <div>
-                    <p className="eyebrow">Elite delivery OS</p>
+                    <p className="eyebrow">{brand.outlet}</p>
                     <h1>{brand.hero}</h1>
                     <p>{brand.subhero}</p>
                   </div>
-                  <img src="/assets/pizza-hero.jpg" alt="Fresh pizza" />
+                  <img src="/assets/pizza-hero.jpg" alt="Fresh pizza from SliceMatic" />
                 </div>
 
-                <CustomerFlowTabs activeStep={step} onSelectStep={goToStep} />
+                <CustomerFlowTabs
+                  activeStep={step}
+                  onSelectStep={goToStep}
+                  customerLoggedIn={customerAuth.customerLoggedIn}
+                />
 
                 {step === "intake" && (
                   <CustomerIntakeForm customer={customer} errors={customerErrors} onCustomerChange={setCustomer} onSubmit={() => void submitCustomer()} />
@@ -487,7 +561,17 @@ export default function CustomerShell({ onUnauthorize }: { onUnauthorize?: () =>
                 )}
 
                 {step === "menu" && (
-                  <MenuCatalog pizzas={menu.pizzas} bases={menu.bases} onCustomize={openBuilder} onAdd={addPizzaDirectToCart} />
+                  <MenuCatalog
+                    pizzas={menu.pizzas}
+                    bases={menu.bases}
+                    loading={menuLoading}
+                    onCustomize={openBuilder}
+                    onAdd={addPizzaDirectToCart}
+                  />
+                )}
+
+                {step === "checkout" && cart.length === 0 && (
+                  <CheckoutEmptyPanel onBrowseMenu={() => goToStep("menu")} />
                 )}
               </section>
 

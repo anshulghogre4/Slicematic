@@ -14,7 +14,40 @@ The active implementation plan that consumes this baseline is `FullStack/plans/u
 
 ## Screenshot Assets
 
-Screenshots are stored in `FullStack/wiki/assets/ui-map/` and were captured from the live Chrome extension session on 2026-07-16 after logging in with the demo identity and placing one cash test order. Keep filenames stable when replacing a baseline.
+Screenshots are stored in `FullStack/wiki/assets/ui-map/`. Canonical table below still points at the 2026-07-16 Chrome baseline filenames (keep stable when replacing).
+
+**2026-07-23 smoke note:** FE polish landed (checkout pill spacing, admin Forecast/Menu/Settings/AI consistency, app-wide `data-theme` dark mode, root `loading`/`error`). Admin Overview craft rebuild landed (revenue hero / tomato-only / briefing workbench) — re-capture `admin-overview.png` when a live browser session is available. Also recommended: payment checkout, admin forecast, admin AI, admin menu. Prefer the table names as SOT.
+
+**2026-07-23 customer polish pass:** MenuCatalog house-pick featured sort + loading skeletons during `/api/menu`; CustomerFlowTabs numbered stepper with Guest/Your details; AppHeader guest **Sign in** chip + focus rings. Re-capture `walkthrough_04_customer_menu.png` when convenient.
+
+**2026-07-23 screenshot cleanup:** Removed stale Landing R1 pre-rebuild walkthrough PNGs, misnamed `walkthrough_07_*` payment duplicates, and orphaned historical duplicates (zero doc references). Landing rows below are pending re-capture (no dangling image paths).
+
+### 2026-07-23 walkthrough
+
+Full live pass (guest + `demo@slicematic.in` OTP `1111`). New files use `walkthrough_*` names; canonical table below stays historical.
+
+| Surface | Screenshot | Status |
+|---|---|---|
+| `/` MarketingLanding hero (Landing R1: Delhi night scene + rider) | _(pending re-capture)_ | old PNGs removed — hero is cinematic SVG Delhi scene + scooter rider, no photos |
+| `/` landing below-fold (Order/Kitchen/Ride/Doorstep + Signature slices) | _(pending re-capture)_ | old PNGs removed — narrative slides + illustrated pizza discs |
+| `/signin` EntryPortal email | ![Sign in](assets/ui-map/walkthrough_02_signin.png) | ok |
+| `/signin` OTP | ![OTP](assets/ui-map/walkthrough_02b_signin_otp.png) | ok |
+| `/signin` finish profile (demo first-time) | ![Profile](assets/ui-map/walkthrough_02c_signin_profile.png) | ok |
+| Customer hero + Customer Details + sidebars | ![Hero details](assets/ui-map/walkthrough_03_customer_hero_details.png) | ok |
+| Customer Menu / Signature pizzas | ![Menu](assets/ui-map/walkthrough_04_customer_menu.png) | ok |
+| Customer Recommendations | ![Recs](assets/ui-map/walkthrough_05_customer_recommendations.png) | ok |
+| Customer Details filled | ![Details](assets/ui-map/walkthrough_06_customer_details_filled.png) | ok |
+| `/payment` checkout | ![Payment](assets/ui-map/walkthrough_08_payment_checkout.png) | ok |
+| Admin Overview | ![Overview](assets/ui-map/walkthrough_09_admin_overview.png) | ok — ops briefing degraded without LLM key |
+| Admin Orders + OrderContextPanel | ![Orders](assets/ui-map/walkthrough_10_admin_orders.png) | ok |
+| Admin Forecast | ![Forecast](assets/ui-map/walkthrough_11_admin_forecast.png) | ok |
+| Admin Menu → Create item | ![Create](assets/ui-map/walkthrough_12_admin_menu_create.png) | ok |
+| Admin Menu → Create toppings segment | ![Create toppings](assets/ui-map/walkthrough_12b_admin_menu_create_toppings.png) | ok |
+| Admin Menu → Pizza / Base / Toppings lists | ![Pizzas](assets/ui-map/walkthrough_13_admin_menu_pizzas.png) ![Bases](assets/ui-map/walkthrough_14_admin_menu_bases.png) ![Toppings](assets/ui-map/walkthrough_15_admin_menu_toppings.png) | ok (13/14 may duplicate bases from race) |
+| Admin AI | ![AI](assets/ui-map/walkthrough_16_admin_ai.png) | ok — ops briefing degraded |
+| Admin Settings Brand / Financials / Delivery | ![Brand](assets/ui-map/walkthrough_17_admin_settings_brand.png) ![Financials](assets/ui-map/walkthrough_18_admin_settings_financials.png) ![Delivery](assets/ui-map/walkthrough_19_admin_settings_delivery.png) | ok |
+| Account workspace (quick actions) | ![Account](assets/ui-map/walkthrough_20_account_panel.png) | ok — order history empty / no customer_id |
+| Admin View as Customer | ![View customer](assets/ui-map/walkthrough_21_admin_view_as_customer.png) | ok |
 
 | Surface | Screenshot |
 |---|---|
@@ -36,10 +69,11 @@ Screenshots are stored in `FullStack/wiki/assets/ui-map/` and were captured from
 
 | Route or workspace | Current role | Existing UI | Next build direction |
 |---|---|---|---|
-| `/` portal | Entry and identity gate | Email OTP, guest entry, demo auth path | Keep lightweight; use for login only unless adding a preview-only menu assistant. |
-| Customer app / Menu | Primary browsing and cart-building surface | Pizza catalogue, tag filters, customize/add actions, cart rail | Add voice menu assistant here so menu questions use live menu data and can build a cart action. |
+| `/` landing | Marketing when logged out; CustomerShell when logged in | **Landing R1 (creative):** brand-first full-bleed hero over a cinematic SVG Delhi night scene with a GSAP MotionPath scooter rider; Lenis smooth scroll synced to ScrollTrigger; Order/Kitchen/Ride/Doorstep narrative panels with committed Lottie (pizza spin, oven steam); illustrated Signature slices; Sign in / guest CTAs → `/signin`. No photos/screenshots. Reduced-motion disables Lenis/GSAP/Lottie. | Optional R2: Rive/Spline hero object after LCP budget; trust section. |
+| `/signin` | Sole auth UI | EntryPortal email → OTP | Keep EntryPortal as only login form. |
+| Customer app / Menu | Primary browsing and cart-building surface | Signature pizzas with house-pick featured cards first, search + filters, customize/add, menu skeletons while `/api/menu` loads | Add voice menu assistant here so menu questions use live menu data and can build a cart action. |
 | Customer app / Customize modal | Pizza builder overlay | Pizza image, crust choices, size choices, toppings, quantity, computed line total, add-to-cart action | Keep as the target for voice-assisted customization and recommendation build-combo flows. |
-| Customer app / Recommendation | Customer-facing AI recommendations | Three grounded picks, confidence, refresh, build-combo actions | Keep as the recommendation service consumer. Move logic behind a recommendation microservice contract later. |
+| Customer app / Recommendation | Customer-facing recommendations | Intro + ranked pick cards with honest why-text/`reason`, confidence tags, refresh, Build combo CTAs; empty/unavailable honesty | Keep as the recommendation service consumer. Move logic behind a recommendation microservice contract later. Screenshot refresh deferred. |
 | Customer app / Customer Details | Delivery profile capture | Name, phone, delivery radius, address, delivery note | Add geocoding, distance validation, serviceability, and delivery fee preview here. |
 | Customer cart rail | Always-visible commercial summary | Lines, subtotal, discount, GST, delivery, total, AI cart strategist | Feed dynamic distance/rider fees here before payment. |
 | `/payment` | Final pre-order review and payment | Basket review, payment mode cards, payment policy, place/pay button | Show final delivery ETA, distance, fee, and rider-fee logic before order creation. |
@@ -58,14 +92,13 @@ Screenshots are stored in `FullStack/wiki/assets/ui-map/` and were captured from
 - Demo login with `demo@slicematic.in` and OTP `1111` reaches `/admin-dashboard`.
 - A cash test order successfully reaches `/confirmation` without external payment redirects.
 - Admin Orders showed the new cash test order and increased from 207 to 208 fetched orders during this UI pass.
-- Forecast UI already exposes RandomForestRegressor metadata, features, RMSE, trained time, and peak-hour predictions.
-- Forecast UI does not yet expose a manual refresh button.
-- AI tab is currently documentation for the recommendation engine, not an interactive AI operations console.
+- Forecast UI exposes RandomForestRegressor metadata, peaks, Refresh button (`/api/admin/forecast/refresh`), and honest S5 deferral copy for run-history states.
+- AI tab is a grounded service cockpit (`AiServiceCard` for recommend / menu copy / ops briefing) with collapsible system prompt — not a live voice console (S4).
 - Customer Recommendation is interactive and already has a refresh action for three grounded picks.
 - AI Cart Strategist is interactive from the cart rail and needs to remain visible when the cart has line items.
 - Customize opens a modal/overlay for crust, size, toppings, quantity, and add-to-cart.
 - Confirmation tracking is honesty-gated (2026-07-23 ui-ux-pro-max audit): no fabricated “searching rider / live ETA”; hero discloses recorded-status-only; journey rail + `DeliveryMapFallback` show unassigned/unavailable until verified delivery data exists. Live map/rider still not implemented (S0+).
-- Customer checkout moved to `/payment`; the in-shell Checkout tab is mainly a guard/bridge when cart is empty.
+- Customer checkout moved to `/payment`; the in-shell Checkout tab is an honest empty-cart bridge (`CheckoutEmptyPanel`: “Add a pizza first”) when the cart has no items, and routes to `/payment` when it does.
 
 ## Product Placement Rules
 

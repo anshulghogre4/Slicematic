@@ -2,7 +2,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
+  /* 100dvh avoids iOS Safari address-bar jump; 100vh kept as fallback */
   min-height: 100vh;
+  min-height: 100dvh;
   padding: var(--space-lg);
   background:
     radial-gradient(ellipse at 30% 20%, rgba(22, 109, 69, 0.06), transparent 50%),
@@ -75,24 +77,40 @@
   50% { transform: scale(1.04); }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .portal-logo {
+    animation: none;
+  }
+
+  .portal-glass,
+  .portal-error-card {
+    animation: none;
+  }
+}
+
 .portal-logo svg {
   width: 28px;
   height: 28px;
 }
 
+.portal-header h1,
+.portal-header .portal-brand,
 .portal-header h2 {
   font-size: var(--text-title);
   font-weight: 800;
   color: var(--sui-text-primary);
   margin: 0 0 var(--space-sm);
   letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
 .portal-header p {
   color: var(--sui-text-secondary);
   font-size: var(--text-body);
-  margin: 0;
+  margin: 0 auto;
+  max-width: 36ch;
   line-height: 1.5;
+  text-wrap: pretty;
 }
 
 .portal-form {
@@ -195,6 +213,13 @@
   transform: scale(0.98);
 }
 
+.portal-primary-btn:focus-visible,
+.portal-secondary-btn:focus-visible,
+.back-btn:focus-visible {
+  outline: 2px solid var(--basil);
+  outline-offset: 2px;
+}
+
 .portal-primary-btn:disabled {
   opacity: 0.55;
   cursor: not-allowed;
@@ -283,6 +308,7 @@
   margin-bottom: 12px;
 }
 
+.otp-heading h2,
 .otp-heading h3 {
   font-size: var(--text-heading);
   font-weight: 800;
@@ -372,13 +398,7 @@
   margin-bottom: var(--space-md);
 }
 
-.registration-heading svg {
-  width: 28px;
-  height: 28px;
-  color: var(--gold);
-  margin-bottom: var(--space-sm);
-}
-
+.registration-heading h2,
 .registration-heading h3 {
   font-size: var(--text-heading);
   font-weight: 800;

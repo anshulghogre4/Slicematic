@@ -1,6 +1,6 @@
 import { Send, ShoppingBag, UserRound } from "lucide-react";
 
-import { getDeliveryChargeLabel } from "../../../lib/cart-rail";
+import { getCartCashPolicyMessage, getDeliveryChargeLabel, shouldOfferCashSignIn } from "../../../lib/cart-rail";
 import type { BillTotals, CartLine, MenuPayload, PricingConfig } from "../../../lib/types";
 import { AiCartStrategistCard, type CartInsightView } from "./AiCartStrategistCard";
 import { CartLineItem } from "./CartLineItem";
@@ -42,6 +42,8 @@ export function CartRail({
   formatMoney
 }: CartRailProps) {
   const itemCount = cart.reduce((sum, line) => sum + line.quantity, 0);
+  const cashPolicy = getCartCashPolicyMessage(customerLoggedIn, pricingConfig.guestCashAllowed);
+  const offerCashSignIn = shouldOfferCashSignIn(customerLoggedIn, pricingConfig.guestCashAllowed);
 
   return (
     <aside className="cart-panel" aria-label="Current order cart">
@@ -59,11 +61,19 @@ export function CartRail({
         <ShoppingBag />
       </div>
 
-      {/* Member/Guest status */}
+      {/* Member/Guest cash status */}
       <div className={customerLoggedIn ? "order-mode member" : "order-mode guest"}>
         <div><UserRound /><strong>{customerOrderMode}</strong></div>
-        <span>{customerLoggedIn ? `Logged in as ${customerSessionEmail}` : "No account session. Online payment only."}</span>
-        {!customerLoggedIn && <button type="button" onClick={onOpenAccount}>Sign in for Cash</button>}
+        <span>
+          {customerLoggedIn
+            ? `${customerSessionEmail ? `Signed in as ${customerSessionEmail}. ` : ""}${cashPolicy}`
+            : cashPolicy}
+        </span>
+        {offerCashSignIn && (
+          <button type="button" onClick={onOpenAccount}>
+            Sign in to unlock Cash
+          </button>
+        )}
       </div>
 
       {/* Cart items or empty state */}
@@ -77,7 +87,7 @@ export function CartRail({
         <EmptyState
           illustration="empty-cart"
           title="Your cart is empty"
-          description="Build a pizza to see live totals and get AI-powered suggestions."
+          description="Build a pizza to see live totals and continue to checkout."
         />
       )}
 

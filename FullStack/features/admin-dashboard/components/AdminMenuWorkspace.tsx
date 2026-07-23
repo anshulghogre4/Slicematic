@@ -1,5 +1,8 @@
+"use client";
+
 import type { ReactNode } from "react";
 import { Plus, Sparkles, Upload } from "lucide-react";
+import { FadeInUp } from "../../../components/ui";
 
 import type { MenuItem, MenuPayload } from "../../../lib/types";
 
@@ -57,20 +60,24 @@ export function AdminMenuWorkspace({
   defaultDraftDescription
 }: AdminMenuWorkspaceProps) {
   return (
-    <section className="admin-card menu-editor">
+    <FadeInUp>
+    <section className="admin-card menu-editor admin-workspace-shell">
       <div className="admin-page-head">
         <div>
           <p className="eyebrow">Menu operations</p>
           <h3>Manage the live menu catalogue.</h3>
+          <p style={{ margin: "6px 0 0", color: "var(--sui-text-secondary)", fontSize: "var(--text-small)" }}>
+            Pizzas, bases, and toppings/add-ons share one editor shell — same rhythm as Orders and Forecast.
+          </p>
         </div>
         <span>{menu.pizzas.length} pizzas / {menu.bases.length} bases / {menu.toppings.length} toppings</span>
       </div>
-      <div className="sub-tabs">
+      <div className="sub-tabs" role="tablist" aria-label="Menu sections">
         {[
           ["create", "Create item"],
-          ["pizzas", "Pizzas"],
-          ["bases", "Bases"],
-          ["toppings", "Toppings"]
+          ["pizzas", "Pizza menu"],
+          ["bases", "Base menu"],
+          ["toppings", "Toppings & add-ons"]
         ].map(([page, label]) => (
           <button
             key={page}
@@ -179,5 +186,6 @@ export function AdminMenuWorkspace({
         </>
       )}
     </section>
+    </FadeInUp>
   );
 }

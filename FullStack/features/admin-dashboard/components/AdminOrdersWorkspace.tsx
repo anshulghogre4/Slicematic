@@ -40,13 +40,18 @@ export function AdminOrdersWorkspace({
   pagination
 }: AdminOrdersWorkspaceProps) {
   const activeOrder = selectedOrder ?? allOrders.find((order) => order.id === selectedOrderId);
+  const awaitingLive = status === "loading" || status === "idle";
   const statusCopy = status === "live"
-    ? "Connected to admin API"
+    ? (isRefreshing ? "Refreshing orders…" : "Connected to admin API")
     : status === "error"
-      ? "Using last loaded data because refresh failed"
-      : "Showing seed data until live refresh completes";
+      ? "Couldn’t refresh — showing last loaded orders"
+      : awaitingLive
+        ? "Loading orders…"
+        : "Order ledger";
   const matchedCount = totalMatched ?? orders.length;
   const fetchedCount = totalFetched ?? allOrders.length;
+  // Hide seed rows during first load so the table shows a skeleton instead of a seed flash.
+  const tableOrders = awaitingLive ? [] : orders;
 
   return (
     <section className={variant === "detailed" ? "admin-card orders-console" : "admin-card"}>
@@ -59,15 +64,15 @@ export function AdminOrdersWorkspace({
         {onRefresh ? (
           <div className="orders-summary-actions">
             <strong>{matchedCount} matched / {fetchedCount} fetched</strong>
-            <button type="button" onClick={onRefresh} disabled={isRefreshing}>{isRefreshing ? "Refreshing" : "Refresh orders"}</button>
+            <button type="button" onClick={onRefresh} disabled={isRefreshing || awaitingLive}>{isRefreshing || awaitingLive ? "Refreshing" : "Refresh orders"}</button>
           </div>
         ) : null}
       </div>
       {error && <div className="admin-error">{error}</div>}
       {filters}
       <div className={selectedOrderId ? "admin-orders-workspace has-selection" : "admin-orders-workspace"}>
-        <OrderTable orders={orders} selectedOrderId={selectedOrderId} onSelectOrder={onSelectOrder} variant={variant} isLoading={status === "loading" || isRefreshing} />
-        {activeOrder ? <OrderContextPanel order={activeOrder} onClose={onCloseOrder ?? (() => onSelectOrder(""))} /> : null}
+        <OrderTable orders={tableOrders} selectedOrderId={selectedOrderId} onSelectOrder={onSelectOrder} variant={variant} isLoading={awaitingLive || isRefreshing} />
+        {activeOrder && !awaitingLive ? <OrderContextPanel order={activeOrder} onClose={onCloseOrder ?? (() => onSelectOrder(""))} /> : null}
       </div>
       {pagination}
     </section>

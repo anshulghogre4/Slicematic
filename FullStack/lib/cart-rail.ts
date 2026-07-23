@@ -39,3 +39,14 @@ export function getDeliveryChargeLabel(
   if (deliveryCharge === 0) return `Free (above ${money(pricingConfig.freeDeliveryMin)})`;
   return money(deliveryCharge);
 }
+
+/** Guest vs member cash policy copy for the cart rail. */
+export function getCartCashPolicyMessage(customerLoggedIn: boolean, guestCashAllowed: boolean): string {
+  if (customerLoggedIn) return "Cash, UPI, and Card available at checkout.";
+  if (guestCashAllowed) return "Guest checkout: Cash, UPI, and Card available.";
+  return "Guests pay with UPI or Card. Sign in to unlock Cash.";
+}
+
+export function shouldOfferCashSignIn(customerLoggedIn: boolean, guestCashAllowed: boolean): boolean {
+  return !customerLoggedIn && !guestCashAllowed;
+}

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { getDeliveryChargeLabel, summarizeCartLine } from "./cart-rail";
+import {
+  getCartCashPolicyMessage,
+  getDeliveryChargeLabel,
+  shouldOfferCashSignIn,
+  summarizeCartLine
+} from "./cart-rail";
 import type { CartLine, MenuPayload } from "./types";
 
 const menu: MenuPayload = {
@@ -53,5 +58,16 @@ describe("cart rail helpers", () => {
     expect(getDeliveryChargeLabel(0, { deliveryFee: 0, freeDeliveryMin: 0 })).toBe("Included");
     expect(getDeliveryChargeLabel(0, { deliveryFee: 49, freeDeliveryMin: 499 })).toBe("Free (above Rs. 499)");
     expect(getDeliveryChargeLabel(49, { deliveryFee: 49, freeDeliveryMin: 499 })).toBe("Rs. 49");
+  });
+
+  it("explains guest vs member cash policy without inventing fees", () => {
+    expect(getCartCashPolicyMessage(true, false)).toBe("Cash, UPI, and Card available at checkout.");
+    expect(getCartCashPolicyMessage(false, true)).toBe("Guest checkout: Cash, UPI, and Card available.");
+    expect(getCartCashPolicyMessage(false, false)).toBe(
+      "Guests pay with UPI or Card. Sign in to unlock Cash."
+    );
+    expect(shouldOfferCashSignIn(false, false)).toBe(true);
+    expect(shouldOfferCashSignIn(false, true)).toBe(false);
+    expect(shouldOfferCashSignIn(true, false)).toBe(false);
   });
 });

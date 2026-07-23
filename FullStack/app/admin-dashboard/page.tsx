@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
@@ -11,6 +12,7 @@ import { seedMenu, buildSeedSummary } from "../../lib/seed-data";
 import type { CustomerDetails, MenuItem, MenuPayload, PricingConfig } from "../../lib/types";
 import { useStore } from "../../lib/store";
 import { parseAdminTab, type AdminTab } from "../../lib/admin-tabs";
+import { Skeleton } from "../../components/ui";
 
 // ── Feature components ────────────────────────────────────────────────────────
 import { AppHeader } from "../../components/AppHeader";
@@ -22,9 +24,26 @@ import {
   AdminTabNav,
 } from "../../features/admin-dashboard/components";
 import { CustomerAccountPanel, CartRail, CustomerFlowTabs, CustomerIntakeForm, RecommendationLane } from "../../features/customer-ordering/components";
+import { CheckoutEmptyPanel } from "../../features/checkout/components/CheckoutEmptyPanel";
 import { MenuCatalog, PizzaBuilderDialog } from "../../features/menu/components";
-import ForecastPanel from "../../components/admin/ForecastPanel";
-import RecommendationAIPanel from "../../components/admin/RecommendationAIPanel";
+
+const ForecastPanel = dynamic(() => import("../../components/admin/ForecastPanel"), {
+  ssr: false,
+  loading: () => (
+    <div className="admin-card" aria-busy="true" aria-label="Loading forecast">
+      <Skeleton variant="block" style={{ minHeight: 280 }} />
+    </div>
+  ),
+});
+
+const RecommendationAIPanel = dynamic(() => import("../../components/admin/RecommendationAIPanel"), {
+  ssr: false,
+  loading: () => (
+    <div className="admin-card" aria-busy="true" aria-label="Loading AI console">
+      <Skeleton variant="block" style={{ minHeight: 220 }} />
+    </div>
+  ),
+});
 
 // ── Feature hooks ─────────────────────────────────────────────────────────────
 import { useAdminAuth } from "../../features/admin-dashboard/hooks/useAdminAuth";
@@ -78,6 +97,7 @@ export default function AdminDashboardPage() {
 
   // ── Menu state ────────────────────────────────────────────────────────────
   const [menu, setMenu] = useState<MenuPayload>(seedMenu);
+  const [menuLoading, setMenuLoading] = useState(true);
   const [selectedPizza, setSelectedPizza] = useState<MenuItem | null>(null);
   const [builder, setBuilder] = useState({ baseId: seedMenu.bases[0].id, sizeId: seedMenu.sizes[0].id, toppingIds: [] as number[], quantity: 1 });
   const [menuDraftSection, setMenuDraftSection] = useState<MenuSection>("pizzas");
@@ -98,10 +118,10 @@ export default function AdminDashboardPage() {
   const [brand, setBrand] = useState({
     name: "SliceMatic", outlet: "New Ashok Nagar",
     openStatus: "Open now", deliveryPromise: "30-40 min delivery",
-    customerPromise: "Live price, safer payments, and smarter repeat orders.",
+    customerPromise: "Live prices, clear taxes, and faster reorder.",
     opsPromise: "Peak demand, payments, menu, and AI operations controlled from one workspace.",
-    hero: "Pizza delivery with a sharper kitchen, smarter recommendations, and a calmer checkout.",
-    subhero: "Order from a live menu, build the exact pizza you want, and let the outlet control demand, revenue, and fulfilment from one polished screen.",
+    hero: "Hot pizza from New Ashok Nagar, built the way you want it.",
+    subhero: "Browse the live menu, customize toppings, and check out with clear GST and bulk discounts.",
   });
 
   // ── Feature hooks ─────────────────────────────────────────────────────────
@@ -163,7 +183,8 @@ export default function AdminDashboardPage() {
     fetch("/api/menu")
       .then((r) => r.json())
       .then((p: MenuPayload) => { setMenu(p); setMenuBaseline(snapshotMenuBaseline(p)); })
-      .catch(() => setMenu(seedMenu));
+      .catch(() => setMenu(seedMenu))
+      .finally(() => setMenuLoading(false));
   }, []);
 
   useEffect(() => {
@@ -253,7 +274,10 @@ export default function AdminDashboardPage() {
   function goToStep(nextStep: Step) {
     setWorkspace("customer");
     if (nextStep !== "intake" && !ensureCustomerReady()) return;
-    if (nextStep === "checkout") { if (!cart.length) { showToast("Add at least one pizza before checkout."); return; } router.push("/payment"); return; }
+    if (nextStep === "checkout") {
+      if (!cart.length) { setStep("checkout"); return; }
+      router.push("/payment"); return;
+    }
     if (nextStep === "tracking") { router.push("/confirmation"); return; }
     setStep(nextStep);
   }
@@ -263,13 +287,15 @@ export default function AdminDashboardPage() {
     const phone = autoPhone ?? customer.phone;
     const email = autoEmail ?? customerAuth.customerSessionEmail;
     const customerId = typeof window !== "undefined" ? window.sessionStorage.getItem("slicematic_customer_id") ?? undefined : undefined;
-    if (!autoPhone && !autoEmail) {
+    const manualIntakeSubmit = !autoPhone && !autoEmail;
+    if (manualIntakeSubmit) {
       const errors = customerValidation(); setCustomerErrors(errors);
       if (Object.keys(errors).length) { showToast("Fix the highlighted customer details."); return; }
     }
     const cachedRecs = useStore.getState().recommendations;
-    if (!forceRefresh && cachedRecs.length > 0) { setStep("recommendation"); return; }
-    setStep("recommendation"); setRecommendation(null); setRecommendations([]);
+    const nextStep: Step = manualIntakeSubmit ? "menu" : "recommendation";
+    if (!forceRefresh && cachedRecs.length > 0) { setStep(nextStep); return; }
+    setStep(nextStep); setRecommendation(null); setRecommendations([]);
     try {
       const res = await fetch("/api/recommend", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ name, phone, email, customer_id: customerId }) });
       if (!res.ok) { showToast("Recommendation unavailable — browse the menu."); setStep("menu"); return; }
@@ -316,26 +342,71 @@ export default function AdminDashboardPage() {
     showToast(`${selectedPizza.name} added to cart.`);
   }
   function addMemberFavourite() {
-    const pizza = menu.pizzas.find((i) => i.name.toLowerCase().includes("paneer")) ?? activePizzas[0];
-    const base = activeBases.find((i) => i.name.toLowerCase().includes("cheese")) ?? activeBases[0];
-    const size = activeSizes.find((i) => i.id === "large") ?? activeSizes[0];
-    const topping = activeToppings.find((i) => i.name.toLowerCase().includes("cheese")) ?? activeToppings[0];
-    if (!pizza || !base || !size) { showToast("Menu needs at least one pizza, crust, and size."); return; }
-    setCart((c) => [...c, { id: crypto.randomUUID(), pizzaId: pizza.id, baseId: base.id, sizeId: size.id, toppingIds: topping ? [topping.id] : [], quantity: 1 }]);
-    setWorkspace("customer"); setStep("menu");
-    showToast(`${pizza.name} favourite added to cart.`);
+    // Prefer cloning the last cart line — no invented "favourites" API.
+    if (cart.length) {
+      const last = cart[cart.length - 1];
+      setCart((c) => [...c, { ...last, id: crypto.randomUUID() }]);
+      setWorkspace("customer"); setStep("menu");
+      showToast("Last cart item added again.");
+      return;
+    }
+    const line = customerOrders[0]?.lines?.[0];
+    if (line) {
+      const pizza =
+        menu.pizzas.find((i) => i.available && i.name.toLowerCase() === line.pizzaName.toLowerCase()) ??
+        menu.pizzas.find((i) => i.available && i.name.toLowerCase().includes(line.pizzaName.toLowerCase()));
+      const base =
+        menu.bases.find((i) => i.available && i.name.toLowerCase() === line.baseName.toLowerCase()) ??
+        activeBases[0];
+      const size =
+        menu.sizes.find((i) => i.available && i.name.toLowerCase() === line.sizeName.toLowerCase()) ??
+        activeSizes[0];
+      if (!pizza || !base || !size) {
+        showToast("Could not match your last order to the current menu.");
+        return;
+      }
+      setCart((c) => [
+        ...c,
+        {
+          id: crypto.randomUUID(),
+          pizzaId: pizza.id,
+          baseId: base.id,
+          sizeId: size.id,
+          toppingIds: [],
+          quantity: Math.max(1, line.quantity || 1),
+        },
+      ]);
+      setWorkspace("customer"); setStep("menu");
+      showToast(`${pizza.name} from your last order added to cart.`);
+      return;
+    }
+    showToast("Nothing to rebuild yet. Add a pizza to your cart or place an order first.");
   }
   function useSavedCustomerProfile() {
     const json = typeof window !== "undefined" ? window.sessionStorage.getItem("slicematic_customer") : null;
     if (json) {
       try {
         const p = JSON.parse(json) as Partial<CustomerDetails>;
-        setCustomer((c) => ({ ...c, name: p.name ?? c.name, phone: p.phone ?? c.phone, address: p.address ?? c.address, deliveryZone: p.deliveryZone ?? c.deliveryZone, note: p.note ?? c.note }));
-        setWorkspace("customer"); setStep("intake"); showToast("Saved delivery profile applied."); return;
+        const hasUsable =
+          Boolean(String(p.name ?? "").trim()) ||
+          Boolean(String(p.phone ?? "").trim()) ||
+          Boolean(String(p.address ?? "").trim());
+        if (hasUsable) {
+          setCustomer((c) => ({
+            ...c,
+            name: p.name ?? c.name,
+            phone: p.phone ?? c.phone,
+            address: p.address ?? c.address,
+            deliveryZone: p.deliveryZone ?? c.deliveryZone,
+            note: p.note ?? c.note,
+          }));
+          setWorkspace("customer"); setStep("intake");
+          showToast("Saved delivery profile applied.");
+          return;
+        }
       } catch { /* fall through */ }
     }
-    setCustomer({ name: "Aarav Sharma", phone: "9876543210", address: "Flat 1204, Lotus Heights, near Metro Gate 2, New Ashok Nagar", deliveryZone: "2-4", note: "Call once before dispatch." });
-    setWorkspace("customer"); setStep("intake"); showToast("Saved delivery profile applied.");
+    showToast("No saved delivery profile yet. Fill your details on the order form first.");
   }
   function removeCartLine(lineId: string) { setCart((c) => c.filter((l) => l.id !== lineId)); }
 
@@ -478,19 +549,23 @@ export default function AdminDashboardPage() {
           onAddFavourite={addMemberFavourite}
           onOpenBuilder={(id) => { const p = menu.pizzas.find((x) => x.id === id); if (p) openBuilder(p, true); }}
           onBrowseMenu={() => goToStep("menu")}
+          hasCartLines={cart.length > 0}
+          onNotify={showToast}
         />
       )}
 
       {/* Customer workspace */}
-      {workspace === "customer" && step !== "checkout" && step !== "tracking" && (
+      {workspace === "customer" && step !== "tracking" && (step !== "checkout" || cart.length === 0) && (
         <section className="hero-shell" id="customer-app">
           <aside className="status-rail">
             <div className="rail-card open"><span /><div><strong>{brand.openStatus}</strong><small>{brand.deliveryPromise}</small></div></div>
             <div className="rail-card">
-              <p className="eyebrow">Operating signals</p>
+              <p className="rail-card-label">Good to know</p>
               <ul>
-                <li><Check /> Live menu control</li><li><Check /> Verified billing rules</li>
-                <li><Check /> AI pairings</li><li><Check /> Demand forecast</li>
+                <li><Check /> Live menu for this outlet</li>
+                <li><Check /> GST and bulk discounts shown upfront</li>
+                <li><Check /> Combos suggested from your orders</li>
+                <li><Check /> Typical 30–40 min delivery</li>
               </ul>
             </div>
             <div className="rail-card" style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
@@ -507,10 +582,14 @@ export default function AdminDashboardPage() {
 
           <section className="order-stage">
             <div className="hero-card">
-              <div><p className="eyebrow">Elite delivery OS</p><h1>{brand.hero}</h1><p>{brand.subhero}</p></div>
-              <img src="/assets/pizza-hero.jpg" alt="Fresh pizza" />
+              <div><p className="eyebrow">{brand.outlet}</p><h1>{brand.hero}</h1><p>{brand.subhero}</p></div>
+              <img src="/assets/pizza-hero.jpg" alt="Fresh pizza from SliceMatic" />
             </div>
-            <CustomerFlowTabs activeStep={step} onSelectStep={goToStep} />
+            <CustomerFlowTabs
+              activeStep={step}
+              onSelectStep={goToStep}
+              customerLoggedIn={customerAuth.customerLoggedIn}
+            />
             {step === "intake" && <CustomerIntakeForm customer={customer} errors={customerErrors} onCustomerChange={setCustomer} onSubmit={() => void submitCustomer()} />}
             {step === "recommendation" && (
               <RecommendationLane
@@ -520,7 +599,18 @@ export default function AdminDashboardPage() {
                 onBrowseMenu={() => goToStep("menu")}
               />
             )}
-            {step === "menu" && <MenuCatalog pizzas={menu.pizzas} bases={menu.bases} onCustomize={openBuilder} onAdd={addPizzaDirectToCart} />}
+            {step === "menu" && (
+              <MenuCatalog
+                pizzas={menu.pizzas}
+                bases={menu.bases}
+                loading={menuLoading}
+                onCustomize={openBuilder}
+                onAdd={addPizzaDirectToCart}
+              />
+            )}
+            {step === "checkout" && cart.length === 0 && (
+              <CheckoutEmptyPanel onBrowseMenu={() => goToStep("menu")} />
+            )}
           </section>
 
           <CartRail
@@ -589,6 +679,7 @@ export default function AdminDashboardPage() {
                       summary={session.adminSummary}
                       opsBriefing={session.opsBriefing}
                       opsLoading={session.opsLoading}
+                      opsStatus={session.opsStatus}
                       onRefresh={() => void session.loadOpsBriefing()}
                     />
                   )}
@@ -615,6 +706,9 @@ export default function AdminDashboardPage() {
                       allOrders={session.adminSummary.recentOrders}
                       selectedOrderId={selectedOrderId}
                       onSelectOrder={selectAdminOrder}
+                      status={session.summaryStatus}
+                      isRefreshing={session.isRefreshingSummary}
+                      onRefresh={() => void session.refreshAdminSummary()}
                       totalMatched={totalOrders}
                       totalFetched={session.adminSummary.recentOrders.length}
                       filters={(

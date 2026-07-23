@@ -116,7 +116,8 @@ export const seedMenu: MenuPayload = {
     { id: 7, code: "T7", name: "Caramelised Onions", price: 49, available: true },
     { id: 8, code: "T8", name: "Sweet Corn", price: 39, available: true },
     { id: 9, code: "T9", name: "Roasted Garlic", price: 49, available: true },
-    { id: 10, code: "T10", name: "Peri-Peri Drizzle", price: 59, available: true }
+    { id: 10, code: "T10", name: "Peri-Peri Drizzle", price: 59, available: true },
+    { id: 11, code: "T11", name: "Smoked Paprika", price: 49, available: true }
   ],
   sizes: [
     { id: "regular", name: "Regular", extra: 0, detail: "Serves 1-2", available: true },

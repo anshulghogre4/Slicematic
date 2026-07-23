@@ -3,8 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import CustomerShell from "../components/CustomerShell";
-import EntryPortal from "../components/EntryPortal/EntryPortal";
-import { useStore } from "../lib/store";
+import { MarketingLanding } from "../components/landing/MarketingLanding";
 
 export default function Page() {
   const router = useRouter();
@@ -30,34 +29,16 @@ export default function Page() {
     setLoading(false);
   }, [router]);
 
-  function handlePortalComplete() {
-    const admin = typeof window !== "undefined" && window.sessionStorage.getItem("slicematic_is_admin") === "true";
-    setIsAuthorized(true);
-    if (admin) {
-      if (typeof window !== "undefined") {
-        window.sessionStorage.removeItem("slicematic_admin_view_customer");
-      }
-      setIsAdmin(true);
-      router.replace("/admin-dashboard");
-      return;
-    }
-    setIsAdmin(false);
-  }
-
   if (loading) {
-    return null;
+    return (
+      <main className="flex min-h-[100dvh] items-center justify-center bg-base-100">
+        <span className="loading loading-spinner loading-md text-primary" aria-label="Loading" />
+      </main>
+    );
   }
 
   if (!isAuthorized) {
-    return (
-      <EntryPortal 
-        onComplete={handlePortalComplete} 
-        onRecommendationReady={(data) => {
-          useStore.getState().setRecommendations(data.recommendations);
-          useStore.getState().setRecommendation(data.primary ?? data.recommendations[0] ?? null);
-        }}
-      />
-    );
+    return <MarketingLanding />;
   }
 
   if (isAdmin) {

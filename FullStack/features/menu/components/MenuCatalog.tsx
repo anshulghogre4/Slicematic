@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { Plus, Sparkles, Search } from "lucide-react";
+import { Plus, Search, SlidersHorizontal } from "lucide-react";
 
 import type { MenuItem } from "../../../lib/types";
 import {
-  filterMenuPizzas,
   getDefaultCrustPrice,
-  MENU_CATEGORIES
+  isHousePickPizza,
+  MENU_CATEGORIES,
+  sortMenuPizzasForDisplay,
 } from "../../../lib/menu-catalog";
 import { MenuCardSkeleton, EmptyState, FilterChip, TagChip } from "../../../components/ui";
 import { money } from "../../../lib/pricing";
@@ -48,8 +49,10 @@ export function MenuCatalog({
   useEffect(() => { if (initialCategory) setLocalCategory(initialCategory); }, [initialCategory]);
   useEffect(() => { if (initialQuery !== undefined) setLocalQuery(initialQuery); }, [initialQuery]);
 
-  const filteredPizzas = filterMenuPizzas(pizzas, localCategory, localQuery);
+  const filteredPizzas = sortMenuPizzasForDisplay(pizzas, localCategory, localQuery);
   const defaultCrustPrice = getDefaultCrustPrice(bases);
+  const housePickCount = filteredPizzas.filter(isHousePickPizza).length;
+  const isDefaultBrowse = localCategory === "All" && !localQuery.trim();
 
   function handleCategoryChange(cat: string) {
     setLocalCategory(cat);
@@ -60,6 +63,11 @@ export function MenuCatalog({
     onQueryChange?.(q);
   }
 
+  function clearFilters() {
+    handleCategoryChange("All");
+    handleQueryChange("");
+  }
+
   const handleAdd = useCallback((pizza: MenuItem) => {
     onAdd(pizza);
     setJustAdded(pizza.id);
@@ -67,27 +75,40 @@ export function MenuCatalog({
   }, [onAdd]);
 
   return (
-    <section className="menu-section animate-fade-in-up">
+    <section className="menu-section animate-fade-in-up" aria-busy={loading || undefined}>
       {/* Section header */}
       <div className="section-head" style={{ marginBottom: "var(--space-md)" }}>
         <div>
+          <p className="eyebrow" style={{ marginBottom: 4 }}>Live outlet menu</p>
           <h2 className="section-heading">Signature pizzas</h2>
           <p className="section-subheading" style={{ marginTop: 4 }}>
-            Handcrafted with fresh ingredients, baked to perfection
+            Customize crust, size, and toppings.{" "}
+            {isDefaultBrowse && housePickCount > 0
+              ? "House picks appear first."
+              : "Filter or search to narrow the list."}
           </p>
         </div>
+        {!loading && filteredPizzas.length > 0 ? (
+          <p className="menu-section__count" aria-live="polite">
+            {filteredPizzas.length} pizza{filteredPizzas.length === 1 ? "" : "s"}
+            {isDefaultBrowse && housePickCount > 0 ? ` · ${housePickCount} house pick${housePickCount === 1 ? "" : "s"}` : ""}
+          </p>
+        ) : null}
       </div>
 
       {/* Filter bar with search + category chips */}
       <div className="filter-bar" role="toolbar" aria-label="Menu filters">
-        <input
-          className="filter-bar__search"
-          type="search"
-          placeholder="Search pizzas…"
-          value={localQuery}
-          onChange={(e) => handleQueryChange(e.target.value)}
-          aria-label="Search menu"
-        />
+        <label className="filter-bar__search-wrap">
+          <Search size={16} aria-hidden="true" className="filter-bar__search-icon" />
+          <input
+            className="filter-bar__search"
+            type="search"
+            placeholder="Search pizzas…"
+            value={localQuery}
+            onChange={(e) => handleQueryChange(e.target.value)}
+            aria-label="Search menu"
+          />
+        </label>
         {MENU_CATEGORIES.map((item) => (
           <FilterChip
             key={item}
@@ -109,14 +130,18 @@ export function MenuCatalog({
         <EmptyState
           illustration="empty-cart"
           title="No pizzas found"
-          description={localQuery ? `No results for “${localQuery}”. Try a different search.` : "No pizzas match this filter."}
+          description={
+            localQuery
+              ? `No results for “${localQuery}”. Try a different search or clear filters.`
+              : "No pizzas match this filter."
+          }
           action={
             <button
               type="button"
               className="sui-button sui-button--secondary"
-              onClick={() => handleCategoryChange("All")}
+              onClick={clearFilters}
             >
-              Show all pizzas
+              Clear filters
             </button>
           }
         />
@@ -127,9 +152,13 @@ export function MenuCatalog({
             const isVegetarian = pizza.tags?.includes("Veg") ?? false;
             const isSpicy = pizza.tags?.includes("Spicy") ?? false;
             const isBestseller = pizza.badge?.toLowerCase().includes("best") ?? false;
+            const isHousePick = isHousePickPizza(pizza);
 
             return (
-              <article className="menu-card-premium" key={pizza.id}>
+              <article
+                className={`menu-card-premium${isHousePick ? " menu-card-premium--featured" : ""}`}
+                key={pizza.id}
+              >
                 {/* Image area */}
                 <div
                   className="menu-card-premium__image"
@@ -139,6 +168,9 @@ export function MenuCatalog({
                 >
                   {pizza.badge ? (
                     <span className="menu-card-premium__badge">{pizza.badge}</span>
+                  ) : null}
+                  {isHousePick ? (
+                    <span className="menu-card-premium__featured-flag">House pick</span>
                   ) : null}
                 </div>
 
@@ -178,8 +210,9 @@ export function MenuCatalog({
                     className="menu-card-premium__customize-btn"
                     onClick={() => onCustomize(pizza)}
                     type="button"
+                    aria-label={`Customize ${pizza.name}`}
                   >
-                    <Sparkles size={14} /> Customize
+                    <SlidersHorizontal size={14} aria-hidden="true" /> Customize
                   </button>
                 </div>
               </article>

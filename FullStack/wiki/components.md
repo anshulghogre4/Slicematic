@@ -50,15 +50,17 @@ type AdminTab = "overview" | "orders" | "menu" | "settings" | "forecast" | "ai"
 ```
 
 **Admin-only panels (sub-components):**
+- `AdminOverviewPanel` — `features/admin-dashboard/components/AdminOverviewPanel.tsx` (revenue-first KPI hero, tomato-only charts, ops briefing workbench, `.admin-overview_*` tokens, `StatusPill`/`Button`, reduced-motion)
 - `ForecastPanel` — `components/admin/ForecastPanel.tsx`
 - `RecommendationAIPanel` — `components/admin/RecommendationAIPanel.tsx`
 
 ---
 
 ### 3. `EntryPortal`
-- **File:** `components/EntryPortal/EntryPortal.tsx`
+- **File:** `components/EntryPortal/EntryPortal.tsx` (+ `EntryPortal.css`)
 - **Role:** Landing/login gate shown when no session exists
-- **Choices presented:** Customer login | Guest order | Admin login
+- **Choices presented:** Email OTP login | Guest order | Admin path via same OTP (role check after verify)
+- **Copy / a11y (2026-07-23 taste-skill):** Brand-first `h1` ("SliceMatic"), plain Delhi NCR subtext, sentence-case CTAs, `min-height: 100dvh`, `prefers-reduced-motion` disables logo pulse
 - **On complete:** Sets sessionStorage, calls `onComplete()` prop → parent routes appropriately
 
 ---
@@ -109,6 +111,7 @@ type AdminTab = "overview" | "orders" | "menu" | "settings" | "forecast" | "ai"
 - **Files:** `features/menu/components/MenuCatalog.tsx`, `lib/menu-catalog.ts`
 - **Role:** Shared customer pizza catalogue used by both giant workspaces, including category/query filtering, starting price, metadata, customize, and direct-add actions.
 - **Boundary:** Receives menu data and callbacks; it does not own customer validation, cart mutation, navigation, or persisted state.
+- **Polish (2026-07-23):** House picks (`Local favorite` / `Best value` / `Fastest bake` / bestseller badges) sort first on default browse, get `menu-card-premium--featured` + “House pick” flag; live count; search icon; `loading` skeletons wired from CustomerShell / admin view-as-customer `/api/menu` fetch; empty state clears filters.
 
 ### 11. `PizzaBuilderDialog`
 - **File:** `features/menu/components/PizzaBuilderDialog.tsx`
@@ -121,18 +124,27 @@ type AdminTab = "overview" | "orders" | "menu" | "settings" | "forecast" | "ai"
 - **Role:** Shared customer cart presentation for both giant workspaces, including order mode, line items, totals, delivery label, AI cart strategist copy/action, and checkout CTA.
 - **Boundary:** Parent workspaces still own pricing calculation, cart mutation, AI cart-insight fetches, validation, toasts, and navigation.
 - **R11 state polish:** `AiCartStrategistCard` uses shared skeleton loading and `aria-busy` while cart insight is being generated.
-- **Tests:** `lib/cart-rail.test.ts` covers cart line summaries, missing menu references, and delivery-fee labels.
+- **Cash clarity (2026-07-23):** Guest vs member messaging uses `pricingConfig.guestCashAllowed`; sign-in CTA only when Cash requires login; empty-cart copy is outlet-honest (no AI speak).
+- **Tests:** `lib/cart-rail.test.ts` covers cart line summaries, missing menu references, delivery-fee labels, and guest/member cash policy helpers.
 
 ### 13. `RecommendationLane`
 - **File:** `features/customer-ordering/components/RecommendationLane.tsx`
-- **Role:** Shared recommendation presentation for loading, single recommendation, multiple recommendations, unavailable recommendation items, refresh action, build action, and browse-menu action.
+- **Role:** Shared recommendation presentation for loading, empty (no picks), single/multiple recommendations, unavailable recommendation items, refresh action, build action, and browse-menu action.
 - **Boundary:** Parent workspaces still own recommendation fetches, store writes, fallback behavior, and builder opening.
 - **R11 polish:** Uses the shared `Skeleton` primitive while recommendation data is loading.
+- **Honesty (2026-07-23):** Empty EmptyState when no picks; unavailable items show “Unavailable on menu” and disabled Build; all-unavailable banner when every pick is off-menu.
+- **Presentation polish (2026-07-23):** Clearer section intro (source eyebrow + pick count title); every pick renders as a card with honest `reason` why-text when present; Build CTAs read “Build combo” / “Build this combo”; lane-local skeleton mirrors card rows; `FadeInUp` + `StaggerContainer`/`StaggerItem` with reduced-motion respect; `aria-live` / `aria-busy` / status text kept for async.
+
+### 13b. `CheckoutEmptyPanel`
+- **File:** `features/checkout/components/CheckoutEmptyPanel.tsx`
+- **Role:** In-shell Checkout tab bridge when cart is empty — “Add a pizza first” + Browse menu (not toast-only).
+- **Boundary:** Parents (`CustomerShell`, admin view-as-customer) set `step=checkout` when cart empty; with items they still route to `/payment`.
 
 ### 14. `CustomerFlowTabs`
 - **File:** `features/customer-ordering/components/CustomerFlowTabs.tsx`
 - **Role:** Shared customer ordering step tabs with tab semantics for intake, recommendation, menu, checkout, and tracking.
 - **Boundary:** Parent workspaces own transition validation and route navigation.
+- **Polish (2026-07-23):** Numbered stepper (`flow-tabs--stepper`); Details tab label is **Guest details** vs **Your details** from `customerLoggedIn`; `aria-current="step"` on active tab; `:focus-visible` rings.
 
 ### 15. `AdminTabNav`
 - **File:** `features/admin-dashboard/components/AdminTabNav.tsx`
@@ -152,6 +164,7 @@ type AdminTab = "overview" | "orders" | "menu" | "settings" | "forecast" | "ai"
 ### 18. `CustomerIntakeForm`
 - **File:** `features/customer-ordering/components/CustomerIntakeForm.tsx`
 - **Role:** Shared customer intake form for name, phone, address, delivery zone, validation errors, and continue action.
+- **Notes:** Fields use real empty `value`s with muted placeholders (not seeded demo text). Labels are visible; errors sit under each field with `aria-invalid` / `role="alert"`. Manual save soft-defaults the shell step to Menu.
 - **Boundary:** Parent workspaces still own validation, customer draft state, step transition, toast behavior, and routing.
 
 ### 19. `AdminOrdersWorkspace` and `OrderTable`
@@ -160,6 +173,11 @@ type AdminTab = "overview" | "orders" | "menu" | "settings" | "forecast" | "ai"
 - **Boundary:** Parent workspaces still own admin auth, filters, pagination, URL-backed selected order state, refresh state, and Supabase/API calls.
 - **R11 state polish:** Order table supports skeleton loading rows and a neutral empty state; admin API errors remain separate red error banners.
 - **Safety:** No rider, ETA, map, delivery tracking, SQL, or RLS behavior is added by this extraction.
+
+### 20. `AppHeader` + `ThemeToggle`
+- **Files:** `components/AppHeader.tsx`, `components/ThemeToggle.tsx`
+- **Role:** Sticky frosted header for CustomerShell and admin dashboard; daisyUI theme toggle writes `html[data-theme]` (`slicematic` / `slicematic-dark`).
+- **Polish (2026-07-23):** Guest session chip reads **Guest · Sign in** and soft-gates via `onOpenAccount`; member chip opens Account; token-based `.app-header__*` CSS (dark-mode safe); `useReducedMotion` on nav motion; shared `:focus-visible` rings; ThemeToggle drops daisyUI btn classes that fought focus styles, adds `aria-pressed`.
 
 ---
 

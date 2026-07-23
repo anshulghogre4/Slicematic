@@ -48,10 +48,10 @@ export function useOrderHistory() {
     const customerId =
       window.sessionStorage.getItem("slicematic_customer_id")?.trim() ?? "";
     if (!customerId) {
+      // Quiet empty state — Account panel shows friendly copy until an order links an id.
       setCustomerOrders([]);
-      setCustomerOrdersError(
-        "No customer ID in session. Place an order or sign in again."
-      );
+      setCustomerOrdersError("");
+      setCustomerOrdersLoading(false);
       return;
     }
 

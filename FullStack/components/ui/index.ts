@@ -32,3 +32,16 @@ export {
   PaymentTile,
   AiServiceCard,
 } from "./Primitives";
+
+/* Motion wrappers (respect prefers-reduced-motion) */
+export {
+  FadeInUp,
+  ScaleIn,
+  SlideUp,
+  SlideInRight,
+  CartBounce,
+  StaggerContainer,
+  StaggerItem,
+  ModalOverlay,
+  NumberCrossfade,
+} from "./AnimationWrappers";

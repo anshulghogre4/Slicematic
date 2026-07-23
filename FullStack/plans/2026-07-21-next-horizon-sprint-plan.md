@@ -62,11 +62,11 @@ Parent long-term roadmap remains `plans/fullstack-delivery-intelligence-sprints.
 - [x] `useReducedMotion` on `OrderContextPanel` + admin tab motion
 - [x] loading.tsx uses `Skeleton` (no broken `pulse` keyframes)
 - [x] OCP facts wrapped in `<dl>`
-- [ ] Optional: deeper checkout pill spacing polish if still visually off in browser
-- [ ] Optional: fresh screenshot smoke for ui-map after polish
-- [ ] Optional: AdminOverviewPanel Framer Motion upgrade (handoff wish-list)
+- [x] Checkout pill spacing polish (`checkout-payment-stack` / status pill tokens)
+- [x] ui-map smoke note + verified facts refresh (PNG re-capture deferred to next live browser pass)
+- [x] AdminOverviewPanel craft rebuild (interface-design): revenue hero, tomato-only, briefing workbench, token CSS, StatusPill/Button, ≤280ms + reduced-motion
 
-**Exit for “R12 closed”:** optional items above or explicit deferral to S0 prep.
+**Exit for “R12 closed”:** optional items above closed 2026-07-23 FE polish pass (screenshot PNG re-capture still nice-to-have).
 
 ---
 

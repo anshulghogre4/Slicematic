@@ -59,6 +59,9 @@ Start every FullStack task here, then read [[handoff]] and the pages relevant to
 - `FullStack/plans/database-schema-evolution-plan.md` — Supabase schema/RLS evolution plan for preferences, delivery, riders, forecast runs, AI logs, and production policies
 - `FullStack/plans/recommendation-at-login-flow.md` — historical recommendation/login plan
 - `FullStack/plans/ui-ux-improvement-plan.md` — earlier UI/UX improvement plan
+- `FullStack/plans/2026-07-21-next-horizon-sprint-plan.md` — active weekly queue (R13 done → R12 closed → S0 next)
+- `FullStack/plans/2026-07-23-frontend-design-decisions.md` — Tailwind deferral, dark mode, dispatch tab decision, admin consistency recipe
+- `FullStack/plans/landing-page-vision.md` — marketing landing vision (GSAP/Lottie/Rive/Spline) — not implemented yet
 
 ## Fast task routing
 

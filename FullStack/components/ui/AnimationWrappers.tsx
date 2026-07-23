@@ -1,6 +1,6 @@
 "use client";
 
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
 
 /* ── Shared easing presets ── */
@@ -17,11 +17,12 @@ export function FadeInUp({
   delay?: number;
   className?: string;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
     <motion.div
-      initial={{ opacity: 0, y: 14 }}
+      initial={reduceMotion ? false : { opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.28, ease: easeOut, delay }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.28, ease: easeOut, delay }}
       className={className}
     >
       {children}
@@ -37,12 +38,13 @@ export function ScaleIn({
   children: ReactNode;
   className?: string;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
     <motion.div
-      initial={{ opacity: 0, scale: 0.96 }}
+      initial={reduceMotion ? false : { opacity: 0, scale: 0.96 }}
       animate={{ opacity: 1, scale: 1 }}
-      exit={{ opacity: 0, scale: 0.96 }}
-      transition={{ duration: 0.22, ease: easeOut }}
+      exit={reduceMotion ? undefined : { opacity: 0, scale: 0.96 }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.22, ease: easeOut }}
       className={className}
     >
       {children}
@@ -58,12 +60,13 @@ export function SlideUp({
   children: ReactNode;
   className?: string;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
     <motion.div
-      initial={{ y: "100%" }}
+      initial={reduceMotion ? false : { y: "100%" }}
       animate={{ y: 0 }}
-      exit={{ y: "100%" }}
-      transition={{ duration: 0.3, ease: easeOut }}
+      exit={reduceMotion ? undefined : { y: "100%" }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.3, ease: easeOut }}
       className={className}
     >
       {children}
@@ -79,12 +82,13 @@ export function SlideInRight({
   children: ReactNode;
   className?: string;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
     <motion.div
-      initial={{ x: "100%" }}
+      initial={reduceMotion ? false : { x: "100%" }}
       animate={{ x: 0 }}
-      exit={{ x: "100%" }}
-      transition={{ duration: 0.24, ease: easeOut }}
+      exit={reduceMotion ? undefined : { x: "100%" }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.24, ease: easeOut }}
       className={className}
     >
       {children}
@@ -99,14 +103,15 @@ export function CartBounce({
   className,
 }: {
   children: ReactNode;
-  trigger: number; // increment to re-trigger
+  trigger: number;
   className?: string;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
     <motion.div
       key={trigger}
-      animate={{ scale: [1, 1.12, 0.95, 1] }}
-      transition={{ duration: 0.35, ease: easeOut }}
+      animate={reduceMotion ? { scale: 1 } : { scale: [1, 1.12, 0.95, 1] }}
+      transition={reduceMotion ? { duration: 0 } : { duration: 0.35, ease: easeOut }}
       className={className}
     >
       {children}
@@ -124,13 +129,14 @@ export function StaggerContainer({
   className?: string;
   staggerDelay?: number;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
     <motion.div
       initial="hidden"
       animate="visible"
       variants={{
         hidden: {},
-        visible: { transition: { staggerChildren: staggerDelay } },
+        visible: { transition: { staggerChildren: reduceMotion ? 0 : staggerDelay } },
       }}
       className={className}
     >
@@ -146,11 +152,16 @@ export function StaggerItem({
   children: ReactNode;
   className?: string;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
     <motion.div
       variants={{
-        hidden: { opacity: 0, y: 12 },
-        visible: { opacity: 1, y: 0, transition: { duration: 0.28, ease: easeOut } },
+        hidden: reduceMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: 12 },
+        visible: {
+          opacity: 1,
+          y: 0,
+          transition: reduceMotion ? { duration: 0 } : { duration: 0.28, ease: easeOut },
+        },
       }}
       className={className}
     >
@@ -167,13 +178,14 @@ export function ModalOverlay({
   children: ReactNode;
   onClose: () => void;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
     <AnimatePresence>
       <motion.div
-        initial={{ opacity: 0 }}
+        initial={reduceMotion ? false : { opacity: 0 }}
         animate={{ opacity: 1 }}
-        exit={{ opacity: 0 }}
-        transition={{ duration: 0.18 }}
+        exit={reduceMotion ? undefined : { opacity: 0 }}
+        transition={reduceMotion ? { duration: 0 } : { duration: 0.18 }}
         onClick={onClose}
         style={{
           position: "fixed",
@@ -203,14 +215,15 @@ export function NumberCrossfade({
   value: string | number;
   className?: string;
 }) {
+  const reduceMotion = useReducedMotion();
   return (
     <AnimatePresence mode="wait">
       <motion.span
         key={value}
-        initial={{ opacity: 0, y: -4 }}
+        initial={reduceMotion ? false : { opacity: 0, y: -4 }}
         animate={{ opacity: 1, y: 0 }}
-        exit={{ opacity: 0, y: 4 }}
-        transition={{ duration: 0.15, ease: easeOut }}
+        exit={reduceMotion ? undefined : { opacity: 0, y: 4 }}
+        transition={reduceMotion ? { duration: 0 } : { duration: 0.15, ease: easeOut }}
         className={className}
         style={{ display: "inline-block" }}
       >
@@ -221,4 +234,4 @@ export function NumberCrossfade({
 }
 
 /* Re-export AnimatePresence for consumer convenience */
-export { AnimatePresence, motion };
+export { AnimatePresence, motion, easeSpring };

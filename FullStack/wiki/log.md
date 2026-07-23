@@ -9,6 +9,112 @@ scope: wiki/
 
 Entries use `## [YYYY-MM-DD] operation | title` so agents and shell tools can parse the timeline.
 
+## [2026-07-23] chore | remove unnecessary ui-map screenshots
+
+- Deleted 13 PNGs: stale Landing R1 pre-rebuild walkthroughs (`walkthrough_01_landing`, `01b_landing_below`, `01b_landing_full`), misnamed payment dupes (`walkthrough_07_customer_cart_*`), orphaned historicals (`01_entry_portal_1784320125962/0139959`, `confirmation-tracking`, `customer-menu`, `customer-recommendation`, `admin-settings-brand/financials`, `05-customer-cart-with-item`).
+- Updated [[ui-map]] landing rows to pending re-capture without dangling image links; [[handoff]], `CHANGELOG.md`. 48 screenshots remain in `wiki/assets/ui-map/`.
+
+## [2026-07-23] feat | Landing R1 creative Delhi night-delivery rebuild
+
+- Rebuilt `MarketingLanding` with GSAP (ScrollTrigger + MotionPath rider), Lenis smooth scroll, and committed Lottie (`pizza-spin`, `steam`) via `lottie-react`. Brand-first hero preserved; Order/Kitchen/Ride/Doorstep narrative + illustrated Signature slices.
+- Removed all screenshot/photo landing art; replaced with hand-built SVG Delhi skyline + scooter rider + generated pizza discs. Fonts Unbounded + Hanken Grotesk. Reduced-motion disables Lenis/GSAP/Lottie loops; motion is landing-only.
+- New files under `components/landing/` (Hero, NarrativeSlides, LottieMount, hooks/useLandingLenis, art/DelhiScene, art/scene-parts) + `public/lottie/*.json`; new dep `lottie-react`.
+- Updated [[ui-map]], [[handoff]], `CHANGELOG.md`, `plans/landing-page-vision.md`.
+
+## [2026-07-23] polish | customer FE gaps (menu / header / stepper / focus)
+
+- MenuCatalog house-pick featured clarity + `/api/menu` skeletons; CustomerFlowTabs numbered guest/member labels; AppHeader Guest · Sign in + ThemeToggle/focus consistency.
+- Updated [[components]], [[ui-map]], [[handoff]], `CHANGELOG.md`; `menu-catalog.test.ts` house-pick sort cases.
+
+## [2026-07-23] fix | ops briefing honest empty/degraded UX
+
+- Overview + AI tab: honor API `source: fallback` / failed / empty; never show invented LLM shift paragraphs.
+- Updated [[handoff]], `CHANGELOG.md`.
+
+## [2026-07-23] feat | landing signature pizzas strip
+
+- Added below-fold Signature pizzas section to `MarketingLanding` (seed menu photography + `/signin` CTA); hero unchanged.
+- Updated [[ui-map]], [[handoff]], `CHANGELOG.md`.
+
+## [2026-07-23] polish | RecommendationLane richer presentation
+
+- FE-only: clearer intro hierarchy, per-card why-text from existing `reason`, Build combo CTAs, skeleton rows matching cards, FadeInUp/Stagger with reduced-motion; no new API/scores.
+- Updated [[components]], [[handoff]], `CHANGELOG.md`.
+
+## [2026-07-23] verify | walkthrough-fix merge reconcile
+
+- Grepped shared surfaces for regressions after five parallel FE fix agents; all five fix families present (no Parika, no seed-until-refresh flash, guest Account soft-gate, intake empty defaults, CheckoutEmptyPanel wired).
+- Surgical only: `lib/store.test.ts` beforeEach/fixtures aligned to empty customer defaults (no `deliveryZone: "2-4"`).
+- Verification: `npm run test` **124/124**; `npx tsc --noEmit` clean. Updated [[handoff]].
+
+## [2026-07-23] fix | FE clarity: rec / cart cash / checkout empty
+
+- RecommendationLane empty + unavailable Build honesty; CartRail guest/member cash copy; CheckoutEmptyPanel for empty Checkout tab.
+- Updated [[components]], [[ui-map]], [[handoff]], `CHANGELOG.md`; `cart-rail.test.ts` cash helpers.
+
+## [2026-07-23] fix | Account panel order-history + quick-action honesty
+
+- Soft empty state when no `customer_id`; suppress “No customer ID in session” error in panel + `useOrderHistory`.
+- Quick actions: no Aarav demo profile; rebuild from last cart line or last order name-match; disable rebuild when neither exists.
+- Files: `CustomerAccountPanel.tsx`, `useOrderHistory.ts`, `CustomerShell.tsx`, `admin-dashboard/page.tsx`, `CHANGELOG.md`.
+
+## [2026-07-23] fix | Paprika typo + Orders seed flash
+
+- `lib/seed-data.ts`: T11 topping `Smoked Paprika` (FE seed/copy corrected).
+- Admin Orders: `summaryStatus` + skeleton / quieter “Loading orders…” (removed seed-until-refresh flash).
+- Files: `seed-data.ts`, `useAdminSession.ts`, `AdminOrdersWorkspace.tsx`, `admin-dashboard/page.tsx`, `CHANGELOG.md`.
+
+## [2026-07-23] fix | customer intake empty vs placeholder
+
+- Cleared store seed address/zone; CustomerShell migrates legacy seeds instead of inventing delivery address.
+- `CustomerIntakeForm`: visible labels, muted placeholders, field-level `role="alert"` errors; manual save → Menu soft-default.
+- Updated [[components]], [[handoff]], `CHANGELOG.md`.
+
+## [2026-07-23] fix | guest Account soft-gate (no marketing bounce)
+
+- `CustomerShell.openAccount`: guests → `router.push("/signin")` without `onUnauthorize` / session wipe.
+- `app/signin/page.tsx`: auto-redirect only when `logged_in === "true"` so guests reach EntryPortal.
+- Member Account workspace unchanged. Updated [[handoff]], `CHANGELOG.md`.
+
+## [2026-07-23] query | full UI walkthrough screenshots
+
+- Captured `walkthrough_01`–`walkthrough_21` under `wiki/assets/ui-map/` via live `localhost:3000` (guest + demo OTP).
+- Documented inventory + analysis in [[ui-map]] “2026-07-23 walkthrough” section.
+- Confirmed routes: `/` marketing when logged out; CustomerShell on `/` after guest/member; `/signin` EntryPortal; ops on `/admin-dashboard?tab=…`; checkout on `/payment`.
+- Bugs noted: guest Account calls `onUnauthorize` → marketing; empty intake looks pre-filled via placeholders; Account order history missing `customer_id` for demo; menu topping label misspelled (later fixed to Smoked Paprika).
+
+## [2026-07-23] fix | customer hero + recommendation anti-slop follow-through
+
+- Replaced customer status-rail ops speak and “Elite delivery OS” hero eyebrow in `CustomerShell` + `admin-dashboard` customer workspace.
+- Softened RecommendationLane / MenuCatalog Customize / account pick Sparkles+indigo AI cues; layout metadata now Delhi NCR pizza ordering.
+- EntryPortal: autocomplete, alert roles, focus-visible; `admin-dashboard-page` uses `100dvh`.
+- TS: `tsc --noEmit` clean. Updated [[handoff]], `CHANGELOG.md`.
+
+## [2026-07-23] implement | interface-design AdminOverview craft rebuild
+
+- Closed `/design-review` blockers on `AdminOverviewPanel`: revenue-first hierarchy, tomato-only palette, briefing workbench rhythm, token CSS, StatusPill/Button reuse, reduced-motion ≤280ms, tabular-nums.
+- Files: `features/admin-dashboard/components/AdminOverviewPanel.tsx`, `app/globals.css`, [[handoff]], [[components]], `CHANGELOG.md`.
+
+## [2026-07-23] decide+implement | landing vision final + Tailwind/daisyUI + /signin
+
+- Locked landing IA: `/` marketing → Sign in → `/signin` EntryPortal OTP.
+- Motion stack documented: Lenis + GSAP ScrollTrigger (R1); Anime.js optional; Framer stays on app shell.
+- Installed Tailwind v4 + daisyUI 5; themes `slicematic` / `slicematic-dark`; thin MarketingLanding bridge.
+- Updated [[css-system]], [[handoff]], design-decisions + landing-page-vision finals.
+
+## [2026-07-23] implement | frontend-only P0/P1 + admin consistency + landing vision MD
+
+- Closed R12 leftovers: checkout pill spacing, root loading/error, AdminOverview reduced-motion, ui-map facts.
+- Architecture: fetchJson clients, Zustand partialize, lazy Forecast/AI, motion wrappers export.
+- Admin Forecast/Menu/Settings/AI aligned to shared glass shell; app-wide dark mode toggle; Tailwind deferred.
+- Added `plans/landing-page-vision.md` + `plans/2026-07-23-frontend-design-decisions.md`. No schema / no delivery invention.
+
+## [2026-07-23] query+fix | taste-skill EntryPortal anti-slop pass
+
+- Applied taste-skill `redesign-existing-projects` (audit-first) + `design-taste-frontend` brief inference to EntryPortal (`/`).
+- Fixed: brand-first headline, AI marketing copy, `100dvh`, reduced-motion on logo pulse, sentence-case CTAs, quieter rate-limit message.
+- Updated [[components]], [[handoff]], `CHANGELOG.md`. No auth/flow logic changes.
+
 ## [2026-07-23] query+fix | ui-ux-pro-max confirmation UX audit
 
 - Invoked ui-ux-pro-max (`--design-system` food delivery + `--domain ux` + `--stack nextjs`) against `/confirmation`.

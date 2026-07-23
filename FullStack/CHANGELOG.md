@@ -4,6 +4,154 @@ This file maintains a timestamp-based record of the modifications, debugging ses
 
 ---
 
+### [2026-07-23 19:50:00 IST] - Remove unnecessary ui-map screenshots
+
+- Deleted 13 PNGs from `wiki/assets/ui-map/`: stale Landing R1 pre-rebuild walkthroughs, misnamed `walkthrough_07_*` payment duplicates, and orphaned historical duplicates with zero doc references.
+- Kept active walkthrough (02–06, 08–21) and canonical baselines still linked from ui-map / plans. Landing screenshot rows now pending re-capture (no dangling paths). 48 PNGs remain.
+- Files: `wiki/assets/ui-map/*.png` (deletions), `wiki/ui-map.md`, `wiki/handoff.md`, `wiki/log.md`
+
+---
+
+### [2026-07-23 19:45:00 IST] - Landing R1: creative Delhi night-delivery rebuild (GSAP + Lenis + Lottie)
+
+- Fully rebuilt `MarketingLanding` as a cinematic, brand-first Delhi night-delivery story. Hero budget kept (brand + one headline + one line + CTA group + one dominant visual plane); full-bleed, no hero cards.
+- Motion stack (landing only): `lenis` smooth scroll synced to GSAP `ScrollTrigger` via the GSAP ticker; `MotionPathPlugin` drives a scooter rider along a road ribbon; entrance timeline + parallax + star twinkle. All disabled under `prefers-reduced-motion` and torn down on unmount (nothing leaks to `/signin`, checkout, admin, CustomerShell).
+- Lottie: committed local JSON `public/lottie/pizza-spin.json` (spinning pizza) + `steam.json` (oven steam) via `lottie-react`, wrapped in `LottieMount` with SVG fallback, reduced-motion static mode, and off-screen pause.
+- Art is 100% illustration: hand-built SVG Delhi skyline (Qutub Minar, India Gate, Humayun dome, Lotus Temple), Yamuna shimmer, road ribbon, scooter rider, and generated pizza discs. Removed all screenshot/photo imagery (old `/uploads/menu` hero bg + `/assets/menu` signature photos deleted from landing).
+- Expressive fonts via `next/font`: Unbounded (display) + Hanken Grotesk (body); no Inter on landing. Cinematic warm dark canvas (tomato/gold), not flat white.
+- Multi-slide narrative below hero: Order → Kitchen → Rider through Delhi → Doorstep, plus illustrated Signature slices. CTAs route to `/signin`.
+- New dep: `lottie-react`. `tsc --noEmit` clean; verified live in browser (hero, ride strip scrub, pizza/steam Lottie, doorstep, signature grid, `/signin` untouched).
+- Files: `components/landing/MarketingLanding.tsx`, `components/landing/Hero.tsx`, `components/landing/NarrativeSlides.tsx`, `components/landing/LottieMount.tsx`, `components/landing/hooks/useLandingLenis.ts`, `components/landing/art/DelhiScene.tsx`, `components/landing/art/scene-parts.tsx`, `public/lottie/pizza-spin.json`, `public/lottie/steam.json`, `app/layout.tsx`, `app/globals.css`, `package.json`, `wiki/ui-map.md`, `wiki/handoff.md`, `wiki/log.md`, `plans/landing-page-vision.md`
+
+---
+
+### [2026-07-23 19:22:00 IST] - Customer FE polish (menu / header / stepper / focus)
+
+- MenuCatalog: house-pick featured sort + card accent, live count, search icon, wired `/api/menu` loading skeletons, clearer empty Clear filters.
+- CustomerFlowTabs: numbered journey stepper; Guest details vs Your details.
+- AppHeader: Guest · Sign in chip, token CSS, reduced-motion, focus-visible; ThemeToggle aria-pressed + focus-safe classes.
+- Customer focus rings on filter chips, flow tabs, menu Add/Customize.
+- Files: `MenuCatalog.tsx`, `menu-catalog.ts`, `menu-catalog.test.ts`, `CustomerFlowTabs.tsx`, `AppHeader.tsx`, `ThemeToggle.tsx`, `CustomerShell.tsx`, `admin-dashboard/page.tsx`, `Primitives.tsx`, `globals.css`, `wiki/components.md`, `wiki/ui-map.md`
+
+---
+
+### [2026-07-23 19:20:00 IST] - Honest ops briefing empty/degraded UX
+
+- Admin Overview + AI tab: detect `source: fallback` / failed / empty ops briefing; never render invented LLM paragraphs.
+- Clear empty states (what happened + what still works); AI cockpit degraded copy for ops briefing.
+- Files: `useAdminSession.ts`, `AdminOverviewPanel.tsx`, `RecommendationAIPanel.tsx`, `admin-dashboard/page.tsx`, `globals.css`
+
+---
+
+### [2026-07-23 19:09:51 IST] - Landing signature pizzas strip
+
+- Added below-fold **Signature pizzas** section on MarketingLanding: curated seed pizzas (P2/P8/P7/P1) with `/assets/menu` photography, names, prices; CTA → `/signin`.
+- Hero budget unchanged (brand + headline + sub + CTAs only). Horizontal strip on mobile, 4-up on desktop; charcoal `neutral` band; `prefers-reduced-motion` kills image hover scale.
+- Files: `components/landing/MarketingLanding.tsx`, `app/globals.css`, `wiki/ui-map.md`, `wiki/handoff.md`, `wiki/log.md`
+
+---
+
+### [2026-07-23 19:15:00 IST] - RecommendationLane richer presentation
+
+- FE-only polish when picks exist: section intro/source eyebrow, card why-text from honest `reason`, clearer Build CTAs, lane-local skeleton rows, FadeInUp + staggered cards with reduced-motion respect; kept empty/unavailable honesty + aria-live/busy.
+- Files: `RecommendationLane.tsx`, `app/globals.css`
+
+---
+
+### [2026-07-23 19:12:00 IST] - Fix Paprika typo + Orders seed flash
+
+- Seed toppings: added T11 `Smoked Paprika` (correct spelling) in FE seed/copy.
+- Admin Orders: track summary `loading|live|error`, show skeleton + “Loading orders…” (no seed-until-refresh flash); quieter error/refresh copy.
+- Files: `lib/seed-data.ts`, `features/admin-dashboard/hooks/useAdminSession.ts`, `features/admin-dashboard/components/AdminOrdersWorkspace.tsx`, `app/admin-dashboard/page.tsx`
+
+---
+
+### [2026-07-23 19:06:00 IST] - Customer intake empty vs placeholder clarity
+
+- Stopped seeding guest address/zone as real values (`New Ashok Nagar…` / `2-4`); store + shell migrate legacy seeds to empty so Menu/recommendation gates see true empty strings until typed.
+- Intake form: visible labels (not placeholder-as-label), muted `::placeholder` contrast, `aria-invalid` + field-level `role="alert"` errors, phone digits-only.
+- After a successful manual details save, soft-default step to Menu (auto login/rec refresh still lands on recommendation).
+- Files: `CustomerIntakeForm.tsx`, `CustomerShell.tsx`, `admin-dashboard/page.tsx`, `lib/store.ts`, `lib/store.test.ts`, `app/globals.css`
+
+---
+
+### [2026-07-23 19:05:00 IST] - Fix guest Account soft-gate (no marketing bounce)
+
+- Guest Account no longer calls `onUnauthorize` (which flipped MarketingLanding while guest session keys remained).
+- Guests clicking Account soft-gate to `/signin`; members still open Account workspace.
+- `/signin` only auto-redirects when `slicematic_customer_logged_in === "true"` so guests can reach EntryPortal.
+- Files: `components/CustomerShell.tsx`, `app/signin/page.tsx`
+
+---
+
+### [2026-07-23 19:05:00 IST] - FE clarity: rec empty/unavailable, cart cash copy, checkout empty bridge
+
+- RecommendationLane: honest empty (no picks) EmptyState; unavailable picks show label + disabled Build; all-unavailable notice.
+- CartRail: guest vs member cash messaging via `guestCashAllowed`; CTA only when Cash needs sign-in; empty cart copy de-AI’d.
+- Checkout tab empty cart: in-shell `CheckoutEmptyPanel` (“Add a pizza first”) instead of toast-only; wired in CustomerShell + admin view-as-customer.
+- Files: `RecommendationLane.tsx`, `CartRail.tsx`, `CheckoutEmptyPanel.tsx`, `cart-rail.ts`, `cart-rail.test.ts`, `CustomerShell.tsx`, `admin-dashboard/page.tsx`, `globals.css`
+
+---
+
+### [2026-07-23 04:20:00 IST] - Full UI walkthrough screenshot pass
+
+- Captured live walkthrough PNGs (`walkthrough_01`–`walkthrough_21`) under `wiki/assets/ui-map/` covering marketing, signin, guest customer shell, payment, admin tabs/sub-tabs, account, view-as-customer.
+- Updated `wiki/ui-map.md` with a 2026-07-23 walkthrough inventory section (no app code changes).
+- Files: `wiki/assets/ui-map/walkthrough_*.png`, `wiki/ui-map.md`, `wiki/handoff.md`, `wiki/log.md`
+
+---
+
+### [2026-07-23 04:05:00 IST] - Customer hero + recommendation anti-slop follow-through
+
+- Customer rail/hero: removed ops speak (“Operating signals”, “AI pairings”, “Demand forecast”, “Elite delivery OS”); outlet-honest brand copy in both shells.
+- RecommendationLane: dropped “AI recommendations” eyebrow/Sparkles; plain picks copy; Utensils on build CTAs.
+- MenuCatalog Customize uses SlidersHorizontal; account pick loses indigo Sparkles gradient.
+- EntryPortal: email/OTP autocomplete, `role="alert"`, focus-visible rings; layout meta de-AI’d; admin page `100dvh`.
+- Files: `EntryPortal.tsx`, `EntryPortal.css`, `CustomerShell.tsx`, `admin-dashboard/page.tsx`, `RecommendationLane.tsx`, `MenuCatalog.tsx`, `CustomerAccountPanel.tsx`, `layout.tsx`, `globals.css`
+
+---
+
+### [2026-07-23 03:55:00 IST] - Admin Overview interface-design craft rebuild
+
+- Rebuilt `AdminOverviewPanel` from design-review decisions: revenue hero + demoted stats, tomato-only accent, ops briefing as inset workbench, charts secondary, token-bound `.admin-overview_*` CSS.
+- Reused `StatusPill` / `Button`; motion ≤280ms with `useReducedMotion`; tabular-nums; removed rainbow accents, indigo AI chrome, fake ArrowUpRight, trophy emoji.
+- Files: `features/admin-dashboard/components/AdminOverviewPanel.tsx`, `app/globals.css`, `wiki/handoff.md`, `wiki/log.md`, `wiki/components.md`
+
+---
+
+### [2026-07-23 03:55:00 IST] - Final landing vision + Tailwind v4 / daisyUI bridge + /signin split
+
+- Finalized `plans/landing-page-vision.md`: Sign in → `/signin` OTP; Lenis+GSAP for Landing R1; Anime.js optional micro; no motion on app shells.
+- Reversed Tailwind deferral: installed Tailwind v4 + daisyUI 5; custom themes `slicematic` / `slicematic-dark` via `data-theme`.
+- ThemeToggle + FOUC script aligned to daisyUI theme names.
+- Thin `MarketingLanding` on `/` (logged-out); EntryPortal moved to `/signin`.
+- Design decisions rewritten as final SOT in `plans/2026-07-23-frontend-design-decisions.md`.
+- Files: `postcss.config.mjs`, `app/globals.css`, `app/layout.tsx`, `app/page.tsx`, `app/signin/page.tsx`, `components/landing/MarketingLanding.tsx`, `components/ThemeToggle.tsx`, `package.json`, plans/*, wiki/*
+
+---
+
+### [2026-07-23 03:50:00 IST] - Frontend-only polish: P0/P1, admin consistency, dark theme, landing vision
+
+- P0: root `app/loading.tsx` + `app/error.tsx`; checkout payment-tile/pill spacing; AdminOverview `useReducedMotion` + glass tokens.
+- P1: `lib/api/fetchJson.ts` + admin/checkout clients; Zustand `partialize` v1; lazy Forecast/AI panels; export motion wrappers with reduced-motion.
+- Admin Forecast / Menu / Settings(Financials) / AI console aligned to Orders-style shell; AI tab uses `AiServiceCard` cockpit.
+- App-wide dark mode via `data-theme` + `ThemeToggle` (stay on `globals.css`/`sui-*`; Tailwind deferred — see design-decisions plan).
+- Docs: `plans/landing-page-vision.md` (GSAP/Lottie/Rive/Spline — no build yet), `plans/2026-07-23-frontend-design-decisions.md`, ui-map/handoff/log/next-horizon.
+- Skipped backend-coupled FE (dispatch/live map/prefs APIs/rider PWA).
+- Files: `app/loading.tsx`, `app/error.tsx`, `app/globals.css`, `lib/store.ts`, `lib/api/*`, `components/ThemeToggle.tsx`, `components/AppHeader.tsx`, `components/admin/ForecastPanel.tsx`, `RecommendationAIPanel.tsx`, `AdminOverviewPanel.tsx`, `AdminMenuWorkspace.tsx`, `AdminSettingsWorkspace.tsx`, `admin-dashboard/page.tsx`, `CheckoutSummary.tsx`, `plans/*`, `wiki/*`
+
+---
+
+### [2026-07-23 03:35:00 IST] - EntryPortal taste-skill anti-slop pass
+
+- Brand-first `h1` ("SliceMatic") replaces weak "SliceMatic Portal"; subtext is concrete Delhi NCR + email OTP language.
+- Removed AI marketing copy ("elite AI pairings", "premium members", Sparkles registration chrome).
+- Viewport: `min-height: 100dvh` with `100vh` fallback; `prefers-reduced-motion` disables logo pulse / entry animations.
+- Quieter rate-limit + CTA copy; decorative icons marked `aria-hidden`.
+- Files: `components/EntryPortal/EntryPortal.tsx`, `components/EntryPortal/EntryPortal.css`, `wiki/components.md`, `wiki/handoff.md`, `wiki/log.md`
+
+---
+
 ### [2026-07-23 03:30:00 IST] - Confirmation UX honesty + a11y (ui-ux-pro-max audit)
 
 - Honest delivery empty states: `DeliveryMapFallback` no longer claims active rider search or imminent live tracking.

@@ -8,12 +8,11 @@
  */
 
 import {
-  Check, LogOut, Mail,
-  ReceiptText, ShoppingBag, Sparkles, UserRound,
-  Star, TrendingUp, Package,
+  Check, LogOut, ReceiptText, RefreshCw, ShoppingBag, UserRound,
+  Star, TrendingUp, Package, Utensils,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import CustomerOrderHistoryTable from "../../../components/CustomerOrderHistoryTable";
 import type { CustomerOrderHistoryItem } from "../../../lib/data-service";
 import { money } from "../../../lib/pricing";
@@ -32,11 +31,16 @@ type Props = {
   recommendation: Recommendation | null;
   onContinueOrdering: () => void;
   onUseSavedProfile: () => void;
+  /** Rebuild from last cart line or last order — parent must not invent favourites. */
   onAddFavourite: () => void;
   onOpenBuilder: (pizzaId: number) => void;
   onBrowseMenu: () => void;
   /** Called on logout — resets isAuthorized in app/page.tsx → EntryPortal shows */
   onUnauthorize?: () => void;
+  /** Current cart has lines — enables "Rebuild last cart item". */
+  hasCartLines?: boolean;
+  /** Toast / notify helper for honest empty-state feedback. */
+  onNotify?: (message: string) => void;
 };
 
 // ── Animation variants ─────────────────────────────────────────────────────────
@@ -48,6 +52,28 @@ const fadeUp = {
   }),
 };
 const stagger = { visible: { transition: { staggerChildren: 0.07 } } };
+
+const MISSING_CUSTOMER_ID_ERROR = /no customer id/i;
+
+function readSessionCustomerId(): string {
+  if (typeof window === "undefined") return "";
+  return window.sessionStorage.getItem("slicematic_customer_id")?.trim() ?? "";
+}
+
+function hasUsableSavedProfile(): boolean {
+  if (typeof window === "undefined") return false;
+  const json = window.sessionStorage.getItem("slicematic_customer");
+  if (!json) return false;
+  try {
+    const parsed = JSON.parse(json) as Record<string, unknown>;
+    const name = String(parsed.name ?? "").trim();
+    const phone = String(parsed.phone ?? "").trim();
+    const address = String(parsed.address ?? "").trim();
+    return Boolean(name || phone || address);
+  } catch {
+    return false;
+  }
+}
 
 // ── Glass card ─────────────────────────────────────────────────────────────────
 function GlassCard({ children, style = {}, index = 0 }: {
@@ -95,9 +121,11 @@ function StatChip({ icon, label, value, color }: {
 }
 
 // ── Action button ──────────────────────────────────────────────────────────────
-function ActionBtn({ icon, label, onClick, variant = "ghost" }: {
+function ActionBtn({ icon, label, onClick, variant = "ghost", disabled = false, helper }: {
   icon: React.ReactNode; label: string; onClick: () => void;
   variant?: "primary" | "ghost" | "danger";
+  disabled?: boolean;
+  helper?: string;
 }) {
   const styles: Record<string, React.CSSProperties> = {
     primary: { background: "#c5362c", color: "#fff", border: "none" },
@@ -105,22 +133,34 @@ function ActionBtn({ icon, label, onClick, variant = "ghost" }: {
     danger: { background: "rgba(197,54,44,0.07)", color: "#c5362c", border: "1px solid rgba(197,54,44,0.15)" },
   };
   return (
-    <motion.button
-      type="button"
-      onClick={onClick}
-      whileHover={{ scale: 1.02 }}
-      whileTap={{ scale: 0.97 }}
-      style={{
-        display: "flex", alignItems: "center", gap: 8,
-        padding: "10px 16px", borderRadius: 12, cursor: "pointer",
-        fontWeight: 650, fontSize: "0.84rem", width: "100%",
-        justifyContent: "flex-start",
-        ...styles[variant],
-      }}
-    >
-      {icon}
-      {label}
-    </motion.button>
+    <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <motion.button
+        type="button"
+        onClick={onClick}
+        disabled={disabled}
+        whileHover={disabled ? undefined : { scale: 1.02 }}
+        whileTap={disabled ? undefined : { scale: 0.97 }}
+        aria-disabled={disabled}
+        title={disabled && helper ? helper : undefined}
+        style={{
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "10px 16px", borderRadius: 12,
+          cursor: disabled ? "not-allowed" : "pointer",
+          fontWeight: 650, fontSize: "0.84rem", width: "100%",
+          justifyContent: "flex-start",
+          opacity: disabled ? 0.55 : 1,
+          ...styles[variant],
+        }}
+      >
+        {icon}
+        {label}
+      </motion.button>
+      {disabled && helper ? (
+        <p style={{ margin: 0, padding: "0 4px", fontSize: "0.68rem", color: "#999", lineHeight: 1.35 }}>
+          {helper}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -130,8 +170,53 @@ export function CustomerAccountPanel({
   onRefreshOrders, recommendation,
   onContinueOrdering, onUseSavedProfile, onAddFavourite,
   onOpenBuilder, onBrowseMenu, onUnauthorize,
+  hasCartLines = false, onNotify,
 }: Props) {
   const { customerLoggedIn, customerSessionEmail, customerLogout } = auth;
+
+  const [hasCustomerId, setHasCustomerId] = useState(false);
+
+  useEffect(() => {
+    setHasCustomerId(Boolean(readSessionCustomerId()));
+  }, [customerLoggedIn, orders.length]);
+
+  const totalSpent = useMemo(() =>
+    orders.reduce((s, o) => s + (o.finalTotal ?? 0), 0), [orders]);
+  const totalOrders = orders.length;
+
+  const lastOrderLine = orders[0]?.lines?.[0];
+  const canRebuild = hasCartLines || Boolean(lastOrderLine);
+  const rebuildLabel = hasCartLines
+    ? "Rebuild last cart item"
+    : "Reorder last pizza";
+  const rebuildHelper = "Add a pizza to your cart or place an order first.";
+
+  const displayName = customerSessionEmail
+    ? customerSessionEmail.split("@")[0]
+        .replace(/[._]/g, " ")
+        .replace(/\b\w/g, (c) => c.toUpperCase())
+    : "Customer";
+
+  const visibleOrdersError =
+    hasCustomerId && ordersError && !MISSING_CUSTOMER_ID_ERROR.test(ordersError)
+      ? ordersError
+      : "";
+
+  function handleUseSavedProfile() {
+    if (!hasUsableSavedProfile()) {
+      onNotify?.("No saved delivery profile yet. Fill your details on the order form first.");
+      return;
+    }
+    onUseSavedProfile();
+  }
+
+  function handleRebuild() {
+    if (!canRebuild) {
+      onNotify?.(rebuildHelper);
+      return;
+    }
+    onAddFavourite();
+  }
 
   // ── Not logged in: redirect nudge (this path should rarely show — openAccount() guards first) ──
   if (!customerLoggedIn) {
@@ -178,17 +263,6 @@ export function CustomerAccountPanel({
       </section>
     );
   }
-
-  // ── Computed stats ──────────────────────────────────────────────────────────
-  const totalSpent = useMemo(() =>
-    orders.reduce((s, o) => s + (o.finalTotal ?? 0), 0), [orders]);
-  const totalOrders = orders.length;
-
-  const displayName = customerSessionEmail
-    ? customerSessionEmail.split("@")[0]
-        .replace(/[._]/g, " ")
-        .replace(/\b\w/g, (c) => c.toUpperCase())
-    : "Customer";
 
   // ── Dashboard ───────────────────────────────────────────────────────────────
   return (
@@ -250,8 +324,18 @@ export function CustomerAccountPanel({
           </p>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             <ActionBtn icon={<ShoppingBag size={15} />} label="Continue ordering" onClick={onContinueOrdering} variant="primary" />
-            <ActionBtn icon={<Check size={15} />} label="Use saved profile" onClick={onUseSavedProfile} />
-            <ActionBtn icon={<Sparkles size={15} />} label="Rebuild favourite" onClick={onAddFavourite} />
+            <ActionBtn
+              icon={<Check size={15} />}
+              label="Use saved profile"
+              onClick={handleUseSavedProfile}
+            />
+            <ActionBtn
+              icon={<RefreshCw size={15} />}
+              label={rebuildLabel}
+              onClick={handleRebuild}
+              disabled={!canRebuild}
+              helper={rebuildHelper}
+            />
             <div style={{ height: 1, background: "rgba(0,0,0,0.06)", margin: "4px 0" }} />
             <ActionBtn
               icon={<LogOut size={15} />}
@@ -262,15 +346,15 @@ export function CustomerAccountPanel({
           </div>
         </GlassCard>
 
-        {/* AI Recommendation */}
+        {/* Personalized pick */}
         <GlassCard index={2} style={{ padding: "20px" }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 14 }}>
             <div style={{
               width: 30, height: 30, borderRadius: 9,
-              background: "linear-gradient(135deg, #6366f1, #c5362c)",
+              background: "var(--tomato)",
               display: "flex", alignItems: "center", justifyContent: "center",
             }}>
-              <Sparkles size={14} color="#fff" />
+              <Utensils size={14} color="#fff" aria-hidden="true" />
             </div>
             <strong style={{ fontSize: "0.88rem", color: "#111" }}>Your personalised pick</strong>
           </div>
@@ -279,7 +363,7 @@ export function CustomerAccountPanel({
               <motion.div key="rec-found" initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>
                 <div style={{
                   padding: "14px 16px", borderRadius: 14,
-                  background: "linear-gradient(135deg, rgba(197,54,44,0.06), rgba(99,102,241,0.06))",
+                  background: "linear-gradient(135deg, rgba(197,54,44,0.06), rgba(22,109,69,0.06))",
                   border: "1px solid rgba(197,54,44,0.12)", marginBottom: 12,
                 }}>
                   <p style={{ margin: 0, fontWeight: 750, color: "#c5362c", fontSize: "0.95rem" }}>{recommendation.pizzaName}</p>
@@ -303,7 +387,7 @@ export function CustomerAccountPanel({
             ) : (
               <motion.div key="rec-empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} style={{ color: "#aaa", fontSize: "0.84rem", lineHeight: 1.6 }}>
                 <p style={{ margin: "0 0 12px" }}>
-                  Place your first order and we'll build a personalised pizza recommendation just for you.
+                  Place your first order and we&apos;ll build a personalised pizza recommendation just for you.
                 </p>
                 <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} type="button" onClick={onBrowseMenu}
                   style={{ padding: "9px 14px", borderRadius: 10, background: "#c5362c", color: "#fff", border: "none", fontWeight: 700, fontSize: "0.82rem", cursor: "pointer" }}
@@ -328,19 +412,39 @@ export function CustomerAccountPanel({
               </span>
             )}
           </div>
-          <motion.button type="button" onClick={onRefreshOrders} disabled={ordersLoading}
-            whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}
-            style={{ padding: "6px 14px", borderRadius: 8, cursor: ordersLoading ? "default" : "pointer", border: "1px solid rgba(0,0,0,0.09)", background: "none", fontSize: "0.78rem", fontWeight: 650, color: "#555" }}
+          <motion.button type="button" onClick={onRefreshOrders} disabled={ordersLoading || !hasCustomerId}
+            whileHover={hasCustomerId && !ordersLoading ? { scale: 1.03 } : undefined}
+            whileTap={hasCustomerId && !ordersLoading ? { scale: 0.97 } : undefined}
+            title={!hasCustomerId ? "Order history unlocks after your account is linked to a placed order." : undefined}
+            style={{
+              padding: "6px 14px", borderRadius: 8,
+              cursor: ordersLoading || !hasCustomerId ? "default" : "pointer",
+              border: "1px solid rgba(0,0,0,0.09)", background: "none",
+              fontSize: "0.78rem", fontWeight: 650, color: "#555",
+              opacity: !hasCustomerId ? 0.55 : 1,
+            }}
           >
             {ordersLoading ? "Refreshing…" : "Refresh"}
           </motion.button>
         </div>
         <div style={{ padding: "12px 0 4px" }}>
-          {ordersError && <p style={{ color: "#c5362c", fontSize: "0.84rem", padding: "0 24px 12px" }}>{ordersError}</p>}
+          {visibleOrdersError ? (
+            <p style={{ color: "#c5362c", fontSize: "0.84rem", padding: "0 24px 12px" }}>{visibleOrdersError}</p>
+          ) : null}
           {ordersLoading ? (
             <div style={{ display: "flex", gap: 8, alignItems: "center", padding: "20px 24px 24px", color: "#aaa" }}>
               <div style={{ width: 16, height: 16, borderRadius: "50%", border: "2px solid #ddd", borderTopColor: "#c5362c", animation: "spin 0.8s linear infinite" }} />
               <span style={{ fontSize: "0.84rem" }}>Loading your orders…</span>
+            </div>
+          ) : !hasCustomerId ? (
+            <div style={{ padding: "24px", textAlign: "center", color: "#888" }}>
+              <ShoppingBag size={32} style={{ marginBottom: 8, opacity: 0.3 }} />
+              <p style={{ margin: "0 0 6px", fontSize: "0.9rem", fontWeight: 650, color: "#555" }}>
+                No orders linked yet
+              </p>
+              <p style={{ margin: 0, fontSize: "0.84rem", lineHeight: 1.5, maxWidth: 360, marginInline: "auto" }}>
+                After you place an order, history for this account will show up here.
+              </p>
             </div>
           ) : orders.length === 0 ? (
             <div style={{ padding: "24px", textAlign: "center", color: "#aaa" }}>

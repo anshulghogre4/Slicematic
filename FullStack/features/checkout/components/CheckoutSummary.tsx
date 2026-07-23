@@ -166,7 +166,7 @@ export function CheckoutSummary({
             </p>
           </div>
 
-          <div style={{ display: "flex", flexDirection: "column", gap: "var(--space-sm)" }}>
+          <div className="checkout-payment-stack">
             {paymentModes.map((payment) => {
               const disabledForGuest = !customerLoggedIn && !pricingConfig.guestCashAllowed && payment.mode === "Cash";
               return (
@@ -182,7 +182,7 @@ export function CheckoutSummary({
             })}
           </div>
 
-          <div style={{ marginTop: "var(--space-lg)", display: "flex", justifyContent: "center" }}>
+          <div className="checkout-payment-status">
             <StatusPill tone={paymentMode === "Cash" ? "success" : "info"}>
               {paymentMode === "Cash" ? "Cash test path ready" : "Online verification required"}
             </StatusPill>

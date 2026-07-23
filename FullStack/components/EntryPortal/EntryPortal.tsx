@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
-import { Pizza, ArrowRight, Lock, UserCheck, ShieldAlert, Smartphone, Mail, Sparkles, Smile, ArrowLeft } from "lucide-react";
+import { Pizza, ArrowRight, Lock, UserCheck, ShieldAlert, Mail, Smile, ArrowLeft } from "lucide-react";
 import { getSupabaseBrowserClient } from "../../lib/supabase";
 import { useStore } from "../../lib/store";
 import { Recommendation } from "../../lib/types";
@@ -121,7 +121,7 @@ export default function EntryPortal({ onComplete, onRecommendationReady }: Entry
           if (error) {
             console.error("OTP Send Error:", error);
             if (error.message.toLowerCase().includes("rate limit")) {
-              setErrorMsg("Free tier rate limit hit! Falling back to Demo Mode. Use OTP 9812 to proceed.");
+              setErrorMsg("OTP rate limit reached. Using demo mode — enter code 9812 to continue.");
               setFallbackDemo(true);
             } else {
               setErrorMsg("Failed to send OTP: " + error.message);
@@ -487,11 +487,11 @@ export default function EntryPortal({ onComplete, onRecommendationReady }: Entry
     <div className="portal-container">
       <div className="portal-glass">
         <div className="portal-header">
-          <div className="portal-logo">
+          <div className="portal-logo" aria-hidden="true">
             <Pizza />
           </div>
-          <h2>SliceMatic Portal</h2>
-          <p>Fresh crusts, premium toppings, elite AI pairings.</p>
+          <h1 className="portal-brand">SliceMatic</h1>
+          <p>Order pizza in Delhi NCR. Sign in with email for a one-time code.</p>
         </div>
 
         {step === "identity" && (
@@ -499,22 +499,32 @@ export default function EntryPortal({ onComplete, onRecommendationReady }: Entry
             <div className="input-group">
               <label htmlFor="identifier">Email Address</label>
               <div className="input-icon-wrapper">
-                <Mail />
+                <Mail aria-hidden="true" />
                 <input
-                  type="text"
+                  type="email"
                   id="identifier"
+                  name="email"
+                  autoComplete="email"
+                  inputMode="email"
                   placeholder="e.g. name@email.com"
                   value={identifier}
                   onChange={(e) => setIdentifier(e.target.value)}
                   disabled={loading}
+                  aria-invalid={Boolean(errorMsg)}
+                  aria-describedby={errorMsg ? "portal-error" : undefined}
                 />
               </div>
             </div>
 
-            {errorMsg && <div className="portal-error-card"><ShieldAlert /><span>{errorMsg}</span></div>}
+            {errorMsg && (
+              <div className="portal-error-card" id="portal-error" role="alert">
+                <ShieldAlert aria-hidden="true" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
 
             <button type="submit" className="portal-primary-btn" disabled={loading}>
-              {loading ? "Sending OTP..." : "Get OTP"} <ArrowRight />
+              {loading ? "Sending code..." : "Get code"} <ArrowRight aria-hidden="true" />
             </button>
 
             <div className="portal-divider">
@@ -522,7 +532,7 @@ export default function EntryPortal({ onComplete, onRecommendationReady }: Entry
             </div>
 
             <button type="button" onClick={handleGuestLogin} className="portal-secondary-btn" disabled={loading}>
-              <Smile /> Continue as Guest
+              <Smile aria-hidden="true" /> Continue as guest
             </button>
           </form>
         )}
@@ -530,33 +540,43 @@ export default function EntryPortal({ onComplete, onRecommendationReady }: Entry
         {step === "otp" && (
           <form onSubmit={handleOtpSubmit} className="portal-form">
             <button type="button" className="back-btn" onClick={() => setStep("identity")} disabled={loading}>
-              <ArrowLeft /> Back
+              <ArrowLeft aria-hidden="true" /> Back
             </button>
 
             <div className="otp-heading">
-              <Lock />
-              <h3>Enter Security Code</h3>
-              <p>We've sent an OTP to <strong>{identifier}</strong>.</p>
+              <Lock aria-hidden="true" />
+              <h2>Enter your code</h2>
+              <p>We sent a one-time code to <strong>{identifier}</strong>.</p>
             </div>
 
             <div className="input-group">
-              <label htmlFor="otp">OTP Code</label>
+              <label htmlFor="otp">One-time code</label>
               <input
                 type="text"
                 id="otp"
+                name="otp"
+                inputMode="numeric"
+                autoComplete="one-time-code"
                 maxLength={8}
-                placeholder={(isDemo || fallbackDemo) ? "1111" : "Enter OTP"}
+                placeholder={(isDemo || fallbackDemo) ? "1111" : "Enter code"}
                 value={otp}
                 onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
                 disabled={loading}
                 className="otp-input"
+                aria-invalid={Boolean(errorMsg)}
+                aria-describedby={errorMsg ? "portal-error" : undefined}
               />
             </div>
 
-            {errorMsg && <div className="portal-error-card"><ShieldAlert /><span>{errorMsg}</span></div>}
+            {errorMsg && (
+              <div className="portal-error-card" id="portal-error" role="alert">
+                <ShieldAlert aria-hidden="true" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
 
             <button type="submit" className="portal-primary-btn" disabled={loading}>
-              {loading ? "Verifying..." : "Verify & Enter App"} <UserCheck />
+              {loading ? "Verifying..." : "Verify and continue"} <UserCheck aria-hidden="true" />
             </button>
           </form>
         )}
@@ -564,51 +584,55 @@ export default function EntryPortal({ onComplete, onRecommendationReady }: Entry
         {step === "register" && (
           <form onSubmit={handleRegistrationSubmit} className="portal-form scroll-form">
             <button type="button" className="back-btn" onClick={() => setStep("identity")} disabled={loading}>
-              <ArrowLeft /> Back
+              <ArrowLeft aria-hidden="true" /> Back
             </button>
 
             <div className="registration-heading">
-              <Sparkles />
-              <h3>Create Your Account</h3>
-              <p>New account registration for premium SliceMatic members.</p>
+              <h2>Finish your profile</h2>
+              <p>We need a name, phone, and delivery address to place your first order.</p>
             </div>
 
             <div className="reg-grid">
               <div className="input-group">
                 <label htmlFor="regName">Full Name</label>
-                <input type="text" id="regName" placeholder="Rahul Sharma" value={regName} onChange={(e) => setRegName(e.target.value)} disabled={loading} />
+                <input type="text" id="regName" name="name" autoComplete="name" placeholder="Rahul Sharma" value={regName} onChange={(e) => setRegName(e.target.value)} disabled={loading} />
               </div>
 
               <div className="input-group">
                 <label htmlFor="regAge">Age</label>
-                <input type="number" id="regAge" placeholder="25" value={regAge} onChange={(e) => setRegAge(e.target.value)} disabled={loading} />
+                <input type="number" id="regAge" name="age" inputMode="numeric" placeholder="25" value={regAge} onChange={(e) => setRegAge(e.target.value)} disabled={loading} />
               </div>
 
               <div className="input-group">
                 <label htmlFor="regMobile">Mobile Number</label>
-                <input type="text" id="regMobile" placeholder="9876543210" value={regMobile} onChange={(e) => setRegMobile(e.target.value.replace(/\D/g, ""))} disabled={loading} />
+                <input type="tel" id="regMobile" name="tel" autoComplete="tel" inputMode="numeric" placeholder="9876543210" value={regMobile} onChange={(e) => setRegMobile(e.target.value.replace(/\D/g, ""))} disabled={loading} />
               </div>
 
               <div className="input-group">
                 <label htmlFor="regEmail">Email Address</label>
-                <input type="email" id="regEmail" placeholder="rahul@slicematic.in" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} disabled={loading} />
+                <input type="email" id="regEmail" name="email" autoComplete="email" placeholder="rahul@slicematic.in" value={regEmail} onChange={(e) => setRegEmail(e.target.value)} disabled={loading} />
               </div>
 
               <div className="input-group wide-field">
                 <label htmlFor="regCity">City</label>
-                <input type="text" id="regCity" placeholder="Delhi NCR" value={regCity} onChange={(e) => setRegCity(e.target.value)} disabled={loading} />
+                <input type="text" id="regCity" name="city" autoComplete="address-level2" placeholder="Delhi NCR" value={regCity} onChange={(e) => setRegCity(e.target.value)} disabled={loading} />
               </div>
 
               <div className="input-group wide-field">
                 <label htmlFor="regAddress">Delivery Address</label>
-                <textarea id="regAddress" placeholder="Flat No, Wing, Landmark, Street Area" value={regAddress} onChange={(e) => setRegAddress(e.target.value)} disabled={loading} rows={2} />
+                <textarea id="regAddress" name="street-address" autoComplete="street-address" placeholder="Flat No, Wing, Landmark, Street Area" value={regAddress} onChange={(e) => setRegAddress(e.target.value)} disabled={loading} rows={2} />
               </div>
             </div>
 
-            {errorMsg && <div className="portal-error-card"><ShieldAlert /><span>{errorMsg}</span></div>}
+            {errorMsg && (
+              <div className="portal-error-card" id="portal-error" role="alert">
+                <ShieldAlert aria-hidden="true" />
+                <span>{errorMsg}</span>
+              </div>
+            )}
 
             <button type="submit" className="portal-primary-btn" disabled={loading}>
-              {loading ? "Registering..." : "Register & Order"} <UserCheck />
+              {loading ? "Saving..." : "Save and order"} <UserCheck aria-hidden="true" />
             </button>
           </form>
         )}

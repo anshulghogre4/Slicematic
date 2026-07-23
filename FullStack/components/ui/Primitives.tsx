@@ -102,6 +102,7 @@ export function FilterChip({ label, active, onClick }: FilterChipProps) {
       type="button"
       className={`filter-bar__chip ${active ? "filter-bar__chip--active" : ""}`}
       onClick={onClick}
+      aria-pressed={active}
     >
       {label}
     </button>
@@ -133,7 +134,7 @@ export function PaymentTile({ icon, label, copy, selected, onClick }: PaymentTil
       onClick={onClick}
     >
       <div className="payment-tile__icon">{icon}</div>
-      <div>
+      <div className="payment-tile__body">
         <div className="payment-tile__label">{label}</div>
         <div className="payment-tile__copy">{copy}</div>
       </div>

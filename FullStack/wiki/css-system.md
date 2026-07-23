@@ -24,7 +24,7 @@ Legacy baseline notes below describe how the current screens are styled today, n
 
 1. Most current design tokens live in `app/globals.css` inside the `:root {}` block.
 2. Most current layout classes are in `app/globals.css`; check existing classes before duplicating a pattern.
-3. Dark mode is not currently implemented. Light theme only until a token-driven dark mode pass is planned.
+3. **Tailwind CSS v4 + daisyUI 5 (2026-07-23):** `@import "tailwindcss"` + `@plugin "daisyui"` in `globals.css`. Themes: `slicematic` (default) and `slicematic-dark` (`--prefersdark`). ThemeToggle sets `html[data-theme]` and persists `localStorage: slicematic_theme`. Legacy `sui-*` CSS remains for app routes; landing may use daisyUI `btn` / utilities. See `plans/2026-07-23-frontend-design-decisions.md`.
 
 ---
 

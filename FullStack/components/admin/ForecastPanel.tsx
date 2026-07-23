@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Area, AreaChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Button, Skeleton, StatusPill } from "../ui";
+import { useReducedMotion } from "framer-motion";
+import { Button, FadeInUp, ForecastChartSkeleton, StatusPill } from "../ui";
+import { refreshAdminForecast } from "../../features/admin-dashboard/api/adminClient";
+import { FetchJsonError } from "../../lib/api/fetchJson";
 import type { AdminSummary } from "../../lib/types";
 
 type ForecastPanelProps = {
@@ -19,6 +22,7 @@ function formatTrainedAt(value: string) {
 }
 
 export default function ForecastPanel({ summary, authHeaders }: ForecastPanelProps) {
+  const reduceMotion = useReducedMotion();
   const [displaySummary, setDisplaySummary] = useState(summary);
   const [refreshState, setRefreshState] = useState<ForecastRefreshState>("idle");
   const [refreshMessage, setRefreshMessage] = useState("");
@@ -51,18 +55,7 @@ export default function ForecastPanel({ summary, authHeaders }: ForecastPanelPro
     setRefreshMessage("Training from the latest available order history. The last successful forecast stays visible.");
 
     try {
-      const response = await fetch("/api/admin/forecast/refresh", {
-        method: "POST",
-        headers: authHeaders,
-      });
-      const payload = await response.json();
-
-      if (!response.ok) {
-        setRefreshState("failed");
-        setRefreshMessage(payload.error ?? "Forecast refresh failed. Keeping the previous successful run.");
-        return;
-      }
-
+      const payload = await refreshAdminForecast(authHeaders);
       setDisplaySummary((current) => ({
         ...current,
         forecast: payload.forecast ?? current.forecast,
@@ -71,76 +64,90 @@ export default function ForecastPanel({ summary, authHeaders }: ForecastPanelPro
       }));
       setRefreshState("succeeded");
       setRefreshMessage("Forecast refreshed from current orders. Review the new peaks before staffing.");
-    } catch {
+    } catch (error) {
       setRefreshState("failed");
-      setRefreshMessage("Forecast refresh failed. Check Python/scikit-learn locally or the future forecast service health.");
+      const message =
+        error instanceof FetchJsonError
+          ? error.message
+          : "Forecast refresh failed. Check Python/scikit-learn locally or the future forecast service health.";
+      setRefreshMessage(message);
     }
   }
 
   return (
-    <section className="admin-card forecast-card">
-      <div className="forecast-header">
-        <div>
-          <p className="eyebrow">Demand forecast</p>
-          <h2>Next 7 days - predicted order volume</h2>
+    <FadeInUp>
+      <section className="admin-card forecast-card admin-workspace-shell">
+        <div className="forecast-header admin-page-head">
+          <div>
+            <p className="eyebrow">Demand forecast</p>
+            <h2>Next 7 days — predicted order volume</h2>
+            <p>
+              Lightweight scikit-learn model trained on Supabase order history. Predicts orders per hour using day of week and hour of day.
+            </p>
+          </div>
+          <div className="forecast-actions">
+            <StatusPill tone={statusTone}>{statusLabel}</StatusPill>
+            <Button variant="primary" onClick={refreshForecast} isLoading={refreshState === "refreshing"}>
+              {refreshState === "refreshing" ? "Refreshing forecast" : "Refresh forecast"}
+            </Button>
+          </div>
+        </div>
+
+        {refreshMessage && <p className="forecast-refresh-status" role="status" aria-live="polite">{refreshMessage}</p>}
+
+        {hasForecast ? (
+          <div
+            className={`admin-glass-card forecast-chart${refreshState === "refreshing" ? " is-refreshing" : ""}`}
+            aria-busy={refreshState === "refreshing"}
+          >
+            <ResponsiveContainer width="100%" height={310}>
+              <AreaChart data={displaySummary.forecast}>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--sui-border-soft)" />
+                <XAxis dataKey="label" interval="preserveStartEnd" angle={-35} textAnchor="end" height={70} tick={{ fill: "var(--sui-text-tertiary)", fontSize: 11 }} />
+                <YAxis allowDecimals={false} tick={{ fill: "var(--sui-text-tertiary)", fontSize: 11 }} />
+                <Tooltip />
+                <Area
+                  dataKey="predictedOrders"
+                  fill="var(--blue)"
+                  stroke="var(--blue)"
+                  name="Predicted orders"
+                  isAnimationActive={!reduceMotion}
+                />
+              </AreaChart>
+            </ResponsiveContainer>
+          </div>
+        ) : (
+          <ForecastChartSkeleton />
+        )}
+
+        <div className="forecast-peaks admin-glass-card">
+          <p className="eyebrow">Top 3 peak hours (next 7 days)</p>
+          <div className="forecast-list">
+            {topPeaks.map((item) => (
+              <div key={item.label}>
+                <strong>{item.label}</strong>
+                <span>{item.predictedOrders} predicted orders</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="forecast-model-card admin-glass-card">
+          <p className="eyebrow">Model documentation</p>
+          <p><strong>Model:</strong> {meta?.model ?? "RandomForestRegressor"} (scikit-learn)</p>
+          <p><strong>Features:</strong> {(meta?.features ?? ["weekday", "hour"]).join(", ")}</p>
           <p>
-            Lightweight scikit-learn model trained on Supabase order history. Predicts orders per hour using day of week and hour of day.
+            <strong>Evaluation:</strong>{" "}
+            {meta?.rmse != null ? `RMSE = ${meta.rmse.toFixed(2)} orders/hour (22% hold-out)` : "RMSE unavailable — need 20+ hourly buckets"}
+          </p>
+          <p>
+            <strong>Trained:</strong> {trainedLabel} on {meta?.orderCount ?? displaySummary.orderCount} orders ({meta?.bucketCount ?? 0} hourly buckets)
+          </p>
+          <p style={{ color: "var(--sui-text-tertiary)", fontSize: "var(--text-small)", marginBottom: 0 }}>
+            Run-history / queued / failed states land with Forecast Service (S5). Refresh stays file-cache Python until then.
           </p>
         </div>
-        <div className="forecast-actions">
-          <StatusPill tone={statusTone}>{statusLabel}</StatusPill>
-          <Button variant="primary" onClick={refreshForecast} isLoading={refreshState === "refreshing"}>
-            {refreshState === "refreshing" ? "Refreshing forecast" : "Refresh forecast"}
-          </Button>
-        </div>
-      </div>
-
-      {refreshMessage && <p className="forecast-refresh-status" role="status" aria-live="polite">{refreshMessage}</p>}
-
-      {hasForecast ? (
-        <div className={refreshState === "refreshing" ? "forecast-chart is-refreshing" : "forecast-chart"} aria-busy={refreshState === "refreshing"}>
-          <ResponsiveContainer width="100%" height={310}>
-            <AreaChart data={displaySummary.forecast}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="label" interval="preserveStartEnd" angle={-35} textAnchor="end" height={70} />
-              <YAxis allowDecimals={false} />
-              <Tooltip />
-              <Area dataKey="predictedOrders" fill="#2f6f98" stroke="#2f6f98" name="Predicted orders" />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      ) : (
-        <div className="sui-skeleton-stack" aria-label="Forecast loading preview">
-          <Skeleton variant="block" style={{ minHeight: 220 }} />
-          <Skeleton />
-          <Skeleton />
-        </div>
-      )}
-
-      <div className="forecast-peaks">
-        <p className="eyebrow">Top 3 peak hours (next 7 days)</p>
-        <div className="forecast-list">
-          {topPeaks.map((item) => (
-            <div key={item.label}>
-              <strong>{item.label}</strong>
-              <span>{item.predictedOrders} predicted orders</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="forecast-model-card">
-        <p className="eyebrow">Model documentation</p>
-        <p><strong>Model:</strong> {meta?.model ?? "RandomForestRegressor"} (scikit-learn)</p>
-        <p><strong>Features:</strong> {(meta?.features ?? ["weekday", "hour"]).join(", ")}</p>
-        <p>
-          <strong>Evaluation:</strong>{" "}
-          {meta?.rmse != null ? `RMSE = ${meta.rmse.toFixed(2)} orders/hour (22% hold-out)` : "RMSE unavailable - need 20+ hourly buckets"}
-        </p>
-        <p>
-          <strong>Trained:</strong> {trainedLabel} on {meta?.orderCount ?? displaySummary.orderCount} orders ({meta?.bucketCount ?? 0} hourly buckets)
-        </p>
-      </div>
-    </section>
+      </section>
+    </FadeInUp>
   );
 }
